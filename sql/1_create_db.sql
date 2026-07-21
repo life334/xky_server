@@ -1,0 +1,8 @@
+CREATE DATABASE xky_project
+  WITH ENCODING 'UTF8'
+  LC_COLLATE 'zh_CN.UTF-8'
+  LC_CTYPE 'zh_CN.UTF-8'
+  TEMPLATE template0;
+
+-- 创建 uuid 扩展
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

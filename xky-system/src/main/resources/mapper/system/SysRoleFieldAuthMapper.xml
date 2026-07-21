@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.system.mapper.SysRoleFieldAuthMapper">
+
+    <resultMap type="com.xakcch.system.domain.SysRoleFieldAuth" id="SysRoleFieldAuthResult">
+        <id     property="id"        column="id"        />
+        <result property="roleId"    column="role_id"   />
+        <result property="tableName" column="table_name"/>
+        <result property="fieldKey"  column="field_key" />
+        <result property="authType"  column="auth_type" />
+    </resultMap>
+
+    <select id="selectFieldAuthByRoleId" parameterType="Long" resultMap="SysRoleFieldAuthResult">
+        SELECT * FROM sys_role_field_auth WHERE role_id = #{roleId}
+    </select>
+
+    <select id="selectFieldAuthByRoleAndTable" resultMap="SysRoleFieldAuthResult">
+        SELECT * FROM sys_role_field_auth WHERE role_id = #{roleId} AND table_name = #{tableName}
+    </select>
+
+    <insert id="batchInsert">
+        INSERT INTO sys_role_field_auth (role_id, table_name, field_key, auth_type) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.roleId}, #{item.tableName}, #{item.fieldKey}, #{item.authType})
+        </foreach>
+    </insert>
+
+    <delete id="deleteByRoleId" parameterType="Long">
+        DELETE FROM sys_role_field_auth WHERE role_id = #{roleId}
+    </delete>
+
+    <delete id="deleteByRoleIds" parameterType="Long">
+        DELETE FROM sys_role_field_auth WHERE role_id IN
+        <foreach collection="array" item="roleId" open="(" separator="," close=")">
+            #{roleId}
+        </foreach>
+    </delete>
+
+</mapper>
