@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.xakcch.common.core.controller.BaseController;
 import com.xakcch.common.core.domain.AjaxResult;
+import com.xakcch.project.domain.ProjFieldDef;
+import com.xakcch.project.mapper.ProjFieldDefMapper;
 import com.xakcch.system.domain.SysRoleFieldAuth;
 import com.xakcch.system.service.ISysRoleFieldAuthService;
 
@@ -30,6 +32,9 @@ public class SysRoleFieldAuthController extends BaseController
 {
     @Autowired
     private ISysRoleFieldAuthService fieldAuthService;
+
+    @Autowired
+    private ProjFieldDefMapper projFieldDefMapper;
 
     /**
      * 获取指定角色的字段权限配置
@@ -184,14 +189,18 @@ public class SysRoleFieldAuthController extends BaseController
             field.put("source", "fixed"); // fixed=固定字段, dynamic=动态字段
             fieldList.add(field);
         }
-        // 动态字段标记（所有含 extra_data 的表都有一个共同的动态字段入口）
+        // 动态字段：从 proj_field_def 表查询实际定义，每个动态字段独立可配置权限
         if (!"proj_category".equals(tableName))
         {
-            Map<String, String> dynamic = new HashMap<>();
-            dynamic.put("fieldKey", "__dynamic__");
-            dynamic.put("fieldLabel", "[动态自定义字段]");
-            dynamic.put("source", "dynamic");
-            fieldList.add(dynamic);
+            List<ProjFieldDef> dynamicFields = projFieldDefMapper.selectFieldDefByTableName(tableName);
+            for (ProjFieldDef def : dynamicFields)
+            {
+                Map<String, String> dynamic = new HashMap<>();
+                dynamic.put("fieldKey", def.getFieldKey());
+                dynamic.put("fieldLabel", def.getFieldLabel());
+                dynamic.put("source", "dynamic");
+                fieldList.add(dynamic);
+            }
         }
 
         table.put("fields", fieldList);
