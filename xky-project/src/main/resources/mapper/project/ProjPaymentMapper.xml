@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjPaymentMapper">
+
+    <resultMap type="ProjPayment" id="ProjPaymentResult">
+        <result property="id"                column="id"                />
+        <result property="projectId"         column="project_id"        />
+        <result property="paymentType"       column="payment_type"      />
+        <result property="amount"            column="amount"            />
+        <result property="payTime"           column="pay_time"          />
+        <result property="payUnit"           column="pay_unit"          />
+        <result property="payMethod"         column="pay_method"        />
+        <result property="extraData"         column="extra_data"        />
+        <result property="delFlag"           column="del_flag"          />
+        <result property="createBy"          column="create_by"         />
+        <result property="createTime"        column="create_time"       />
+        <result property="updateBy"          column="update_by"         />
+        <result property="updateTime"        column="update_time"       />
+        <result property="remark"            column="remark"            />
+        <result property="projectName"       column="project_name"      />
+    </resultMap>
+
+    <sql id="selectPaymentVo">
+        select pm.id, pm.project_id, pm.payment_type, pm.amount,
+               pm.pay_time, pm.pay_unit, pm.pay_method,
+               pm.extra_data::text as extra_data, pm.del_flag,
+               pm.create_by, pm.create_time, pm.update_by, pm.update_time, pm.remark
+        from proj_payment pm
+    </sql>
+
+    <select id="selectPaymentList" parameterType="ProjPayment" resultMap="ProjPaymentResult">
+        select pm.id, pm.project_id, pm.payment_type, pm.amount,
+               pm.pay_time, pm.pay_unit, pm.pay_method,
+               pm.extra_data::text as extra_data, pm.del_flag,
+               pm.create_by, pm.create_time, pm.update_by, pm.update_time, pm.remark,
+               p.project_name
+        from proj_payment pm
+        left join proj_project p on p.id = pm.project_id
+        where pm.del_flag = '0'
+        <if test="projectId != null">
+            and pm.project_id = #{projectId}
+        </if>
+        <if test="paymentType != null and paymentType != ''">
+            and pm.payment_type = #{paymentType}
+        </if>
+        <if test="payUnit != null and payUnit != ''">
+            and pm.pay_unit like concat('%', #{payUnit}, '%')
+        </if>
+        order by pm.id desc
+    </select>
+
+    <select id="selectPaymentById" parameterType="Long" resultMap="ProjPaymentResult">
+        select pm.id, pm.project_id, pm.payment_type, pm.amount,
+               pm.pay_time, pm.pay_unit, pm.pay_method,
+               pm.extra_data::text as extra_data, pm.del_flag,
+               pm.create_by, pm.create_time, pm.update_by, pm.update_time, pm.remark,
+               p.project_name
+        from proj_payment pm
+        left join proj_project p on p.id = pm.project_id
+        where pm.id = #{id}
+    </select>
+
+    <insert id="insertPayment" parameterType="ProjPayment" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_payment(
+            <if test="projectId != null">project_id,</if>
+            <if test="paymentType != null and paymentType != ''">payment_type,</if>
+            <if test="amount != null">amount,</if>
+            <if test="payTime != null">pay_time,</if>
+            <if test="payUnit != null">pay_unit,</if>
+            <if test="payMethod != null">pay_method,</if>
+            <if test="extraData != null and extraData != ''">extra_data,</if>
+            <if test="remark != null and remark != ''">remark,</if>
+            <if test="createBy != null and createBy != ''">create_by,</if>
+            create_time
+        )values(
+            <if test="projectId != null">#{projectId},</if>
+            <if test="paymentType != null and paymentType != ''">#{paymentType},</if>
+            <if test="amount != null">#{amount},</if>
+            <if test="payTime != null">#{payTime},</if>
+            <if test="payUnit != null">#{payUnit},</if>
+            <if test="payMethod != null">#{payMethod},</if>
+            <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
+            <if test="remark != null and remark != ''">#{remark},</if>
+            <if test="createBy != null and createBy != ''">#{createBy},</if>
+            now()
+        )
+    </insert>
+
+    <update id="updatePayment" parameterType="ProjPayment">
+        update proj_payment
+        <set>
+            <if test="projectId != null">project_id = #{projectId},</if>
+            <if test="paymentType != null and paymentType != ''">payment_type = #{paymentType},</if>
+            <if test="amount != null">amount = #{amount},</if>
+            <if test="payTime != null">pay_time = #{payTime},</if>
+            <if test="payUnit != null">pay_unit = #{payUnit},</if>
+            <if test="payMethod != null">pay_method = #{payMethod},</if>
+            <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
+            update_time = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deletePaymentByIds" parameterType="Long">
+        update proj_payment set del_flag = '2' where id in
+        <foreach collection="array" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>

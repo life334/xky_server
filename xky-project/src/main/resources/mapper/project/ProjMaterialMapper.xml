@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjMaterialMapper">
+
+    <resultMap type="ProjMaterial" id="ProjMaterialResult">
+        <result property="id"                column="id"                />
+        <result property="projectId"         column="project_id"        />
+        <result property="submitTime"        column="submit_time"       />
+        <result property="contactName"       column="contact_name"      />
+        <result property="contactPhone"      column="contact_phone"     />
+        <result property="resultType"        column="result_type"       />
+        <result property="extraData"         column="extra_data"        />
+        <result property="delFlag"           column="del_flag"          />
+        <result property="createBy"          column="create_by"         />
+        <result property="createTime"        column="create_time"       />
+        <result property="updateBy"          column="update_by"         />
+        <result property="updateTime"        column="update_time"       />
+        <result property="remark"            column="remark"            />
+        <result property="projectName"       column="project_name"      />
+    </resultMap>
+
+    <sql id="selectMaterialVo">
+        select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
+               m.result_type, m.extra_data::text as extra_data, m.del_flag,
+               m.create_by, m.create_time, m.update_by, m.update_time, m.remark
+        from proj_material m
+    </sql>
+
+    <select id="selectMaterialList" parameterType="ProjMaterial" resultMap="ProjMaterialResult">
+        select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
+               m.result_type, m.extra_data::text as extra_data, m.del_flag,
+               m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
+               p.project_name
+        from proj_material m
+        left join proj_project p on p.id = m.project_id
+        where m.del_flag = '0'
+        <if test="projectId != null">
+            and m.project_id = #{projectId}
+        </if>
+        <if test="contactName != null and contactName != ''">
+            and m.contact_name like concat('%', #{contactName}, '%')
+        </if>
+        <if test="resultType != null and resultType != ''">
+            and m.result_type = #{resultType}
+        </if>
+        order by m.id desc
+    </select>
+
+    <select id="selectMaterialById" parameterType="Long" resultMap="ProjMaterialResult">
+        select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
+               m.result_type, m.extra_data::text as extra_data, m.del_flag,
+               m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
+               p.project_name
+        from proj_material m
+        left join proj_project p on p.id = m.project_id
+        where m.id = #{id}
+    </select>
+
+    <insert id="insertMaterial" parameterType="ProjMaterial" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_material(
+            <if test="projectId != null">project_id,</if>
+            <if test="submitTime != null">submit_time,</if>
+            <if test="contactName != null and contactName != ''">contact_name,</if>
+            <if test="contactPhone != null and contactPhone != ''">contact_phone,</if>
+            <if test="resultType != null and resultType != ''">result_type,</if>
+            <if test="extraData != null and extraData != ''">extra_data,</if>
+            <if test="remark != null and remark != ''">remark,</if>
+            <if test="createBy != null and createBy != ''">create_by,</if>
+            create_time
+        )values(
+            <if test="projectId != null">#{projectId},</if>
+            <if test="submitTime != null">#{submitTime},</if>
+            <if test="contactName != null and contactName != ''">#{contactName},</if>
+            <if test="contactPhone != null and contactPhone != ''">#{contactPhone},</if>
+            <if test="resultType != null and resultType != ''">#{resultType},</if>
+            <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
+            <if test="remark != null and remark != ''">#{remark},</if>
+            <if test="createBy != null and createBy != ''">#{createBy},</if>
+            now()
+        )
+    </insert>
+
+    <update id="updateMaterial" parameterType="ProjMaterial">
+        update proj_material
+        <set>
+            <if test="projectId != null">project_id = #{projectId},</if>
+            <if test="submitTime != null">submit_time = #{submitTime},</if>
+            <if test="contactName != null">contact_name = #{contactName},</if>
+            <if test="contactPhone != null">contact_phone = #{contactPhone},</if>
+            <if test="resultType != null">result_type = #{resultType},</if>
+            <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
+            update_time = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteMaterialByIds" parameterType="Long">
+        update proj_material set del_flag = '2' where id in
+        <foreach collection="array" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>
