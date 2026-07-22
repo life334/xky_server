@@ -1,23 +1,15 @@
-package com.xakcch.project.mapper;
+package com.xakcch.project.service;
 
 import java.util.List;
 import com.xakcch.project.domain.ProjFieldDef;
 
 /**
- * 动态字段定义 数据层
+ * 动态字段定义 Service接口
  *
  * @author liuyonghui
  */
-public interface ProjFieldDefMapper
+public interface IProjFieldDefService
 {
-    /**
-     * 查询指定表的所有启用动态字段
-     *
-     * @param tableName 目标表名
-     * @return 动态字段列表
-     */
-    public List<ProjFieldDef> selectFieldDefByTableName(String tableName);
-
     /**
      * 查询动态字段定义列表
      *
@@ -57,4 +49,12 @@ public interface ProjFieldDefMapper
      * @return 结果
      */
     public int deleteFieldDefByIds(Long[] ids);
+
+    /**
+     * 查询指定表的所有启用动态字段
+     *
+     * @param tableName 目标表名
+     * @return 动态字段列表
+     */
+    public List<ProjFieldDef> selectFieldDefByTableName(String tableName);
 }

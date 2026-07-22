@@ -33,4 +33,70 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by sort_order
     </select>
 
+    <select id="selectFieldDefList" parameterType="ProjFieldDef" resultMap="ProjFieldDefResult">
+        select id, table_name, field_key, field_label, field_type, field_options,
+               is_required, sort_order, status, del_flag, create_by, create_time,
+               update_by, update_time, remark
+        from proj_field_def
+        where del_flag = '0'
+        <if test="tableName != null and tableName != ''">
+            and table_name = #{tableName}
+        </if>
+        <if test="fieldKey != null and fieldKey != ''">
+            and field_key like concat('%', #{fieldKey}, '%')
+        </if>
+        <if test="fieldLabel != null and fieldLabel != ''">
+            and field_label like concat('%', #{fieldLabel}, '%')
+        </if>
+        <if test="status != null and status != ''">
+            and status = #{status}
+        </if>
+        order by table_name, sort_order
+    </select>
+
+    <select id="selectFieldDefById" parameterType="Long" resultMap="ProjFieldDefResult">
+        select id, table_name, field_key, field_label, field_type, field_options,
+               is_required, sort_order, status, del_flag, create_by, create_time,
+               update_by, update_time, remark
+        from proj_field_def
+        where id = #{id}
+    </select>
+
+    <insert id="insertFieldDef" parameterType="ProjFieldDef" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_field_def (
+            table_name, field_key, field_label, field_type, field_options,
+            is_required, sort_order, status, del_flag,
+            create_by, create_time, remark
+        ) values (
+            #{tableName}, #{fieldKey}, #{fieldLabel}, #{fieldType}, #{fieldOptions},
+            #{isRequired}, #{sortOrder}, #{status}, '0',
+            #{createBy}, now(), #{remark}
+        )
+    </insert>
+
+    <update id="updateFieldDef" parameterType="ProjFieldDef">
+        update proj_field_def
+        <set>
+            <if test="tableName != null and tableName != ''">table_name = #{tableName},</if>
+            <if test="fieldKey != null and fieldKey != ''">field_key = #{fieldKey},</if>
+            <if test="fieldLabel != null and fieldLabel != ''">field_label = #{fieldLabel},</if>
+            <if test="fieldType != null and fieldType != ''">field_type = #{fieldType},</if>
+            <if test="fieldOptions != null">field_options = #{fieldOptions},</if>
+            <if test="isRequired != null and isRequired != ''">is_required = #{isRequired},</if>
+            <if test="sortOrder != null">sort_order = #{sortOrder},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
+            update_time = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteFieldDefByIds" parameterType="Long">
+        update proj_field_def set del_flag = '2' where id in
+        <foreach collection="array" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
 </mapper>
