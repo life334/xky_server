@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjContractMapper">
+
+    <resultMap type="ProjContract" id="ProjContractResult">
+        <id     property="id"              column="id"               />
+        <result property="contractNo"      column="contract_no"      />
+        <result property="contractName"    column="contract_name"    />
+        <result property="clientUnit"      column="client_unit"      />
+        <result property="contactName"     column="contact_name"     />
+        <result property="contactPhone"    column="contact_phone"    />
+        <result property="contractType"    column="contract_type"    />
+        <result property="contractAmount"  column="contract_amount"  />
+        <result property="signDate"        column="sign_date"        />
+        <result property="entrustDate"     column="entrust_date"     />
+        <result property="auditDate"       column="audit_date"       />
+        <result property="returnDate"      column="return_date"      />
+        <result property="finishDate"      column="finish_date"      />
+        <result property="archiveDate"     column="archive_date"     />
+        <result property="archivePath"     column="archive_path"     />
+        <result property="contractPeriod"  column="contract_period"  />
+        <result property="paymentTerms"    column="payment_terms"    />
+        <result property="extraData"       column="extra_data"       />
+        <result property="delFlag"         column="del_flag"         />
+        <result property="createBy"        column="create_by"        />
+        <result property="createTime"      column="create_time"      />
+        <result property="updateBy"        column="update_by"        />
+        <result property="updateTime"      column="update_time"      />
+        <result property="remark"          column="remark"           />
+    </resultMap>
+
+    <sql id="selectContractVo">
+        select id, contract_no, contract_name, client_unit, contact_name, contact_phone,
+               contract_type, contract_amount, sign_date, entrust_date, audit_date,
+               return_date, finish_date, archive_date, archive_path, contract_period,
+               payment_terms, extra_data::text as extra_data, del_flag,
+               create_by, create_time, update_by, update_time, remark
+        from proj_contract
+    </sql>
+
+    <select id="selectContractList" parameterType="ProjContract" resultMap="ProjContractResult">
+        select id, contract_no, contract_name, client_unit, contact_name, contact_phone,
+               contract_type, contract_amount, sign_date, entrust_date, audit_date,
+               return_date, finish_date, archive_date, archive_path, contract_period,
+               payment_terms, extra_data::text as extra_data, del_flag,
+               create_by, create_time, update_by, update_time, remark
+        from proj_contract
+        where del_flag = '0'
+        <if test="contractNo != null and contractNo != ''">
+            AND contract_no like concat('%', #{contractNo}, '%')
+        </if>
+        <if test="contractName != null and contractName != ''">
+            AND contract_name like concat('%', #{contractName}, '%')
+        </if>
+        <if test="clientUnit != null and clientUnit != ''">
+            AND client_unit like concat('%', #{clientUnit}, '%')
+        </if>
+        <if test="contractType != null and contractType != ''">
+            AND contract_type = #{contractType}
+        </if>
+        <if test="contactName != null and contactName != ''">
+            AND contact_name like concat('%', #{contactName}, '%')
+        </if>
+        order by create_time desc
+    </select>
+
+    <select id="selectContractById" parameterType="Long" resultMap="ProjContractResult">
+        <include refid="selectContractVo"/>
+        where id = #{id}
+    </select>
+
+    <select id="checkContractNoUnique" parameterType="ProjContract" resultMap="ProjContractResult">
+        <include refid="selectContractVo"/>
+        where contract_no = #{contractNo} and del_flag = '0' limit 1
+    </select>
+
+    <insert id="insertContract" parameterType="ProjContract" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_contract(
+            <if test="contractNo != null and contractNo != ''">contract_no,</if>
+            <if test="contractName != null and contractName != ''">contract_name,</if>
+            <if test="clientUnit != null">client_unit,</if>
+            <if test="contactName != null">contact_name,</if>
+            <if test="contactPhone != null">contact_phone,</if>
+            <if test="contractType != null and contractType != ''">contract_type,</if>
+            <if test="contractAmount != null">contract_amount,</if>
+            <if test="signDate != null">sign_date,</if>
+            <if test="entrustDate != null">entrust_date,</if>
+            <if test="auditDate != null">audit_date,</if>
+            <if test="returnDate != null">return_date,</if>
+            <if test="finishDate != null">finish_date,</if>
+            <if test="archiveDate != null">archive_date,</if>
+            <if test="archivePath != null">archive_path,</if>
+            <if test="contractPeriod != null">contract_period,</if>
+            <if test="paymentTerms != null">payment_terms,</if>
+            <if test="extraData != null and extraData != ''">extra_data,</if>
+            <if test="remark != null and remark != ''">remark,</if>
+            <if test="createBy != null and createBy != ''">create_by,</if>
+            create_time
+        )values(
+            <if test="contractNo != null and contractNo != ''">#{contractNo},</if>
+            <if test="contractName != null and contractName != ''">#{contractName},</if>
+            <if test="clientUnit != null">#{clientUnit},</if>
+            <if test="contactName != null">#{contactName},</if>
+            <if test="contactPhone != null">#{contactPhone},</if>
+            <if test="contractType != null and contractType != ''">#{contractType},</if>
+            <if test="contractAmount != null">#{contractAmount},</if>
+            <if test="signDate != null">#{signDate},</if>
+            <if test="entrustDate != null">#{entrustDate},</if>
+            <if test="auditDate != null">#{auditDate},</if>
+            <if test="returnDate != null">#{returnDate},</if>
+            <if test="finishDate != null">#{finishDate},</if>
+            <if test="archiveDate != null">#{archiveDate},</if>
+            <if test="archivePath != null">#{archivePath},</if>
+            <if test="contractPeriod != null">#{contractPeriod},</if>
+            <if test="paymentTerms != null">#{paymentTerms},</if>
+            <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
+            <if test="remark != null and remark != ''">#{remark},</if>
+            <if test="createBy != null and createBy != ''">#{createBy},</if>
+            now()
+        )
+    </insert>
+
+    <update id="updateContract" parameterType="ProjContract">
+        update proj_contract
+        <set>
+            <if test="contractNo != null and contractNo != ''">contract_no = #{contractNo},</if>
+            <if test="contractName != null and contractName != ''">contract_name = #{contractName},</if>
+            <if test="clientUnit != null">client_unit = #{clientUnit},</if>
+            <if test="contactName != null">contact_name = #{contactName},</if>
+            <if test="contactPhone != null">contact_phone = #{contactPhone},</if>
+            <if test="contractType != null">contract_type = #{contractType},</if>
+            <if test="contractAmount != null">contract_amount = #{contractAmount},</if>
+            <if test="signDate != null">sign_date = #{signDate},</if>
+            <if test="entrustDate != null">entrust_date = #{entrustDate},</if>
+            <if test="auditDate != null">audit_date = #{auditDate},</if>
+            <if test="returnDate != null">return_date = #{returnDate},</if>
+            <if test="finishDate != null">finish_date = #{finishDate},</if>
+            <if test="archiveDate != null">archive_date = #{archiveDate},</if>
+            <if test="archivePath != null">archive_path = #{archivePath},</if>
+            <if test="contractPeriod != null">contract_period = #{contractPeriod},</if>
+            <if test="paymentTerms != null">payment_terms = #{paymentTerms},</if>
+            <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
+            update_time = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteContractById" parameterType="Long">
+        update proj_contract set del_flag = '2' where id = #{id}
+    </delete>
+
+    <delete id="deleteContractByIds" parameterType="Long">
+        update proj_contract set del_flag = '2' where id in
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>

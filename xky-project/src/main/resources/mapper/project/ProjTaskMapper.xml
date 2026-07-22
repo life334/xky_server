@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjTaskMapper">
+
+    <resultMap type="ProjTask" id="ProjTaskResult">
+        <id     property="id"               column="id"                />
+        <result property="projectId"        column="project_id"        />
+        <result property="userId"           column="user_id"           />
+        <result property="taskName"         column="task_name"         />
+        <result property="assignDate"       column="assign_date"       />
+        <result property="requiredFinishDate" column="required_finish_date" />
+        <result property="actualFinishDate"  column="actual_finish_date"   />
+        <result property="durationRequire"  column="duration_require"  />
+        <result property="totalDuration"    column="total_duration"    />
+        <result property="status"           column="status"            />
+        <result property="extraData"        column="extra_data"        />
+        <result property="delFlag"          column="del_flag"          />
+        <result property="createBy"         column="create_by"         />
+        <result property="createTime"       column="create_time"       />
+        <result property="updateBy"         column="update_by"         />
+        <result property="updateTime"       column="update_time"       />
+        <result property="remark"           column="remark"            />
+        <!-- 非持久化字段 -->
+        <result property="projectName"      column="project_name"      />
+        <result property="userName"         column="user_name"         />
+    </resultMap>
+
+    <sql id="selectTaskVo">
+        select t.id, t.project_id, t.user_id, t.task_name,
+               t.assign_date, t.required_finish_date, t.actual_finish_date,
+               t.duration_require, t.total_duration,
+               t.status, t.extra_data::text as extra_data, t.del_flag,
+               t.create_by, t.create_time, t.update_by, t.update_time, t.remark
+        from proj_task t
+    </sql>
+
+    <select id="selectTaskList" parameterType="ProjTask" resultMap="ProjTaskResult">
+        select t.id, t.project_id, t.user_id, t.task_name,
+               t.assign_date, t.required_finish_date, t.actual_finish_date,
+               t.duration_require, t.total_duration,
+               t.status, t.extra_data::text as extra_data, t.del_flag,
+               t.create_by, t.create_time, t.update_by, t.update_time, t.remark,
+               p.project_name,
+               u.user_name
+        from proj_task t
+        left join proj_project p on p.id = t.project_id
+        left join sys_user u on u.user_id = t.user_id
+        where t.del_flag = '0'
+        <if test="taskName != null and taskName != ''">
+            AND t.task_name like concat('%', #{taskName}, '%')
+        </if>
+        <if test="projectId != null">
+            AND t.project_id = #{projectId}
+        </if>
+        <if test="userId != null">
+            AND t.user_id = #{userId}
+        </if>
+        <if test="status != null and status != ''">
+            AND t.status = #{status}
+        </if>
+        <if test="params.beginTime != null and params.beginTime != ''">
+            AND t.create_time &gt;= to_timestamp(#{params.beginTime}, 'YYYY-MM-DD HH24:MI:SS')
+        </if>
+        <if test="params.endTime != null and params.endTime != ''">
+            AND t.create_time &lt;= to_timestamp(#{params.endTime}, 'YYYY-MM-DD HH24:MI:SS')
+        </if>
+        order by t.create_time desc
+    </select>
+
+    <select id="selectTaskById" parameterType="Long" resultMap="ProjTaskResult">
+        select t.id, t.project_id, t.user_id, t.task_name,
+               t.assign_date, t.required_finish_date, t.actual_finish_date,
+               t.duration_require, t.total_duration,
+               t.status, t.extra_data::text as extra_data, t.del_flag,
+               t.create_by, t.create_time, t.update_by, t.update_time, t.remark,
+               p.project_name,
+               u.user_name
+        from proj_task t
+        left join proj_project p on p.id = t.project_id
+        left join sys_user u on u.user_id = t.user_id
+        where t.id = #{id}
+    </select>
+
+    <insert id="insertTask" parameterType="ProjTask" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_task(
+            <if test="projectId != null">project_id,</if>
+            <if test="userId != null">user_id,</if>
+            <if test="taskName != null and taskName != ''">task_name,</if>
+            <if test="assignDate != null">assign_date,</if>
+            <if test="requiredFinishDate != null">required_finish_date,</if>
+            <if test="actualFinishDate != null">actual_finish_date,</if>
+            <if test="durationRequire != null">duration_require,</if>
+            <if test="totalDuration != null">total_duration,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="extraData != null and extraData != ''">extra_data,</if>
+            <if test="remark != null and remark != ''">remark,</if>
+            <if test="createBy != null and createBy != ''">create_by,</if>
+            create_time
+        )values(
+            <if test="projectId != null">#{projectId},</if>
+            <if test="userId != null">#{userId},</if>
+            <if test="taskName != null and taskName != ''">#{taskName},</if>
+            <if test="assignDate != null">#{assignDate},</if>
+            <if test="requiredFinishDate != null">#{requiredFinishDate},</if>
+            <if test="actualFinishDate != null">#{actualFinishDate},</if>
+            <if test="durationRequire != null">#{durationRequire},</if>
+            <if test="totalDuration != null">#{totalDuration},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
+            <if test="remark != null and remark != ''">#{remark},</if>
+            <if test="createBy != null and createBy != ''">#{createBy},</if>
+            now()
+        )
+    </insert>
+
+    <update id="updateTask" parameterType="ProjTask">
+        update proj_task
+        <set>
+            <if test="projectId != null">project_id = #{projectId},</if>
+            <if test="userId != null">user_id = #{userId},</if>
+            <if test="taskName != null and taskName != ''">task_name = #{taskName},</if>
+            <if test="assignDate != null">assign_date = #{assignDate},</if>
+            <if test="requiredFinishDate != null">required_finish_date = #{requiredFinishDate},</if>
+            <if test="actualFinishDate != null">actual_finish_date = #{actualFinishDate},</if>
+            <if test="durationRequire != null">duration_require = #{durationRequire},</if>
+            <if test="totalDuration != null">total_duration = #{totalDuration},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
+            update_time = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteTaskById" parameterType="Long">
+        update proj_task set del_flag = '2' where id = #{id}
+    </delete>
+
+    <delete id="deleteTaskByIds" parameterType="Long">
+        update proj_task set del_flag = '2' where id in
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjLeaderMapper">
+
+    <insert id="insertProjectLeaders">
+        insert into proj_leader(project_id, user_id, create_by, create_time)
+        values
+        <foreach item="userId" collection="userIds" separator=",">
+            (#{projectId}, #{userId}, #{createBy}, now())
+        </foreach>
+    </insert>
+
+    <delete id="deleteLeadersByProjectId" parameterType="Long">
+        update proj_leader set del_flag = '2' where project_id = #{projectId}
+    </delete>
+
+    <select id="selectLeaderIdsByProjectId" parameterType="Long" resultType="Long">
+        select user_id from proj_leader
+        where project_id = #{projectId} and del_flag = '0'
+    </select>
+
+</mapper>

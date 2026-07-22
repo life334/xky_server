@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjProjectMapper">
+
+    <resultMap type="ProjProject" id="ProjProjectResult">
+        <id     property="id"                  column="id"                   />
+        <result property="projectCode"         column="project_code"         />
+        <result property="projectName"         column="project_name"         />
+        <result property="engineeringProject"  column="engineering_project"  />
+        <result property="projectCategoryId"   column="project_category_id"  />
+        <result property="clientUnit"          column="client_unit"          />
+        <result property="contactName"         column="contact_name"         />
+        <result property="contactPhone"        column="contact_phone"        />
+        <result property="projectLocation"     column="project_location"     />
+        <result property="contractId"          column="contract_id"          />
+        <result property="status"              column="status"               />
+        <result property="extraData"           column="extra_data"           />
+        <result property="delFlag"             column="del_flag"             />
+        <result property="createBy"            column="create_by"            />
+        <result property="createTime"          column="create_time"          />
+        <result property="updateBy"            column="update_by"            />
+        <result property="updateTime"          column="update_time"          />
+        <result property="remark"              column="remark"               />
+        <!-- 非持久化字段 -->
+        <result property="categoryName"        column="category_name"        />
+        <result property="contractName"        column="contract_name"        />
+        <result property="leaderNames"         column="leader_names"         />
+        <!-- 任务聚合字段 -->
+        <result property="assignDate"          column="assign_date"          />
+        <result property="durationRequire"     column="duration_require"     />
+        <result property="totalDuration"       column="total_duration"       />
+    </resultMap>
+
+    <sql id="selectProjectVo">
+        select p.id, p.project_code, p.project_name, p.engineering_project,
+               p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
+               p.project_location, p.contract_id, p.status,
+               p.extra_data::text as extra_data, p.del_flag,
+               p.create_by, p.create_time, p.update_by, p.update_time, p.remark
+        from proj_project p
+    </sql>
+
+    <select id="selectProjectList" parameterType="ProjProject" resultMap="ProjProjectResult">
+        select p.id, p.project_code, p.project_name, p.engineering_project,
+               p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
+               p.project_location, p.contract_id, p.status,
+               p.extra_data::text as extra_data, p.del_flag,
+               p.create_by, p.create_time, p.update_by, p.update_time, p.remark,
+               c.name as category_name,
+               ct.contract_name,
+               coalesce(ln.leader_names, '') as leader_names,
+               ta.assign_date,
+               ta.duration_require,
+               ta.total_duration
+        from proj_project p
+        left join proj_category c on c.id = p.project_category_id
+        left join proj_contract ct on ct.id = p.contract_id
+        left join lateral (
+            select string_agg(u.user_name, ', ' order by l.id) as leader_names
+            from proj_leader l
+            inner join sys_user u on u.user_id = l.user_id
+            where l.project_id = p.id and l.del_flag = '0'
+        ) ln on true
+        left join lateral (
+            select min(t.assign_date) as assign_date,
+                   (max(t.required_finish_date) - min(t.assign_date)) as duration_require,
+                   (max(t.actual_finish_date) - min(t.assign_date)) as total_duration
+            from proj_task t
+            where t.project_id = p.id and t.del_flag = '0'
+        ) ta on true
+        where p.del_flag = '0'
+        <if test="projectCode != null and projectCode != ''">
+            AND p.project_code like concat('%', #{projectCode}, '%')
+        </if>
+        <if test="projectName != null and projectName != ''">
+            AND p.project_name like concat('%', #{projectName}, '%')
+        </if>
+        <if test="engineeringProject != null and engineeringProject != ''">
+            AND p.engineering_project like concat('%', #{engineeringProject}, '%')
+        </if>
+        <if test="projectCategoryId != null">
+            AND p.project_category_id = #{projectCategoryId}
+        </if>
+        <if test="clientUnit != null and clientUnit != ''">
+            AND p.client_unit like concat('%', #{clientUnit}, '%')
+        </if>
+        <if test="contractId != null">
+            AND p.contract_id = #{contractId}
+        </if>
+        <if test="status != null and status != ''">
+            AND p.status = #{status}
+        </if>
+        <if test="params.beginTime != null and params.beginTime != ''">
+            AND p.create_time &gt;= to_timestamp(#{params.beginTime}, 'YYYY-MM-DD HH24:MI:SS')
+        </if>
+        <if test="params.endTime != null and params.endTime != ''">
+            AND p.create_time &lt;= to_timestamp(#{params.endTime}, 'YYYY-MM-DD HH24:MI:SS')
+        </if>
+        order by p.create_time desc
+    </select>
+
+    <select id="selectProjectById" parameterType="Long" resultMap="ProjProjectResult">
+        select p.id, p.project_code, p.project_name, p.engineering_project,
+               p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
+               p.project_location, p.contract_id, p.status,
+               p.extra_data::text as extra_data, p.del_flag,
+               p.create_by, p.create_time, p.update_by, p.update_time, p.remark,
+               c.name as category_name,
+               ct.contract_name,
+               coalesce(ln.leader_names, '') as leader_names,
+               ta.assign_date,
+               ta.duration_require,
+               ta.total_duration
+        from proj_project p
+        left join proj_category c on c.id = p.project_category_id
+        left join proj_contract ct on ct.id = p.contract_id
+        left join lateral (
+            select string_agg(u.user_name, ', ' order by l.id) as leader_names
+            from proj_leader l
+            inner join sys_user u on u.user_id = l.user_id
+            where l.project_id = p.id and l.del_flag = '0'
+        ) ln on true
+        left join lateral (
+            select min(t.assign_date) as assign_date,
+                   (max(t.required_finish_date) - min(t.assign_date)) as duration_require,
+                   (max(t.actual_finish_date) - min(t.assign_date)) as total_duration
+            from proj_task t
+            where t.project_id = p.id and t.del_flag = '0'
+        ) ta on true
+        where p.id = #{id}
+    </select>
+
+    <select id="checkProjectCodeUnique" parameterType="ProjProject" resultMap="ProjProjectResult">
+        <include refid="selectProjectVo"/>
+        where p.project_code = #{projectCode} and p.del_flag = '0' limit 1
+    </select>
+
+    <insert id="insertProject" parameterType="ProjProject" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_project(
+            <if test="projectCode != null and projectCode != ''">project_code,</if>
+            <if test="projectName != null and projectName != ''">project_name,</if>
+            <if test="engineeringProject != null">engineering_project,</if>
+            <if test="projectCategoryId != null">project_category_id,</if>
+            <if test="clientUnit != null">client_unit,</if>
+            <if test="contactName != null">contact_name,</if>
+            <if test="contactPhone != null">contact_phone,</if>
+            <if test="projectLocation != null">project_location,</if>
+            <if test="contractId != null">contract_id,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="extraData != null and extraData != ''">extra_data,</if>
+            <if test="remark != null and remark != ''">remark,</if>
+            <if test="createBy != null and createBy != ''">create_by,</if>
+            create_time
+        )values(
+            <if test="projectCode != null and projectCode != ''">#{projectCode},</if>
+            <if test="projectName != null and projectName != ''">#{projectName},</if>
+            <if test="engineeringProject != null">#{engineeringProject},</if>
+            <if test="projectCategoryId != null">#{projectCategoryId},</if>
+            <if test="clientUnit != null">#{clientUnit},</if>
+            <if test="contactName != null">#{contactName},</if>
+            <if test="contactPhone != null">#{contactPhone},</if>
+            <if test="projectLocation != null">#{projectLocation},</if>
+            <if test="contractId != null">#{contractId},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
+            <if test="remark != null and remark != ''">#{remark},</if>
+            <if test="createBy != null and createBy != ''">#{createBy},</if>
+            now()
+        )
+    </insert>
+
+    <update id="updateProject" parameterType="ProjProject">
+        update proj_project
+        <set>
+            <if test="projectCode != null and projectCode != ''">project_code = #{projectCode},</if>
+            <if test="projectName != null and projectName != ''">project_name = #{projectName},</if>
+            <if test="engineeringProject != null">engineering_project = #{engineeringProject},</if>
+            <if test="projectCategoryId != null">project_category_id = #{projectCategoryId},</if>
+            <if test="clientUnit != null">client_unit = #{clientUnit},</if>
+            <if test="contactName != null">contact_name = #{contactName},</if>
+            <if test="contactPhone != null">contact_phone = #{contactPhone},</if>
+            <if test="projectLocation != null">project_location = #{projectLocation},</if>
+            <if test="contractId != null">contract_id = #{contractId},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
+            update_time = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteProjectById" parameterType="Long">
+        update proj_project set del_flag = '2' where id = #{id}
+    </delete>
+
+    <delete id="deleteProjectByIds" parameterType="Long">
+        update proj_project set del_flag = '2' where id in
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>

@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjContractPriceMapper">
+
+    <resultMap type="ProjContractPrice" id="ProjContractPriceResult">
+        <id     property="id"               column="cp_id"              />
+        <result property="contractId"       column="contract_id"        />
+        <result property="categoryId"       column="category_id"        />
+        <result property="price"            column="price"              />
+        <result property="categoryName"     column="category_name"      />
+        <result property="categoryLevel"    column="category_level"     />
+        <result property="parentId"         column="parent_id"          />
+        <result property="parentName"       column="parent_name"        />
+        <result property="dictInternalPrice" column="dict_internal_price" />
+        <result property="dictExternalPrice" column="dict_external_price" />
+        <result property="createBy"         column="create_by"          />
+        <result property="createTime"       column="create_time"        />
+        <result property="updateBy"         column="update_by"          />
+        <result property="updateTime"       column="update_time"        />
+    </resultMap>
+
+    <!-- 查询全部类别树 + 指定合同的已填单价 -->
+    <select id="selectCategoryTreeWithPrice" parameterType="Long" resultMap="ProjContractPriceResult">
+        select
+            cp.id           as cp_id,
+            #{contractId}   as contract_id,
+            c.id            as category_id,
+            cp.price        as price,
+            c.name          as category_name,
+            c.level         as category_level,
+            c.parent_id     as parent_id,
+            pc.name         as parent_name,
+            c.internal_price as dict_internal_price,
+            c.external_price as dict_external_price
+        from proj_category c
+        left join proj_category pc on pc.id = c.parent_id and pc.del_flag = '0'
+        left join proj_contract_price cp on cp.category_id = c.id
+            and cp.contract_id = #{contractId}
+            and cp.del_flag = '0'
+        where c.del_flag = '0'
+          and c.status = '0'
+        order by c.parent_id nulls first, c.sort_order, c.id
+    </select>
+
+    <!-- 查询指定合同已有单价的记录 -->
+    <select id="selectPriceListByContractId" parameterType="Long" resultMap="ProjContractPriceResult">
+        select
+            cp.id           as cp_id,
+            cp.contract_id,
+            cp.category_id,
+            cp.price,
+            c.name          as category_name,
+            c.level         as category_level,
+            c.parent_id,
+            cp.create_by,
+            cp.create_time,
+            cp.update_by,
+            cp.update_time
+        from proj_contract_price cp
+        inner join proj_category c on c.id = cp.category_id and c.del_flag = '0'
+        where cp.contract_id = #{contractId}
+          and cp.del_flag = '0'
+        order by c.parent_id, c.sort_order
+    </select>
+
+    <!-- 插入单价 -->
+    <insert id="insertPrice" parameterType="ProjContractPrice">
+        insert into proj_contract_price(
+            contract_id,
+            category_id,
+            price,
+            <if test="createBy != null and createBy != ''">create_by,</if>
+            create_time
+        )values(
+            #{contractId},
+            #{categoryId},
+            #{price},
+            <if test="createBy != null and createBy != ''">#{createBy},</if>
+            now()
+        )
+    </insert>
+
+    <!-- 更新单价 -->
+    <update id="updatePrice" parameterType="ProjContractPrice">
+        update proj_contract_price
+        <set>
+            price = #{price},
+            <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
+            update_time = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <!-- 删除指定合同+类别的单价 -->
+    <update id="deletePrice" parameterType="ProjContractPrice">
+        update proj_contract_price set del_flag = '2'
+        where contract_id = #{contractId}
+          and category_id = #{categoryId}
+          and del_flag = '0'
+    </update>
+
+    <!-- 删除指定合同下全部单价 -->
+    <update id="deletePriceByContractId" parameterType="Long">
+        update proj_contract_price set del_flag = '2'
+        where contract_id = #{contractId}
+          and del_flag = '0'
+    </update>
+
+</mapper>
