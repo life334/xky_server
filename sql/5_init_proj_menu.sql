@@ -14,8 +14,9 @@ INSERT INTO sys_menu VALUES (5, '合同管理', 0, 1, 'contract', NULL, '', '', 
 -- -----------------------------------------------
 -- 菜单
 INSERT INTO sys_menu VALUES (502, '项目类别', 4, 1, 'category', 'project/category/index', '', 'Category', 1, 0, 'C', '0', '0', 'project:category:list', 'tree-table', 'admin', now(), '', NULL, '项目类别菜单');
-INSERT INTO sys_menu VALUES (503, '项目列表', 4, 2, 'list', 'project/project/index', '', 'ProjectList', 1, 0, 'C', '0', '0', 'project:project:list', 'list', 'admin', now(), '', NULL, '项目列表菜单');
+INSERT INTO sys_menu VALUES (503, '项目列表', 4, 2, 'list', 'project/project/index', '', 'ProjectList', 1, 0, 'C', '0', '0', 'project:project:list', 'tree-table', 'admin', now(), '', NULL, '项目列表菜单');
 INSERT INTO sys_menu VALUES (506, '任务列表', 4, 3, 'task', 'project/task/index', '', 'TaskList', 1, 0, 'C', '0', '0', 'project:task:list', 'list', 'admin', now(), '', NULL, '任务列表菜单');
+INSERT INTO sys_menu VALUES (507, '工作量列表', 4, 4, 'workload', 'project/workload/index', '', 'WorkloadList', 1, 0, 'C', '0', '0', 'project:workload:list', 'list', 'admin', now(), '', NULL, '工作量列表菜单');
 
 INSERT INTO sys_menu VALUES (504, '合同列表', 5, 1, 'list', 'project/contract/index', '', 'ContractList', 1, 0, 'C', '0', '0', 'project:contract:list', 'list', 'admin', now(), '', NULL, '合同列表页面');
 INSERT INTO sys_menu VALUES (505, '合同单价', 5, 2, 'price', 'project/contract/price/index', '', 'ContractPrice', 1, 0, 'C', '0', '0', 'project:contract:price:list', 'money', 'admin', now(), '', NULL, '合同单价配置');
@@ -51,4 +52,9 @@ INSERT INTO sys_menu VALUES (1079, '任务修改', 506, 3, '', '', '', '', 1, 0,
 INSERT INTO sys_menu VALUES (1080, '任务删除', 506, 4, '', '', '', '', 1, 0, 'F', '0', '0', 'project:task:remove', '#', 'admin', now(), '', NULL, '');
 INSERT INTO sys_menu VALUES (1081, '任务导出', 506, 5, '', '', '', '', 1, 0, 'F', '0', '0', 'project:task:export', '#', 'admin', now(), '', NULL, '');
 
-
+-- 工作量列表按钮
+INSERT INTO sys_menu VALUES (1082, '工作量查询', 507, 1, '', '', '', '', 1, 0, 'F', '0', '0', 'project:workload:query', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1083, '工作量新增', 507, 2, '', '', '', '', 1, 0, 'F', '0', '0', 'project:workload:add', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1084, '工作量修改', 507, 3, '', '', '', '', 1, 0, 'F', '0', '0', 'project:workload:edit', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1085, '工作量删除', 507, 4, '', '', '', '', 1, 0, 'F', '0', '0', 'project:workload:remove', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1086, '工作量导出', 507, 5, '', '', '', '', 1, 0, 'F', '0', '0', 'project:workload:export', '#', 'admin', now(), '', NULL, '');

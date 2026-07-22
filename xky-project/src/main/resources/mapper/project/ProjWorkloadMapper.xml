@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjWorkloadMapper">
+
+    <resultMap type="ProjWorkload" id="ProjWorkloadResult">
+        <result property="id"                column="id"                />
+        <result property="projectId"         column="project_id"        />
+        <result property="userId"            column="user_id"           />
+        <result property="categoryId"        column="category_id"       />
+        <result property="internalWorkload"  column="internal_workload" />
+        <result property="externalWorkload"  column="external_workload" />
+        <result property="internalPrice"     column="internal_price"    />
+        <result property="externalPrice"     column="external_price"    />
+        <result property="internalOutput"    column="internal_output"   />
+        <result property="externalOutput"    column="external_output"   />
+        <result property="priceSource"       column="price_source"      />
+        <result property="extraData"         column="extra_data"        />
+        <result property="delFlag"           column="del_flag"          />
+        <result property="createBy"          column="create_by"         />
+        <result property="createTime"        column="create_time"       />
+        <result property="updateBy"          column="update_by"         />
+        <result property="updateTime"        column="update_time"       />
+        <result property="remark"            column="remark"            />
+        <result property="projectName"       column="project_name"      />
+        <result property="userName"          column="user_name"         />
+        <result property="categoryName"      column="category_name"     />
+    </resultMap>
+
+    <sql id="selectWorkloadVo">
+        select w.id, w.project_id, w.user_id, w.category_id,
+               w.internal_workload, w.external_workload,
+               w.internal_price, w.external_price,
+               w.internal_output, w.external_output,
+               w.price_source, w.extra_data::text as extra_data, w.del_flag,
+               w.create_by, w.create_time, w.update_by, w.update_time, w.remark
+        from proj_workload w
+    </sql>
+
+    <select id="selectWorkloadList" parameterType="ProjWorkload" resultMap="ProjWorkloadResult">
+        select w.id, w.project_id, w.user_id, w.category_id,
+               w.internal_workload, w.external_workload,
+               w.internal_price, w.external_price,
+               w.internal_output, w.external_output,
+               w.price_source, w.extra_data::text as extra_data, w.del_flag,
+               w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
+               p.project_name,
+               u.user_name,
+               c.name as category_name
+        from proj_workload w
+        left join proj_project p on p.id = w.project_id
+        left join sys_user u on u.user_id = w.user_id
+        left join proj_category c on c.id = w.category_id
+        where w.del_flag = '0'
+        <if test="projectId != null">
+            and w.project_id = #{projectId}
+        </if>
+        <if test="userId != null">
+            and w.user_id = #{userId}
+        </if>
+        <if test="categoryId != null">
+            and w.category_id = #{categoryId}
+        </if>
+        <if test="priceSource != null and priceSource != ''">
+            and w.price_source = #{priceSource}
+        </if>
+        order by w.id desc
+    </select>
+
+    <select id="selectWorkloadById" parameterType="Long" resultMap="ProjWorkloadResult">
+        select w.id, w.project_id, w.user_id, w.category_id,
+               w.internal_workload, w.external_workload,
+               w.internal_price, w.external_price,
+               w.internal_output, w.external_output,
+               w.price_source, w.extra_data::text as extra_data, w.del_flag,
+               w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
+               p.project_name,
+               u.user_name,
+               c.name as category_name
+        from proj_workload w
+        left join proj_project p on p.id = w.project_id
+        left join sys_user u on u.user_id = w.user_id
+        left join proj_category c on c.id = w.category_id
+        where w.id = #{id}
+    </select>
+
+    <insert id="insertWorkload" parameterType="ProjWorkload" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_workload(
+            <if test="projectId != null">project_id,</if>
+            <if test="userId != null">user_id,</if>
+            <if test="categoryId != null">category_id,</if>
+            <if test="internalWorkload != null">internal_workload,</if>
+            <if test="externalWorkload != null">external_workload,</if>
+            <if test="internalPrice != null">internal_price,</if>
+            <if test="externalPrice != null">external_price,</if>
+            <if test="internalOutput != null">internal_output,</if>
+            <if test="externalOutput != null">external_output,</if>
+            <if test="priceSource != null and priceSource != ''">price_source,</if>
+            <if test="extraData != null and extraData != ''">extra_data,</if>
+            <if test="remark != null and remark != ''">remark,</if>
+            <if test="createBy != null and createBy != ''">create_by,</if>
+            create_time
+        )values(
+            <if test="projectId != null">#{projectId},</if>
+            <if test="userId != null">#{userId},</if>
+            <if test="categoryId != null">#{categoryId},</if>
+            <if test="internalWorkload != null">#{internalWorkload},</if>
+            <if test="externalWorkload != null">#{externalWorkload},</if>
+            <if test="internalPrice != null">#{internalPrice},</if>
+            <if test="externalPrice != null">#{externalPrice},</if>
+            <if test="internalOutput != null">#{internalOutput},</if>
+            <if test="externalOutput != null">#{externalOutput},</if>
+            <if test="priceSource != null and priceSource != ''">#{priceSource},</if>
+            <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
+            <if test="remark != null and remark != ''">#{remark},</if>
+            <if test="createBy != null and createBy != ''">#{createBy},</if>
+            now()
+        )
+    </insert>
+
+    <update id="updateWorkload" parameterType="ProjWorkload">
+        update proj_workload
+        <set>
+            <if test="projectId != null">project_id = #{projectId},</if>
+            <if test="userId != null">user_id = #{userId},</if>
+            <if test="categoryId != null">category_id = #{categoryId},</if>
+            <if test="internalWorkload != null">internal_workload = #{internalWorkload},</if>
+            <if test="externalWorkload != null">external_workload = #{externalWorkload},</if>
+            <if test="internalPrice != null">internal_price = #{internalPrice},</if>
+            <if test="externalPrice != null">external_price = #{externalPrice},</if>
+            <if test="internalOutput != null">internal_output = #{internalOutput},</if>
+            <if test="externalOutput != null">external_output = #{externalOutput},</if>
+            <if test="priceSource != null and priceSource != ''">price_source = #{priceSource},</if>
+            <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
+            update_time = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteWorkloadByIds" parameterType="Long">
+        update proj_workload set del_flag = '2' where id in
+        <foreach collection="array" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>
