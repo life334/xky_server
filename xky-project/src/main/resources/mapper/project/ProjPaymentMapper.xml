@@ -112,4 +112,42 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </foreach>
     </delete>
 
+    <select id="selectPaymentsByProjectId" parameterType="Long" resultMap="ProjPaymentResult">
+        select pm.id, pm.project_id, pm.payment_type, pm.amount,
+               pm.pay_time, pm.pay_unit, pm.pay_method,
+               pm.extra_data::text as extra_data, pm.del_flag,
+               pm.create_by, pm.create_time, pm.update_by, pm.update_time, pm.remark,
+               p.project_name
+        from proj_payment pm
+        left join proj_project p on p.id = pm.project_id
+        where pm.project_id = #{projectId} and pm.del_flag = '0'
+        order by pm.payment_type
+    </select>
+
+    <insert id="upsertPayment" parameterType="ProjPayment">
+        insert into proj_payment(
+            project_id, payment_type, amount,
+            pay_time, pay_unit, pay_method,
+            extra_data, remark,
+            create_by, create_time
+        )values(
+            #{projectId}, #{paymentType}, #{amount},
+            #{payTime}, #{payUnit}, #{payMethod},
+            <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
+            <if test="extraData == null or extraData == ''">null,</if>
+            #{remark},
+            #{createBy}, now()
+        )
+        on conflict (project_id, payment_type) where del_flag = '0'
+        do update set
+            amount = EXCLUDED.amount,
+            pay_time = EXCLUDED.pay_time,
+            pay_unit = EXCLUDED.pay_unit,
+            pay_method = EXCLUDED.pay_method,
+            extra_data = EXCLUDED.extra_data,
+            remark = EXCLUDED.remark,
+            update_by = EXCLUDED.create_by,
+            update_time = now()
+    </insert>
+
 </mapper>

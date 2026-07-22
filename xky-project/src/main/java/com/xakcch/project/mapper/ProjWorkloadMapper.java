@@ -49,4 +49,20 @@ public interface ProjWorkloadMapper
      * @return 结果
      */
     public int deleteWorkloadByIds(Long[] ids);
+
+    /**
+     * 按项目ID查询工作量列表（不分页，用于结算）
+     *
+     * @param projectId 项目ID
+     * @return 工作量集合
+     */
+    public List<ProjWorkload> selectWorkloadsByProjectId(Long projectId);
+
+    /**
+     * Upsert 工作量（按 project_id + user_id + category_id 唯一）
+     *
+     * @param workload 工作量
+     * @return 结果
+     */
+    public int upsertWorkload(ProjWorkload workload);
 }

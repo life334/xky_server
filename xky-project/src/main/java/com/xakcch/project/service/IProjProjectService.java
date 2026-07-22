@@ -65,4 +65,12 @@ public interface IProjProjectService
      * @return 结果
      */
     public int deleteProjectByIds(Long[] ids);
+
+    /**
+     * 办结项目（状态改为已办结，不可逆）
+     *
+     * @param id 项目ID
+     * @return 结果
+     */
+    public int completeProject(Long id);
 }

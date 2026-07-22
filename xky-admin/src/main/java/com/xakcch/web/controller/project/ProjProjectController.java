@@ -111,4 +111,15 @@ public class ProjProjectController extends BaseController
     {
         return toAjax(projectService.deleteProjectByIds(ids));
     }
+
+    /**
+     * 办结项目（状态改为已办结，不可逆）
+     */
+    @PreAuthorize("@ss.hasPermi('project:project:complete')")
+    @Log(title = "项目信息", businessType = BusinessType.UPDATE)
+    @PutMapping("/complete/{id}")
+    public AjaxResult complete(@PathVariable Long id)
+    {
+        return toAjax(projectService.completeProject(id));
+    }
 }

@@ -9,6 +9,7 @@
 INSERT INTO sys_menu VALUES (4, '项目管理', 0, 1, 'project', NULL, '', '', 1, 0, 'M', '0', '0', '', 'build', 'admin', now(), '', NULL, '项目管理目录');
 INSERT INTO sys_menu VALUES (5, '合同管理', 0, 1, 'contract', NULL, '', '', 1, 0, 'M', '0', '0', '', 'documentation', 'admin', now(), '', NULL, '合同管理目录');
 INSERT INTO sys_menu VALUES (6, '资料管理', 0, 1, 'material', 'project/material/index', '', 'MaterialList', 1, 0, 'C', '0', '0', 'project:material:list', 'list', 'admin', now(), '', NULL, '资料管理菜单');
+INSERT INTO sys_menu VALUES (7, '费用结算', 0, 1, 'settlement', 'project/settlement/index', '', 'Settlement', 1, 0, 'C', '0', '0', 'project:settlement:list', 'money', 'admin', now(), '', NULL, '费用结算菜单');
 
 -- -----------------------------------------------
 -- 3. 项目类别管理菜单 + 按钮权限
@@ -35,6 +36,7 @@ INSERT INTO sys_menu VALUES (1066, '项目新增', 503, 2, '', '', '', '', 1, 0,
 INSERT INTO sys_menu VALUES (1067, '项目修改', 503, 3, '', '', '', '', 1, 0, 'F', '0', '0', 'project:project:edit', '#', 'admin', now(), '', NULL, '');
 INSERT INTO sys_menu VALUES (1068, '项目删除', 503, 4, '', '', '', '', 1, 0, 'F', '0', '0', 'project:project:remove', '#', 'admin', now(), '', NULL, '');
 INSERT INTO sys_menu VALUES (1069, '项目导出', 503, 5, '', '', '', '', 1, 0, 'F', '0', '0', 'project:project:export', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1102, '项目办结', 503, 6, '', '', '', '', 1, 0, 'F', '0', '0', 'project:project:complete', '#', 'admin', now(), '', NULL, '');
 
 -- 合同列表按钮
 INSERT INTO sys_menu VALUES (1070, '合同查询', 504, 1, '', '', '', '', 1, 0, 'F', '0', '0', 'project:contract:query', '#', 'admin', now(), '', NULL, '');
@@ -74,3 +76,10 @@ INSERT INTO sys_menu VALUES (1093, '资料新增', 6, 2, '', '', '', '', 1, 0, '
 INSERT INTO sys_menu VALUES (1094, '资料修改', 6, 3, '', '', '', '', 1, 0, 'F', '0', '0', 'project:material:edit', '#', 'admin', now(), '', NULL, '');
 INSERT INTO sys_menu VALUES (1095, '资料删除', 6, 4, '', '', '', '', 1, 0, 'F', '0', '0', 'project:material:remove', '#', 'admin', now(), '', NULL, '');
 INSERT INTO sys_menu VALUES (1096, '资料导出', 6, 5, '', '', '', '', 1, 0, 'F', '0', '0', 'project:material:export', '#', 'admin', now(), '', NULL, '');
+
+-- 费用结算按钮
+INSERT INTO sys_menu VALUES (1097, '费用结算查询', 7, 1, '', '', '', '', 1, 0, 'F', '0', '0', 'project:settlement:query', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1098, '费用结算新增', 7, 2, '', '', '', '', 1, 0, 'F', '0', '0', 'project:settlement:add', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1099, '费用结算修改', 7, 3, '', '', '', '', 1, 0, 'F', '0', '0', 'project:settlement:edit', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1100, '费用结算删除', 7, 4, '', '', '', '', 1, 0, 'F', '0', '0', 'project:settlement:remove', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1101, '费用结算导出', 7, 5, '', '', '', '', 1, 0, 'F', '0', '0', 'project:settlement:export', '#', 'admin', now(), '', NULL, '');

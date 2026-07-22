@@ -288,6 +288,9 @@ CREATE INDEX idx_proj_workload_project ON proj_workload(project_id);
 CREATE INDEX idx_proj_workload_user ON proj_workload(user_id);
 CREATE INDEX idx_proj_workload_category ON proj_workload(category_id);
 CREATE INDEX idx_proj_workload_extra ON proj_workload USING GIN (extra_data);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_workload_unique ON proj_workload (project_id, user_id, category_id) WHERE del_flag = '0';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_unique ON proj_payment (project_id, payment_type) WHERE del_flag = '0';
+
 
 
 -- ----------------------------

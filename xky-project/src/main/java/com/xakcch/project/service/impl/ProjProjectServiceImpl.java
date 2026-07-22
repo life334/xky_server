@@ -130,4 +130,23 @@ public class ProjProjectServiceImpl implements IProjProjectService
         }
         return projectMapper.deleteProjectByIds(ids);
     }
+
+    /**
+     * 办结项目（状态改为已办结，不可逆）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int completeProject(Long id)
+    {
+        ProjProject project = projectMapper.selectProjectById(id);
+        if (project == null)
+        {
+            throw new ServiceException("项目不存在");
+        }
+        if ("已办结".equals(project.getStatus()))
+        {
+            throw new ServiceException("该项目已办结，不能重复操作");
+        }
+        return projectMapper.completeProject(id);
+    }
 }

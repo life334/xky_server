@@ -203,4 +203,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </foreach>
     </delete>
 
+    <update id="completeProject" parameterType="Long">
+        update proj_project set status = '已办结', update_time = now() where id = #{id}
+    </update>
+
 </mapper>

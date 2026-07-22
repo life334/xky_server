@@ -147,4 +147,56 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </foreach>
     </delete>
 
+    <select id="selectWorkloadsByProjectId" parameterType="Long" resultMap="ProjWorkloadResult">
+        select w.id, w.project_id, w.user_id, w.category_id,
+               w.internal_workload, w.external_workload,
+               w.internal_price, w.external_price,
+               w.internal_output, w.external_output,
+               w.price_source, w.extra_data::text as extra_data, w.del_flag,
+               w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
+               p.project_name,
+               u.user_name,
+               c.name as category_name
+        from proj_workload w
+        left join proj_project p on p.id = w.project_id
+        left join sys_user u on u.user_id = w.user_id
+        left join proj_category c on c.id = w.category_id
+        where w.project_id = #{projectId} and w.del_flag = '0'
+        order by u.user_name, c.name
+    </select>
+
+    <insert id="upsertWorkload" parameterType="ProjWorkload">
+        insert into proj_workload(
+            project_id, user_id, category_id,
+            internal_workload, external_workload,
+            internal_price, external_price,
+            internal_output, external_output,
+            price_source, extra_data, remark,
+            create_by, create_time
+        )values(
+            #{projectId}, #{userId}, #{categoryId},
+            #{internalWorkload}, #{externalWorkload},
+            #{internalPrice}, #{externalPrice},
+            #{internalOutput}, #{externalOutput},
+            #{priceSource},
+            <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
+            <if test="extraData == null or extraData == ''">null,</if>
+            #{remark},
+            #{createBy}, now()
+        )
+        on conflict (project_id, user_id, category_id) where del_flag = '0'
+        do update set
+            internal_workload = EXCLUDED.internal_workload,
+            external_workload = EXCLUDED.external_workload,
+            internal_price = EXCLUDED.internal_price,
+            external_price = EXCLUDED.external_price,
+            internal_output = EXCLUDED.internal_output,
+            external_output = EXCLUDED.external_output,
+            price_source = EXCLUDED.price_source,
+            extra_data = EXCLUDED.extra_data,
+            remark = EXCLUDED.remark,
+            update_by = EXCLUDED.create_by,
+            update_time = now()
+    </insert>
+
 </mapper>
