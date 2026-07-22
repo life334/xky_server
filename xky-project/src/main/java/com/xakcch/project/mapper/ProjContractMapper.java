@@ -1,6 +1,7 @@
 package com.xakcch.project.mapper;
 
 import java.util.List;
+import java.util.Map;
 import com.xakcch.project.domain.ProjContract;
 
 /**
@@ -65,4 +66,12 @@ public interface ProjContractMapper
      * @return 结果
      */
     public int deleteContractByIds(Long[] ids);
+
+    /**
+     * 查询指定合同的全部已有单价记录（含类别名称）
+     *
+     * @param contractId 合同ID
+     * @return 单价列表（Map: price_id, contract_id, category_id, price, category_name）
+     */
+    public List<Map<String, Object>> selectPriceListByContractId(Long contractId);
 }

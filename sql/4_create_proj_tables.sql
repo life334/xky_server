@@ -54,6 +54,7 @@ CREATE TABLE proj_contract (
     contact_phone       VARCHAR(30)     DEFAULT '',
     contract_type       VARCHAR(20)     DEFAULT '',
     contract_amount     DECIMAL(12,2)   DEFAULT NULL,
+    received_amount     DECIMAL(12,2)   DEFAULT NULL,
     sign_date           DATE            DEFAULT NULL,
     entrust_date        DATE            DEFAULT NULL,
     audit_date          DATE            DEFAULT NULL,
@@ -81,6 +82,7 @@ COMMENT ON COLUMN proj_contract.contact_name IS '联系人';
 COMMENT ON COLUMN proj_contract.contact_phone IS '联系电话';
 COMMENT ON COLUMN proj_contract.contract_type IS '合同类型（字典）';
 COMMENT ON COLUMN proj_contract.contract_amount IS '合同金额';
+COMMENT ON COLUMN proj_contract.received_amount IS '已到账金额';
 COMMENT ON COLUMN proj_contract.sign_date IS '签署日期';
 COMMENT ON COLUMN proj_contract.entrust_date IS '委托时间';
 COMMENT ON COLUMN proj_contract.audit_date IS '审核日期';

@@ -73,6 +73,9 @@ public class ProjContract extends BaseEntity
     /** 支付条件 */
     private String paymentTerms;
 
+    /** 已到账金额 */
+    private BigDecimal receivedAmount;
+
     /** 动态字段数据（JSONB） */
     private String extraData;
 
@@ -251,6 +254,16 @@ public class ProjContract extends BaseEntity
         this.paymentTerms = paymentTerms;
     }
 
+    public BigDecimal getReceivedAmount()
+    {
+        return receivedAmount;
+    }
+
+    public void setReceivedAmount(BigDecimal receivedAmount)
+    {
+        this.receivedAmount = receivedAmount;
+    }
+
     public String getExtraData()
     {
         return extraData;
@@ -291,6 +304,7 @@ public class ProjContract extends BaseEntity
             .append("archivePath", getArchivePath())
             .append("contractPeriod", getContractPeriod())
             .append("paymentTerms", getPaymentTerms())
+            .append("receivedAmount", getReceivedAmount())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())
             .append("createBy", getCreateBy())

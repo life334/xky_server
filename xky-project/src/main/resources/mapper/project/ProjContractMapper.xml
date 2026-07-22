@@ -22,6 +22,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="archivePath"     column="archive_path"     />
         <result property="contractPeriod"  column="contract_period"  />
         <result property="paymentTerms"    column="payment_terms"    />
+        <result property="receivedAmount"  column="received_amount"  />
         <result property="extraData"       column="extra_data"       />
         <result property="delFlag"         column="del_flag"         />
         <result property="createBy"        column="create_by"        />
@@ -35,7 +36,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select id, contract_no, contract_name, client_unit, contact_name, contact_phone,
                contract_type, contract_amount, sign_date, entrust_date, audit_date,
                return_date, finish_date, archive_date, archive_path, contract_period,
-               payment_terms, extra_data::text as extra_data, del_flag,
+               payment_terms, received_amount, extra_data::text as extra_data, del_flag,
                create_by, create_time, update_by, update_time, remark
         from proj_contract
     </sql>
@@ -44,7 +45,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select id, contract_no, contract_name, client_unit, contact_name, contact_phone,
                contract_type, contract_amount, sign_date, entrust_date, audit_date,
                return_date, finish_date, archive_date, archive_path, contract_period,
-               payment_terms, extra_data::text as extra_data, del_flag,
+               payment_terms, received_amount, extra_data::text as extra_data, del_flag,
                create_by, create_time, update_by, update_time, remark
         from proj_contract
         where del_flag = '0'
@@ -64,6 +65,21 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             AND contact_name like concat('%', #{contactName}, '%')
         </if>
         order by create_time desc
+    </select>
+
+    <!-- 查询指定合同的全部已有单价记录 -->
+    <select id="selectPriceListByContractId" parameterType="Long" resultType="map">
+        select
+            cp.id           as price_id,
+            cp.contract_id,
+            cp.category_id,
+            cp.price,
+            c.name          as category_name
+        from proj_contract_price cp
+        inner join proj_category c on c.id = cp.category_id and c.del_flag = '0'
+        where cp.contract_id = #{contractId}
+          and cp.del_flag = '0'
+        order by c.parent_id, c.sort_order
     </select>
 
     <select id="selectContractById" parameterType="Long" resultMap="ProjContractResult">
@@ -94,6 +110,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="archivePath != null">archive_path,</if>
             <if test="contractPeriod != null">contract_period,</if>
             <if test="paymentTerms != null">payment_terms,</if>
+            <if test="receivedAmount != null">received_amount,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
             <if test="remark != null and remark != ''">remark,</if>
             <if test="createBy != null and createBy != ''">create_by,</if>
@@ -115,6 +132,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="archivePath != null">#{archivePath},</if>
             <if test="contractPeriod != null">#{contractPeriod},</if>
             <if test="paymentTerms != null">#{paymentTerms},</if>
+            <if test="receivedAmount != null">#{receivedAmount},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="remark != null and remark != ''">#{remark},</if>
             <if test="createBy != null and createBy != ''">#{createBy},</if>
@@ -141,6 +159,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="archivePath != null">archive_path = #{archivePath},</if>
             <if test="contractPeriod != null">contract_period = #{contractPeriod},</if>
             <if test="paymentTerms != null">payment_terms = #{paymentTerms},</if>
+            <if test="receivedAmount != null">received_amount = #{receivedAmount},</if>
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>

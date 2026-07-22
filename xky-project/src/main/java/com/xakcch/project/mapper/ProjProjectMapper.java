@@ -1,6 +1,7 @@
 package com.xakcch.project.mapper;
 
 import java.util.List;
+import java.util.Map;
 import com.xakcch.project.domain.ProjProject;
 
 /**
@@ -73,4 +74,12 @@ public interface ProjProjectMapper
      * @return 结果
      */
     public int completeProject(Long id);
+
+    /**
+     * 按合同ID查询关联项目（含类别名+合同单价，用于合同结算树形展示）
+     *
+     * @param contractId 合同ID
+     * @return 项目列表（Map: project_id, project_code, project_name, engineering_project, client_unit, category_name, contract_price）
+     */
+    public List<Map<String, Object>> selectProjectsByContractId(Long contractId);
 }

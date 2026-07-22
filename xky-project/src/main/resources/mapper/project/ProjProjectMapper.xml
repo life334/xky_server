@@ -207,4 +207,24 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         update proj_project set status = '已办结', update_time = now() where id = #{id}
     </update>
 
+    <!-- 按合同ID查询关联项目（含类别名+合同单价） -->
+    <select id="selectProjectsByContractId" parameterType="Long" resultType="map">
+        select
+            p.id             as project_id,
+            p.project_code   as project_code,
+            p.project_name   as project_name,
+            p.engineering_project,
+            p.client_unit,
+            c.name           as category_name,
+            cp.price         as contract_price
+        from proj_project p
+        left join proj_category c on c.id = p.project_category_id and c.del_flag = '0'
+        left join proj_contract_price cp on cp.contract_id = p.contract_id
+            and cp.category_id = p.project_category_id
+            and cp.del_flag = '0'
+        where p.contract_id = #{contractId}
+          and p.del_flag = '0'
+        order by p.create_time
+    </select>
+
 </mapper>
