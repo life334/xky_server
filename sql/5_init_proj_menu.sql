@@ -17,11 +17,12 @@ INSERT INTO sys_menu VALUES (7, '费用结算', 0, 1, 'settlement', 'project/set
 -- 菜单
 INSERT INTO sys_menu VALUES (510, '动态字段', 1, 1, 'fieldDef', 'system/fieldDef/index', '', 'FieldDef', 1, 0, 'C', '0', '0', 'system:fieldDef:list', 'tree-table', 'admin', now(), '', NULL, '动态字段菜单');
 
-INSERT INTO sys_menu VALUES (502, '项目类别', 4, 1, 'category', 'project/category/index', '', 'Category', 1, 0, 'C', '0', '0', 'project:category:list', 'tree-table', 'admin', now(), '', NULL, '项目类别菜单');
-INSERT INTO sys_menu VALUES (503, '项目列表', 4, 2, 'list', 'project/project/index', '', 'ProjectList', 1, 0, 'C', '0', '0', 'project:project:list', 'tree-table', 'admin', now(), '', NULL, '项目列表菜单');
-INSERT INTO sys_menu VALUES (506, '任务列表', 4, 3, 'task', 'project/task/index', '', 'TaskList', 1, 0, 'C', '0', '0', 'project:task:list', 'list', 'admin', now(), '', NULL, '任务列表菜单');
-INSERT INTO sys_menu VALUES (507, '工作量列表', 4, 4, 'workload', 'project/workload/index', '', 'WorkloadList', 1, 0, 'C', '0', '0', 'project:workload:list', 'list', 'admin', now(), '', NULL, '工作量列表菜单');
-INSERT INTO sys_menu VALUES (508, '付款管理', 4, 5, 'payment', 'project/payment/index', '', 'PaymentList', 1, 0, 'C', '0', '0', 'project:payment:list', 'money', 'admin', now(), '', NULL, '付款管理菜单');
+INSERT INTO sys_menu VALUES (503, '项目列表', 4, 1, 'list', 'project/project/index', '', 'ProjectList', 1, 0, 'C', '0', '0', 'project:project:list', 'tree-table', 'admin', now(), '', NULL, '项目列表菜单');
+INSERT INTO sys_menu VALUES (506, '任务列表', 4, 2, 'task', 'project/task/index', '', 'TaskList', 1, 0, 'C', '0', '0', 'project:task:list', 'list', 'admin', now(), '', NULL, '任务列表菜单');
+INSERT INTO sys_menu VALUES (507, '工作量列表', 4, 3, 'workload', 'project/workload/index', '', 'WorkloadList', 1, 0, 'C', '0', '0', 'project:workload:list', 'list', 'admin', now(), '', NULL, '工作量列表菜单');
+INSERT INTO sys_menu VALUES (508, '付款管理', 4, 4, 'payment', 'project/payment/index', '', 'PaymentList', 1, 0, 'C', '0', '0', 'project:payment:list', 'money', 'admin', now(), '', NULL, '付款管理菜单');
+INSERT INTO sys_menu VALUES (502, '项目类别', 4, 5, 'category', 'project/category/index', '', 'Category', 1, 0, 'C', '0', '0', 'project:category:list', 'tree-table', 'admin', now(), '', NULL, '项目类别菜单');
+
 
 INSERT INTO sys_menu VALUES (504, '合同列表', 5, 1, 'list', 'project/contract/index', '', 'ContractList', 1, 0, 'C', '0', '0', 'project:contract:list', 'list', 'admin', now(), '', NULL, '合同列表页面');
 INSERT INTO sys_menu VALUES (505, '合同单价', 5, 2, 'price', 'project/contract/price/index', '', 'ContractPrice', 1, 0, 'C', '0', '0', 'project:contract:price:list', 'money', 'admin', now(), '', NULL, '合同单价配置');
@@ -79,6 +80,8 @@ INSERT INTO sys_menu VALUES (1093, '资料新增', 6, 2, '', '', '', '', 1, 0, '
 INSERT INTO sys_menu VALUES (1094, '资料修改', 6, 3, '', '', '', '', 1, 0, 'F', '0', '0', 'project:material:edit', '#', 'admin', now(), '', NULL, '');
 INSERT INTO sys_menu VALUES (1095, '资料删除', 6, 4, '', '', '', '', 1, 0, 'F', '0', '0', 'project:material:remove', '#', 'admin', now(), '', NULL, '');
 INSERT INTO sys_menu VALUES (1096, '资料导出', 6, 5, '', '', '', '', 1, 0, 'F', '0', '0', 'project:material:export', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1111, '资料领取', 6, 6, '', '', '', '', 1, 0, 'F', '0', '0', 'project:material:borrow', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1112, '资料归还', 6, 7, '', '', '', '', 1, 0, 'F', '0', '0', 'project:material:return', '#', 'admin', now(), '', NULL, '');
 
 -- 费用结算按钮
 INSERT INTO sys_menu VALUES (1097, '费用结算查询', 7, 1, '', '', '', '', 1, 0, 'F', '0', '0', 'project:settlement:query', '#', 'admin', now(), '', NULL, '');

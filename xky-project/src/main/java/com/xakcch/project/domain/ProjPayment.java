@@ -38,6 +38,19 @@ public class ProjPayment extends BaseEntity
     /** 付款方式 */
     private String payMethod;
 
+    /** 发票号码 */
+    private String invoiceNo;
+
+    /** 开票日期 */
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private Date invoiceDate;
+
+    /** 开票金额 */
+    private BigDecimal invoiceAmount;
+
+    /** 开票状态：未开/已开/已作废 */
+    private String invoiceStatus;
+
     /** 动态字段数据（JSONB） */
     private String extraData;
 
@@ -121,6 +134,18 @@ public class ProjPayment extends BaseEntity
         this.payMethod = payMethod;
     }
 
+    public String getInvoiceNo() { return invoiceNo; }
+    public void setInvoiceNo(String invoiceNo) { this.invoiceNo = invoiceNo; }
+
+    public Date getInvoiceDate() { return invoiceDate; }
+    public void setInvoiceDate(Date invoiceDate) { this.invoiceDate = invoiceDate; }
+
+    public BigDecimal getInvoiceAmount() { return invoiceAmount; }
+    public void setInvoiceAmount(BigDecimal invoiceAmount) { this.invoiceAmount = invoiceAmount; }
+
+    public String getInvoiceStatus() { return invoiceStatus; }
+    public void setInvoiceStatus(String invoiceStatus) { this.invoiceStatus = invoiceStatus; }
+
     public String getExtraData()
     {
         return extraData;
@@ -161,6 +186,10 @@ public class ProjPayment extends BaseEntity
             .append("payTime", getPayTime())
             .append("payUnit", getPayUnit())
             .append("payMethod", getPayMethod())
+            .append("invoiceNo", getInvoiceNo())
+            .append("invoiceDate", getInvoiceDate())
+            .append("invoiceAmount", getInvoiceAmount())
+            .append("invoiceStatus", getInvoiceStatus())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())
             .append("createBy", getCreateBy())

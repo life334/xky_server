@@ -34,6 +34,9 @@ public class ProjMaterial extends BaseEntity
     /** 成果类型 */
     private String resultType;
 
+    /** 资料状态：待领取/已领取/已归还 */
+    private String status;
+
     /** 动态字段数据（JSONB） */
     private String extraData;
 
@@ -107,6 +110,16 @@ public class ProjMaterial extends BaseEntity
         this.resultType = resultType;
     }
 
+    public String getStatus()
+    {
+        return status;
+    }
+
+    public void setStatus(String status)
+    {
+        this.status = status;
+    }
+
     public String getExtraData()
     {
         return extraData;
@@ -146,6 +159,7 @@ public class ProjMaterial extends BaseEntity
             .append("contactName", getContactName())
             .append("contactPhone", getContactPhone())
             .append("resultType", getResultType())
+            .append("status", getStatus())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())
             .append("createBy", getCreateBy())

@@ -309,6 +309,10 @@ CREATE TABLE proj_payment (
     pay_time            DATE            DEFAULT NULL,
     pay_unit            VARCHAR(200)    DEFAULT '',
     pay_method          VARCHAR(100)    DEFAULT '',
+    invoice_no          VARCHAR(100)    DEFAULT '',
+    invoice_date        DATE            DEFAULT NULL,
+    invoice_amount      DECIMAL(12,2)   DEFAULT 0,
+    invoice_status      VARCHAR(20)     DEFAULT '',
     extra_data          JSONB           DEFAULT '{}',
     del_flag            CHAR(1)         DEFAULT '0',
     create_by           VARCHAR(64)     DEFAULT '',
@@ -326,6 +330,10 @@ COMMENT ON COLUMN proj_payment.amount IS '金额';
 COMMENT ON COLUMN proj_payment.pay_time IS '付款时间';
 COMMENT ON COLUMN proj_payment.pay_unit IS '付款单位';
 COMMENT ON COLUMN proj_payment.pay_method IS '付款方式';
+COMMENT ON COLUMN proj_payment.invoice_no IS '发票号';
+COMMENT ON COLUMN proj_payment.invoice_date IS '发票日期';
+COMMENT ON COLUMN proj_payment.invoice_amount IS '发票金额';
+COMMENT ON COLUMN proj_payment.invoice_status IS '发票状态';
 COMMENT ON COLUMN proj_payment.extra_data IS '动态字段数据（JSONB）';
 COMMENT ON COLUMN proj_payment.del_flag IS '删除标志（0正常 2删除）';
 COMMENT ON COLUMN proj_payment.remark IS '备注';
@@ -346,6 +354,7 @@ CREATE TABLE proj_material (
     contact_name        VARCHAR(50)     DEFAULT '',
     contact_phone       VARCHAR(30)     DEFAULT '',
     result_type         VARCHAR(50)     DEFAULT '',
+    status              VARCHAR(20)     DEFAULT '',
     extra_data          JSONB           DEFAULT '{}',
     del_flag            CHAR(1)         DEFAULT '0',
     create_by           VARCHAR(64)     DEFAULT '',
@@ -369,6 +378,25 @@ COMMENT ON COLUMN proj_material.remark IS '备注';
 CREATE INDEX idx_proj_material_project ON proj_material(project_id);
 CREATE INDEX idx_proj_material_extra ON proj_material USING GIN (extra_data);
 
+-- 资料流转记录表
+DROP TABLE IF EXISTS proj_material_flow;
+CREATE TABLE proj_material_flow (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    material_id BIGINT NOT NULL, flow_type VARCHAR(20) NOT NULL,
+    user_id BIGINT, guarantor_id BIGINT,
+    operate_time TIMESTAMP DEFAULT now(),
+    remark VARCHAR(500), del_flag VARCHAR(2) DEFAULT '0',
+    create_time TIMESTAMP DEFAULT now()
+);
+COMMENT ON COLUMN proj_material_flow.id            IS '主键';
+COMMENT ON COLUMN proj_material_flow.material_id   IS '资料ID（关联proj_material.id）';
+COMMENT ON COLUMN proj_material_flow.flow_type     IS '操作类型（领取/归还）';
+COMMENT ON COLUMN proj_material_flow.user_id       IS '操作人ID（关联sys_user.user_id）';
+COMMENT ON COLUMN proj_material_flow.guarantor_id  IS '担保人ID（首次领取时必填，关联sys_user.user_id）';
+COMMENT ON COLUMN proj_material_flow.operate_time  IS '操作时间';
+COMMENT ON COLUMN proj_material_flow.remark        IS '备注';
+COMMENT ON COLUMN proj_material_flow.del_flag      IS '删除标志（0=正常，2=删除）';
+COMMENT ON COLUMN proj_material_flow.create_time   IS '创建时间';
 
 -- ----------------------------
 -- 10、动态字段定义表

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjMaterialFlowMapper">
+
+    <resultMap type="ProjMaterialFlow" id="ProjMaterialFlowResult">
+        <result property="id"              column="id"              />
+        <result property="materialId"      column="material_id"     />
+        <result property="flowType"        column="flow_type"       />
+        <result property="userId"          column="user_id"         />
+        <result property="guarantorId"     column="guarantor_id"    />
+        <result property="operateTime"     column="operate_time"    />
+        <result property="remark"          column="remark"          />
+        <result property="userName"        column="user_name"       />
+        <result property="guarantorName"   column="guarantor_name"  />
+    </resultMap>
+
+    <select id="selectFlowListByMaterialId" parameterType="Long" resultMap="ProjMaterialFlowResult">
+        select f.id, f.material_id, f.flow_type, f.user_id, f.guarantor_id,
+               f.operate_time, f.remark,
+               u1.nick_name as user_name,
+               u2.nick_name as guarantor_name
+        from proj_material_flow f
+        left join sys_user u1 on u1.user_id = f.user_id
+        left join sys_user u2 on u2.user_id = f.guarantor_id
+        where f.material_id = #{materialId} and f.del_flag = '0'
+        order by f.operate_time desc
+    </select>
+
+    <insert id="insertFlow" parameterType="ProjMaterialFlow" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_material_flow(
+            <if test="materialId != null">material_id,</if>
+            <if test="flowType != null and flowType != ''">flow_type,</if>
+            <if test="userId != null">user_id,</if>
+            <if test="guarantorId != null">guarantor_id,</if>
+            <if test="operateTime != null">operate_time,</if>
+            <if test="remark != null and remark != ''">remark,</if>
+            create_time
+        )values(
+            <if test="materialId != null">#{materialId},</if>
+            <if test="flowType != null and flowType != ''">#{flowType},</if>
+            <if test="userId != null">#{userId},</if>
+            <if test="guarantorId != null">#{guarantorId},</if>
+            <if test="operateTime != null">#{operateTime},</if>
+            <if test="remark != null and remark != ''">#{remark},</if>
+            now()
+        )
+    </insert>
+
+</mapper>

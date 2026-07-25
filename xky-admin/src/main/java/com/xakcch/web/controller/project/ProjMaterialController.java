@@ -1,6 +1,7 @@
 package com.xakcch.web.controller.project;
 
 import java.util.List;
+import java.util.Map;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,8 +17,10 @@ import org.springframework.web.bind.annotation.RestController;
 import com.xakcch.common.annotation.Log;
 import com.xakcch.common.core.controller.BaseController;
 import com.xakcch.common.core.domain.AjaxResult;
+import com.xakcch.common.core.domain.model.LoginUser;
 import com.xakcch.common.core.page.TableDataInfo;
 import com.xakcch.common.enums.BusinessType;
+import com.xakcch.common.utils.SecurityUtils;
 import com.xakcch.common.utils.poi.ExcelUtil;
 import com.xakcch.project.domain.ProjMaterial;
 import com.xakcch.project.service.IProjMaterialService;
@@ -78,6 +81,7 @@ public class ProjMaterialController extends BaseController
     public AjaxResult add(@Validated @RequestBody ProjMaterial material)
     {
         material.setCreateBy(getUsername());
+        if (material.getStatus() == null) material.setStatus("待领取");
         return toAjax(materialService.insertMaterial(material));
     }
 
@@ -102,5 +106,49 @@ public class ProjMaterialController extends BaseController
     public AjaxResult remove(@PathVariable Long[] ids)
     {
         return toAjax(materialService.deleteMaterialByIds(ids));
+    }
+
+    /**
+     * 领取资料
+     */
+    @PreAuthorize("@ss.hasPermi('project:material:borrow')")
+    @Log(title = "资料领取", businessType = BusinessType.UPDATE)
+    @PutMapping("/borrow/{id}")
+    public AjaxResult borrow(@PathVariable Long id, @RequestBody Map<String, Object> params)
+    {
+        LoginUser loginUser = SecurityUtils.getLoginUser();
+        Long userId = loginUser.getUser().getUserId();
+        String userName = loginUser.getUser().getNickName();
+        Long guarantorId = params.get("guarantorId") != null
+            ? Long.valueOf(params.get("guarantorId").toString()) : null;
+        String remark = params.get("remark") != null ? params.get("remark").toString() : null;
+        materialService.borrowMaterial(id, guarantorId, remark, userId, userName);
+        return success();
+    }
+
+    /**
+     * 归还资料
+     */
+    @PreAuthorize("@ss.hasPermi('project:material:return')")
+    @Log(title = "资料归还", businessType = BusinessType.UPDATE)
+    @PutMapping("/return/{id}")
+    public AjaxResult returnMaterial(@PathVariable Long id, @RequestBody Map<String, Object> params)
+    {
+        LoginUser loginUser = SecurityUtils.getLoginUser();
+        Long userId = loginUser.getUser().getUserId();
+        String userName = loginUser.getUser().getNickName();
+        String remark = params.get("remark") != null ? params.get("remark").toString() : null;
+        materialService.returnMaterial(id, remark, userId, userName);
+        return success();
+    }
+
+    /**
+     * 查询流转记录
+     */
+    @PreAuthorize("@ss.hasPermi('project:material:query')")
+    @GetMapping("/flow/{id}")
+    public AjaxResult flowList(@PathVariable Long id)
+    {
+        return success(materialService.getFlowList(id));
     }
 }

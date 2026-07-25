@@ -201,6 +201,15 @@ public class ProjSettlementController extends BaseController
             node.put("tailAmount", tail.getAmount());
             node.put("tailDate", tail.getPayTime() != null ? DATE_FMT.format(tail.getPayTime()) : "");
         }
+        // 发票信息（预付款优先，无预付款取尾款）
+        ProjPayment invoiceSource = prepay != null ? prepay : tail;
+        if (invoiceSource != null)
+        {
+            node.put("invoiceNo", invoiceSource.getInvoiceNo());
+            node.put("invoiceDate", invoiceSource.getInvoiceDate() != null ? DATE_FMT.format(invoiceSource.getInvoiceDate()) : "");
+            node.put("invoiceAmount", invoiceSource.getInvoiceAmount());
+            node.put("invoiceStatus", invoiceSource.getInvoiceStatus());
+        }
     }
 
     /** 按人员分组构建二级树节点 */
@@ -272,6 +281,11 @@ public class ProjSettlementController extends BaseController
         }
         pm.setPayUnit((String) payMap.get("payUnit"));
         pm.setPayMethod((String) payMap.get("payMethod"));
+        pm.setInvoiceNo((String) payMap.get("invoiceNo"));
+        Object invDate = payMap.get("invoiceDate");
+        if (invDate instanceof Date) pm.setInvoiceDate((Date) invDate);
+        pm.setInvoiceAmount(toBigDecimal(payMap.get("invoiceAmount")));
+        pm.setInvoiceStatus((String) payMap.get("invoiceStatus"));
         pm.setRemark(remark);
         pm.setCreateBy(username);
         paymentMapper.upsertPayment(pm);

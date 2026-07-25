@@ -2,6 +2,7 @@ package com.xakcch.project.service;
 
 import java.util.List;
 import com.xakcch.project.domain.ProjMaterial;
+import com.xakcch.project.domain.ProjMaterialFlow;
 
 /**
  * 资料提交 业务层接口
@@ -10,28 +11,29 @@ import com.xakcch.project.domain.ProjMaterial;
  */
 public interface IProjMaterialService
 {
-    /**
-     * 查询资料提交列表
-     */
     public List<ProjMaterial> selectMaterialList(ProjMaterial material);
-
-    /**
-     * 根据ID查询
-     */
     public ProjMaterial selectMaterialById(Long id);
-
-    /**
-     * 新增资料提交
-     */
     public int insertMaterial(ProjMaterial material);
-
-    /**
-     * 修改资料提交
-     */
     public int updateMaterial(ProjMaterial material);
+    public int deleteMaterialByIds(Long[] ids);
 
     /**
-     * 批量删除
+     * 领取资料
+     * @param materialId 资料ID
+     * @param guarantorId 担保人ID
+     * @param remark 备注
+     * @param userId 操作人ID
+     * @param userName 操作人姓名
      */
-    public int deleteMaterialByIds(Long[] ids);
+    public void borrowMaterial(Long materialId, Long guarantorId, String remark, Long userId, String userName);
+
+    /**
+     * 归还资料
+     */
+    public void returnMaterial(Long materialId, String remark, Long userId, String userName);
+
+    /**
+     * 查询流转记录
+     */
+    public List<ProjMaterialFlow> getFlowList(Long materialId);
 }

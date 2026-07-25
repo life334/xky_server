@@ -11,6 +11,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="contactName"       column="contact_name"      />
         <result property="contactPhone"      column="contact_phone"     />
         <result property="resultType"        column="result_type"       />
+        <result property="status"            column="status"            />
         <result property="extraData"         column="extra_data"        />
         <result property="delFlag"           column="del_flag"          />
         <result property="createBy"          column="create_by"         />
@@ -23,14 +24,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <sql id="selectMaterialVo">
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
-               m.result_type, m.extra_data::text as extra_data, m.del_flag,
+               m.result_type, m.status, m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark
         from proj_material m
     </sql>
 
     <select id="selectMaterialList" parameterType="ProjMaterial" resultMap="ProjMaterialResult">
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
-               m.result_type, m.extra_data::text as extra_data, m.del_flag,
+               m.result_type, m.status, m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
                p.project_name
         from proj_material m
@@ -45,12 +46,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="resultType != null and resultType != ''">
             and m.result_type = #{resultType}
         </if>
+        <if test="status != null and status != ''">
+            and m.status = #{status}
+        </if>
         order by m.id desc
     </select>
 
     <select id="selectMaterialById" parameterType="Long" resultMap="ProjMaterialResult">
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
-               m.result_type, m.extra_data::text as extra_data, m.del_flag,
+               m.result_type, m.status, m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
                p.project_name
         from proj_material m
@@ -65,6 +69,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="contactName != null and contactName != ''">contact_name,</if>
             <if test="contactPhone != null and contactPhone != ''">contact_phone,</if>
             <if test="resultType != null and resultType != ''">result_type,</if>
+            <if test="status != null and status != ''">status,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
             <if test="remark != null and remark != ''">remark,</if>
             <if test="createBy != null and createBy != ''">create_by,</if>
@@ -75,6 +80,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="contactName != null and contactName != ''">#{contactName},</if>
             <if test="contactPhone != null and contactPhone != ''">#{contactPhone},</if>
             <if test="resultType != null and resultType != ''">#{resultType},</if>
+            <if test="status != null and status != ''">#{status},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="remark != null and remark != ''">#{remark},</if>
             <if test="createBy != null and createBy != ''">#{createBy},</if>
@@ -90,6 +96,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="contactName != null">contact_name = #{contactName},</if>
             <if test="contactPhone != null">contact_phone = #{contactPhone},</if>
             <if test="resultType != null">result_type = #{resultType},</if>
+            <if test="status != null">status = #{status},</if>
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
@@ -104,5 +111,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             #{id}
         </foreach>
     </delete>
+
+    <update id="updateMaterialStatus">
+        update proj_material set status = #{status}, update_time = now(), update_by = #{updateBy}
+        where id = #{id}
+    </update>
 
 </mapper>

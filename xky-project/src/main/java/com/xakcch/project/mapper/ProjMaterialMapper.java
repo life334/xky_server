@@ -1,6 +1,7 @@
 package com.xakcch.project.mapper;
 
 import java.util.List;
+import org.apache.ibatis.annotations.Param;
 import com.xakcch.project.domain.ProjMaterial;
 
 /**
@@ -34,4 +35,9 @@ public interface ProjMaterialMapper
      * 批量删除（逻辑删除）
      */
     public int deleteMaterialByIds(Long[] ids);
+
+    /**
+     * 更新资料状态
+     */
+    public int updateMaterialStatus(@Param("id") Long id, @Param("status") String status, @Param("updateBy") String updateBy);
 }
