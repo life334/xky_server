@@ -138,6 +138,9 @@ insert into sys_user_role values ('1', '1');
 insert into sys_dict_type values(1,  '用户性别', 'sys_user_sex',        '0', 'admin', now(), '', null, '用户性别列表');
 insert into sys_dict_type values(2,  '菜单状态', 'sys_show_hide',       '0', 'admin', now(), '', null, '菜单状态列表');
 insert into sys_dict_type values(3,  '系统开关', 'sys_normal_disable',  '0', 'admin', now(), '', null, '系统开关列表');
+insert into sys_dict_type values(4,  '项目状态', 'proj_project_status',  '0', 'admin', now(), '', null, '项目状态列表');
+insert into sys_dict_type values(5,  '合同状态', 'proj_contract_status',  '0', 'admin', now(), '', null, '合同状态列表');
+
 
 -- ----------------------------
 -- 初始化字典数据
@@ -152,3 +155,18 @@ insert into sys_dict_data values(5,  2,  '隐藏',     '1',       'sys_show_hide
 -- 系统开关列表
 insert into sys_dict_data values(6,  1,  '正常',     '0',       'sys_normal_disable',  '',   'primary', 'Y', '0', 'admin', now(), '', null, '正常状态');
 insert into sys_dict_data values(7,  2,  '停用',     '1',       'sys_normal_disable',  '',   'danger',  'N', '0', 'admin', now(), '', null, '停用状态');
+
+-- 项目状态列表
+insert into sys_dict_data values(8,  1,  '待开始',     'pending',       'proj_project_status',     '',   'info', 'Y', '0', 'admin', now(), '', null, '待开始状态');
+insert into sys_dict_data values(9,  2,  '进行中',     'ongoing',       'proj_project_status',     '',   'primary', 'N', '0', 'admin', now(), '', null, '进行中状态');
+insert into sys_dict_data values(10,  3,  '已完成',     'completed',       'proj_project_status',     '',   'success', 'N', '0', 'admin', now(), '', null, '已完成状态');
+insert into sys_dict_data values(11,  4,  '已暂停',     'paused',       'proj_project_status',     '',   'warning', 'N', '0', 'admin', now(), '', null, '已暂停状态');
+insert into sys_dict_data values(12,  5,  '已办结',     'closed',       'proj_project_status',     '',   'success', 'N', '0', 'admin', now(), '', null, '已办结状态');
+insert into sys_dict_data values(13,  6,  '已取消',     'cancelled',       'proj_project_status',     '',   'danger', 'N', '0', 'admin', now(), '', null, '已取消状态');
+
+-- 合同状态列表
+insert into sys_dict_data values(14,  1,  '草稿',     'draft',       'proj_contract_status',     '',   'info', 'Y', '0', 'admin', now(), '', null, '草稿状态');
+insert into sys_dict_data values(15,  2,  '已签署',     'signed',       'proj_contract_status',     '',   'primary', 'N', '0', 'admin', now(), '', null, '已签署状态');
+insert into sys_dict_data values(16,  3,  '执行中',     'ongoing',       'proj_contract_status',     '',   'warning', 'N', '0', 'admin', now(), '', null, '执行中状态');
+insert into sys_dict_data values(17,  4,  '已完成',     'completed',       'proj_contract_status',     '',   'success', 'N', '0', 'admin', now(), '', null, '已完成状态');
+insert into sys_dict_data values(18,  5,  '已归档',     'archived',       'proj_contract_status',     '',   '', 'N', '0', 'admin', now(), '', null, '已归档状态');

@@ -1,6 +1,7 @@
 package com.xakcch.web.controller.project;
 
 import java.util.List;
+import java.util.Map;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,6 +21,7 @@ import com.xakcch.common.core.page.TableDataInfo;
 import com.xakcch.common.enums.BusinessType;
 import com.xakcch.common.utils.poi.ExcelUtil;
 import com.xakcch.project.domain.ProjContract;
+import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.service.IProjContractService;
 
 /**
@@ -33,6 +35,9 @@ public class ProjContractController extends BaseController
 {
     @Autowired
     private IProjContractService contractService;
+
+    @Autowired
+    private ProjProjectMapper projectMapper;
 
     /**
      * 查询合同列表（分页）
@@ -110,5 +115,27 @@ public class ProjContractController extends BaseController
     public AjaxResult remove(@PathVariable Long[] ids)
     {
         return toAjax(contractService.deleteContractByIds(ids));
+    }
+
+    /**
+     * 变更合同状态
+     */
+    @PreAuthorize("@ss.hasPermi('project:contract:edit')")
+    @Log(title = "合同管理", businessType = BusinessType.UPDATE)
+    @PutMapping("/changeStatus/{id}/{status}")
+    public AjaxResult changeStatus(@PathVariable Long id, @PathVariable String status)
+    {
+        return toAjax(contractService.changeContractStatus(id, status));
+    }
+
+    /**
+     * 查询合同关联的项目列表
+     */
+    @PreAuthorize("@ss.hasPermi('project:contract:query')")
+    @GetMapping("/{id}/projects")
+    public AjaxResult projectsByContract(@PathVariable Long id)
+    {
+        List<Map<String, Object>> list = projectMapper.selectProjectsByContractId(id);
+        return success(list);
     }
 }

@@ -73,4 +73,32 @@ public interface IProjProjectService
      * @return 结果
      */
     public int completeProject(Long id);
+
+    /**
+     * 变更项目状态（校验流转规则）
+     *
+     * @param id 项目ID
+     * @param targetStatus 目标状态
+     * @return 结果
+     */
+    public int changeProjectStatus(Long id, String targetStatus);
+
+    /**
+     * 导入项目数据（Excel文件解析后批量插入）
+     *
+     * @param projectList 项目列表
+     * @param isUpdateSupport 是否更新已存在数据
+     * @param operName 操作人
+     * @return 结果消息
+     */
+    public String importProject(List<ProjProject> projectList, Boolean isUpdateSupport, String operName);
+
+    /**
+     * 批量新增项目（区域粘贴）
+     *
+     * @param projectList 项目列表
+     * @param operName 操作人
+     * @return 成功数量
+     */
+    public int batchInsertProject(List<ProjProject> projectList, String operName);
 }

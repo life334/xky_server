@@ -2,6 +2,7 @@ package com.xakcch.project.mapper;
 
 import java.util.List;
 import java.util.Map;
+import org.apache.ibatis.annotations.Param;
 import com.xakcch.project.domain.ProjProject;
 
 /**
@@ -74,6 +75,15 @@ public interface ProjProjectMapper
      * @return 结果
      */
     public int completeProject(Long id);
+
+    /**
+     * 更新项目状态
+     *
+     * @param id 项目ID
+     * @param status 目标状态
+     * @return 结果
+     */
+    public int updateProjectStatus(@Param("id") Long id, @Param("status") String status);
 
     /**
      * 按合同ID查询关联项目（含类别名+合同单价，用于合同结算树形展示）

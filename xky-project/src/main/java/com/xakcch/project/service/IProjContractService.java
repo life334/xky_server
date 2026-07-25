@@ -65,4 +65,13 @@ public interface IProjContractService
      * @return 结果
      */
     public int deleteContractByIds(Long[] ids);
+
+    /**
+     * 变更合同状态（校验流转规则）
+     *
+     * @param id 合同ID
+     * @param targetStatus 目标状态
+     * @return 结果
+     */
+    public int changeContractStatus(Long id, String targetStatus);
 }

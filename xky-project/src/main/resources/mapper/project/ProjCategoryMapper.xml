@@ -66,6 +66,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where project_category_id = #{id} and del_flag = '0'
     </select>
 
+    <select id="selectCategoryByName" parameterType="String" resultMap="ProjCategoryResult">
+        <include refid="selectCategoryVo"/>
+        where c.name = #{name} and c.del_flag = '0' and c.level = 2 limit 1
+    </select>
+
     <insert id="insertCategory" parameterType="ProjCategory">
         insert into proj_category(
             <if test="parentId != null">parent_id,</if>

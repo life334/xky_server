@@ -64,6 +64,7 @@ CREATE TABLE proj_contract (
     archive_path        VARCHAR(500)    DEFAULT '',
     contract_period     VARCHAR(100)    DEFAULT '',
     payment_terms       TEXT            DEFAULT '',
+    status             VARCHAR(20)     DEFAULT 'draft',
     extra_data          JSONB           DEFAULT '{}',
     del_flag            CHAR(1)         DEFAULT '0',
     create_by           VARCHAR(64)     DEFAULT '',
@@ -92,6 +93,7 @@ COMMENT ON COLUMN proj_contract.archive_date IS '归档日期';
 COMMENT ON COLUMN proj_contract.archive_path IS '归档目录';
 COMMENT ON COLUMN proj_contract.contract_period IS '合同期限';
 COMMENT ON COLUMN proj_contract.payment_terms IS '支付条件';
+COMMENT ON COLUMN proj_contract.status IS '合同状态';
 COMMENT ON COLUMN proj_contract.extra_data IS '动态字段数据（JSONB）';
 COMMENT ON COLUMN proj_contract.del_flag IS '删除标志（0正常 2删除）';
 COMMENT ON COLUMN proj_contract.remark IS '备注';

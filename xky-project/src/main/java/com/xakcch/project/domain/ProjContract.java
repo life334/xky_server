@@ -76,11 +76,17 @@ public class ProjContract extends BaseEntity
     /** 已到账金额 */
     private BigDecimal receivedAmount;
 
+    /** 合同状态（字典 proj_contract_status） */
+    private String status;
+
     /** 动态字段数据（JSONB） */
     private String extraData;
 
     /** 删除标志（0正常 2删除） */
     private String delFlag;
+
+    /** 关联项目数（非数据库字段，列表查询时填充） */
+    private Integer projectCount;
 
     // ===== getter/setter =====
 
@@ -264,6 +270,16 @@ public class ProjContract extends BaseEntity
         this.receivedAmount = receivedAmount;
     }
 
+    public String getStatus()
+    {
+        return status;
+    }
+
+    public void setStatus(String status)
+    {
+        this.status = status;
+    }
+
     public String getExtraData()
     {
         return extraData;
@@ -282,6 +298,16 @@ public class ProjContract extends BaseEntity
     public void setDelFlag(String delFlag)
     {
         this.delFlag = delFlag;
+    }
+
+    public Integer getProjectCount()
+    {
+        return projectCount;
+    }
+
+    public void setProjectCount(Integer projectCount)
+    {
+        this.projectCount = projectCount;
     }
 
     @Override
@@ -305,6 +331,7 @@ public class ProjContract extends BaseEntity
             .append("contractPeriod", getContractPeriod())
             .append("paymentTerms", getPaymentTerms())
             .append("receivedAmount", getReceivedAmount())
+            .append("status", getStatus())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())
             .append("createBy", getCreateBy())

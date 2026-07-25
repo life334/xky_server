@@ -2,6 +2,7 @@ package com.xakcch.project.mapper;
 
 import java.util.List;
 import java.util.Map;
+import org.apache.ibatis.annotations.Param;
 import com.xakcch.project.domain.ProjContract;
 
 /**
@@ -74,4 +75,13 @@ public interface ProjContractMapper
      * @return 单价列表（Map: price_id, contract_id, category_id, price, category_name）
      */
     public List<Map<String, Object>> selectPriceListByContractId(Long contractId);
+
+    /**
+     * 更新合同状态
+     *
+     * @param id 合同ID
+     * @param status 目标状态
+     * @return 结果
+     */
+    public int updateContractStatus(@Param("id") Long id, @Param("status") String status);
 }

@@ -81,4 +81,12 @@ public interface ProjCategoryMapper
      * @return 引用数量
      */
     public int checkCategoryUsedByProject(Long id);
+
+    /**
+     * 按名称查询类别（导入时名称→ID转换）
+     *
+     * @param name 类别名称
+     * @return 项目类别
+     */
+    public ProjCategory selectCategoryByName(String name);
 }

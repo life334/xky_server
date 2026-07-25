@@ -2,6 +2,7 @@ package com.xakcch.project.domain;
 
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
+import com.xakcch.common.annotation.Excel;
 import com.xakcch.common.core.domain.BaseEntity;
 
 /**
@@ -17,27 +18,34 @@ public class ProjProject extends BaseEntity
     private Long id;
 
     /** 工程编号 */
+    @Excel(name = "工程编号")
     private String projectCode;
 
     /** 项目名称 */
+    @Excel(name = "项目名称")
     private String projectName;
 
     /** 工程项目（自由文本，用户自行填写） */
+    @Excel(name = "工程项目")
     private String engineeringProject;
 
     /** 项目类别ID（小类），关联 proj_category.id */
     private Long projectCategoryId;
 
     /** 委托单位 */
+    @Excel(name = "委托单位")
     private String clientUnit;
 
     /** 联系人 */
+    @Excel(name = "联系人")
     private String contactName;
 
     /** 联系电话 */
+    @Excel(name = "联系电话")
     private String contactPhone;
 
     /** 工程地点 */
+    @Excel(name = "工程地点")
     private String projectLocation;
 
     /** 合同ID，关联 proj_contract.id */
@@ -55,12 +63,14 @@ public class ProjProject extends BaseEntity
     // ===== 以下为非持久化字段，列表/详情展示用 =====
 
     /** 项目类别名称（JOIN proj_category） */
+    @Excel(name = "项目类别")
     private String categoryName;
 
     /** 合同名称（JOIN proj_contract） */
     private String contractName;
 
     /** 负责人姓名列表（逗号分隔，JOIN proj_leader + sys_user） */
+    @Excel(name = "负责人")
     private String leaderNames;
 
     /** 负责人用户ID数组（表单提交用） */

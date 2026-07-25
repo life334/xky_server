@@ -207,6 +207,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         update proj_project set status = '已办结', update_time = now() where id = #{id}
     </update>
 
+    <update id="updateProjectStatus">
+        update proj_project set status = #{status}, update_time = now() where id = #{id}
+    </update>
+
     <!-- 按合同ID查询关联项目（含类别名+合同单价） -->
     <select id="selectProjectsByContractId" parameterType="Long" resultType="map">
         select
@@ -215,6 +219,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             p.project_name   as project_name,
             p.engineering_project,
             p.client_unit,
+            p.project_location,
+            p.status         as status,
             c.name           as category_name,
             cp.price         as contract_price
         from proj_project p
