@@ -6,6 +6,7 @@
 -- -----------------------------------------------
 -- 2. 新建项目信息管理目录（顶级菜单）
 -- -----------------------------------------------
+INSERT INTO sys_menu VALUES (8, '首页', 0, 0, 'dashboard', 'index', '', 'Dashboard', 1, 0, 'C', '0', '0', '', 'dashboard', 'admin', now(), '', NULL, '首页');
 INSERT INTO sys_menu VALUES (4, '项目管理', 0, 1, 'project', NULL, '', '', 1, 0, 'M', '0', '0', '', 'build', 'admin', now(), '', NULL, '项目管理目录');
 INSERT INTO sys_menu VALUES (5, '合同管理', 0, 1, 'contract', NULL, '', '', 1, 0, 'M', '0', '0', '', 'documentation', 'admin', now(), '', NULL, '合同管理目录');
 INSERT INTO sys_menu VALUES (6, '资料管理', 0, 1, 'material', 'project/material/index', '', 'MaterialList', 1, 0, 'C', '0', '0', 'project:material:list', 'list', 'admin', now(), '', NULL, '资料管理菜单');
