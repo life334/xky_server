@@ -43,7 +43,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                t.status, t.extra_data::text as extra_data, t.del_flag,
                t.create_by, t.create_time, t.update_by, t.update_time, t.remark,
                p.project_name,
-               u.user_name
+               u.nick_name as user_name
         from proj_task t
         left join proj_project p on p.id = t.project_id
         left join sys_user u on u.user_id = t.user_id
@@ -76,7 +76,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                t.status, t.extra_data::text as extra_data, t.del_flag,
                t.create_by, t.create_time, t.update_by, t.update_time, t.remark,
                p.project_name,
-               u.user_name
+               u.nick_name as user_name
         from proj_task t
         left join proj_project p on p.id = t.project_id
         left join sys_user u on u.user_id = t.user_id
@@ -145,5 +145,21 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             #{id}
         </foreach>
     </delete>
+
+    <!-- 查询项目下所有任务的执行人ID -->
+    <select id="selectTaskUserIdsByProjectId" parameterType="Long" resultType="Long">
+        select user_id from proj_task
+        where project_id = #{projectId} and del_flag = '0' and user_id is not null
+    </select>
+
+    <!-- 逻辑删除指定项目下指定执行人的任务 -->
+    <update id="deleteTaskByProjectIdAndUserIds">
+        update proj_task set del_flag = '2'
+        where project_id = #{projectId} and del_flag = '0'
+        and user_id in
+        <foreach item="uid" collection="userIds" open="(" separator="," close=")">
+            #{uid}
+        </foreach>
+    </update>
 
 </mapper>

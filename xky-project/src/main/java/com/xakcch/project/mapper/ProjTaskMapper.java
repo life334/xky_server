@@ -1,6 +1,7 @@
 package com.xakcch.project.mapper;
 
 import java.util.List;
+import org.apache.ibatis.annotations.Param;
 import com.xakcch.project.domain.ProjTask;
 
 /**
@@ -57,4 +58,21 @@ public interface ProjTaskMapper
      * @return 结果
      */
     public int deleteTaskByIds(Long[] ids);
+
+    /**
+     * 查询项目下所有任务的执行人ID（用于负责人变更时增量同步）
+     *
+     * @param projectId 项目ID
+     * @return 执行人ID列表
+     */
+    public List<Long> selectTaskUserIdsByProjectId(Long projectId);
+
+    /**
+     * 逻辑删除指定项目下指定执行人的任务（负责人被移除时调用）
+     *
+     * @param projectId 项目ID
+     * @param userIds   要删除任务的执行人ID列表
+     * @return 结果
+     */
+    public int deleteTaskByProjectIdAndUserIds(@Param("projectId") Long projectId, @Param("userIds") List<Long> userIds);
 }

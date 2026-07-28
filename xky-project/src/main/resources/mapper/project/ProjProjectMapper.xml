@@ -58,7 +58,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         left join proj_category c on c.id = p.project_category_id
         left join proj_contract ct on ct.id = p.contract_id
         left join lateral (
-            select string_agg(u.user_name, ', ' order by l.id) as leader_names
+            select string_agg(u.nick_name, ', ' order by l.id) as leader_names
             from proj_leader l
             inner join sys_user u on u.user_id = l.user_id
             where l.project_id = p.id and l.del_flag = '0'
@@ -67,7 +67,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             select min(t.assign_date) as assign_date,
                    (max(t.required_finish_date) - min(t.assign_date)) as duration_require,
                    (max(t.actual_finish_date) - min(t.assign_date)) as total_duration
-            from proj_task t
+        from proj_task t
             where t.project_id = p.id and t.del_flag = '0'
         ) ta on true
         where p.del_flag = '0'
@@ -117,7 +117,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         left join proj_category c on c.id = p.project_category_id
         left join proj_contract ct on ct.id = p.contract_id
         left join lateral (
-            select string_agg(u.user_name, ', ' order by l.id) as leader_names
+            select string_agg(u.nick_name, ', ' order by l.id) as leader_names
             from proj_leader l
             inner join sys_user u on u.user_id = l.user_id
             where l.project_id = p.id and l.del_flag = '0'
@@ -126,7 +126,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             select min(t.assign_date) as assign_date,
                    (max(t.required_finish_date) - min(t.assign_date)) as duration_require,
                    (max(t.actual_finish_date) - min(t.assign_date)) as total_duration
-            from proj_task t
+        from proj_task t
             where t.project_id = p.id and t.del_flag = '0'
         ) ta on true
         where p.id = #{id}

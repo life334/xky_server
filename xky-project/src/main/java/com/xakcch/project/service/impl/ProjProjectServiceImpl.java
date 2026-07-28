@@ -1,9 +1,11 @@
 package com.xakcch.project.service.impl;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,9 +13,11 @@ import com.xakcch.common.exception.ServiceException;
 import com.xakcch.common.utils.SecurityUtils;
 import com.xakcch.project.domain.ProjCategory;
 import com.xakcch.project.domain.ProjProject;
+import com.xakcch.project.domain.ProjTask;
 import com.xakcch.project.mapper.ProjCategoryMapper;
 import com.xakcch.project.mapper.ProjLeaderMapper;
 import com.xakcch.project.mapper.ProjProjectMapper;
+import com.xakcch.project.mapper.ProjTaskMapper;
 import com.xakcch.project.service.IProjProjectService;
 import com.xakcch.system.mapper.SysUserMapper;
 import com.xakcch.common.core.domain.entity.SysUser;
@@ -49,6 +53,9 @@ public class ProjProjectServiceImpl implements IProjProjectService
 
     @Autowired
     private SysUserMapper userMapper;
+
+    @Autowired
+    private ProjTaskMapper taskMapper;
 
     /**
      * 查询项目详情
@@ -90,7 +97,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
     }
 
     /**
-     * 新增项目（含负责人关联）
+     * 新增项目（含负责人关联 + 自动创建任务）
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -108,12 +115,18 @@ public class ProjProjectServiceImpl implements IProjProjectService
         if (leaderIds != null && leaderIds.length > 0)
         {
             leaderMapper.insertProjectLeaders(project.getId(), leaderIds, project.getCreateBy());
+            // 为每个负责人自动创建任务
+            createTasksForLeaders(project.getId(), project.getProjectName(),
+                    Arrays.asList(leaderIds), project.getCreateBy());
         }
         return rows;
     }
 
     /**
-     * 修改项目（含负责人关联）
+     * 修改项目（含负责人关联 + 任务增量同步）
+     * 新增的负责人 → 创建任务
+     * 移除的负责人 → 逻辑删除任务
+     * 保留的负责人 → 不动（保留已编辑的工期等信息）
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -124,10 +137,14 @@ public class ProjProjectServiceImpl implements IProjProjectService
         // 先删后插，更新负责人关联
         leaderMapper.deleteLeadersByProjectId(project.getId());
         Long[] leaderIds = project.getLeaderIds();
-        if (leaderIds != null && leaderIds.length > 0)
+        List<Long> newLeaderList = (leaderIds != null) ? Arrays.asList(leaderIds) : new ArrayList<>();
+        if (!newLeaderList.isEmpty())
         {
             leaderMapper.insertProjectLeaders(project.getId(), leaderIds, project.getUpdateBy());
         }
+
+        // 增量同步任务
+        syncTasksOnLeaderChange(project.getId(), project.getProjectName(), newLeaderList, project.getUpdateBy());
         return rows;
     }
 
@@ -301,11 +318,13 @@ public class ProjProjectServiceImpl implements IProjProjectService
             project.setCreateBy(operName);
             resolveCategoryAndLeaders(project);
             projectMapper.insertProject(project);
-            // 插入负责人关联
+            // 插入负责人关联 + 自动创建任务
             Long[] leaderIds = project.getLeaderIds();
             if (leaderIds != null && leaderIds.length > 0)
             {
                 leaderMapper.insertProjectLeaders(project.getId(), leaderIds, operName);
+                createTasksForLeaders(project.getId(), project.getProjectName(),
+                        Arrays.asList(leaderIds), operName);
             }
             count++;
         }
@@ -348,6 +367,65 @@ public class ProjProjectServiceImpl implements IProjProjectService
             {
                 project.setLeaderIds(userIds.toArray(new Long[0]));
             }
+        }
+    }
+
+    /**
+     * 为负责人批量创建任务（新增项目时使用）
+     *
+     * @param projectId   项目ID
+     * @param projectName 项目名称（用作默认任务名称）
+     * @param leaderIds   负责人ID列表
+     * @param operName    操作人
+     */
+    private void createTasksForLeaders(Long projectId, String projectName, List<Long> leaderIds, String operName)
+    {
+        String taskName = (projectName != null && !projectName.isEmpty()) ? projectName : "项目任务";
+        for (Long userId : leaderIds)
+        {
+            ProjTask task = new ProjTask();
+            task.setProjectId(projectId);
+            task.setUserId(userId);
+            task.setTaskName(taskName);
+            task.setStatus("待开始");
+            task.setCreateBy(operName);
+            taskMapper.insertTask(task);
+        }
+    }
+
+    /**
+     * 修改项目时增量同步任务
+     * - 新负责人（不在旧任务列表中）→ 创建任务
+     * - 移除的负责人（不在新负责人列表中）→ 逻辑删除任务
+     * - 保留的负责人 → 不动（保留已编辑的工期、日期等信息）
+     *
+     * @param projectId     项目ID
+     * @param projectName   项目名称
+     * @param newLeaderIds  新的负责人ID列表
+     * @param operName      操作人
+     */
+    private void syncTasksOnLeaderChange(Long projectId, String projectName, List<Long> newLeaderIds, String operName)
+    {
+        // 查询当前项目已有任务的执行人
+        List<Long> rawExisting = taskMapper.selectTaskUserIdsByProjectId(projectId);
+        final List<Long> existingUserIds = (rawExisting != null) ? rawExisting : new ArrayList<>();
+
+        // 新增的负责人 → 创建任务
+        List<Long> toAdd = newLeaderIds.stream()
+                .filter(uid -> !existingUserIds.contains(uid))
+                .collect(Collectors.toList());
+        if (!toAdd.isEmpty())
+        {
+            createTasksForLeaders(projectId, projectName, toAdd, operName);
+        }
+
+        // 移除的负责人 → 逻辑删除任务
+        List<Long> toRemove = existingUserIds.stream()
+                .filter(uid -> !newLeaderIds.contains(uid))
+                .collect(Collectors.toList());
+        if (!toRemove.isEmpty())
+        {
+            taskMapper.deleteTaskByProjectIdAndUserIds(projectId, toRemove);
         }
     }
 }
