@@ -46,7 +46,7 @@ public class ProjTaskServiceImpl implements IProjTaskService
         // 默认状态
         if (task.getStatus() == null || task.getStatus().isEmpty())
         {
-            task.setStatus("待开始");
+            task.setStatus("pending");
         }
         return taskMapper.insertTask(task);
     }
@@ -71,7 +71,7 @@ public class ProjTaskServiceImpl implements IProjTaskService
             // 默认状态
             if (task.getStatus() == null || task.getStatus().isEmpty())
             {
-                task.setStatus("待开始");
+                task.setStatus("pending");
             }
             taskMapper.insertTask(task);
             count++;

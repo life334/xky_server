@@ -12,10 +12,12 @@ import org.springframework.transaction.annotation.Transactional;
 import com.xakcch.common.exception.ServiceException;
 import com.xakcch.common.utils.SecurityUtils;
 import com.xakcch.project.domain.ProjCategory;
+import com.xakcch.project.domain.ProjMaterial;
 import com.xakcch.project.domain.ProjProject;
 import com.xakcch.project.domain.ProjTask;
 import com.xakcch.project.mapper.ProjCategoryMapper;
 import com.xakcch.project.mapper.ProjLeaderMapper;
+import com.xakcch.project.mapper.ProjMaterialMapper;
 import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.mapper.ProjTaskMapper;
 import com.xakcch.project.service.IProjProjectService;
@@ -34,12 +36,9 @@ public class ProjProjectServiceImpl implements IProjProjectService
     private static final Map<String, List<String>> STATUS_FLOW = new HashMap<>();
     static
     {
-        STATUS_FLOW.put("待开始", Arrays.asList("进行中"));
-        STATUS_FLOW.put("进行中", Arrays.asList("已暂停", "已完成", "已取消"));
-        STATUS_FLOW.put("已暂停", Arrays.asList("进行中"));
-        STATUS_FLOW.put("已完成", Arrays.asList("已办结"));
-        STATUS_FLOW.put("已办结", Arrays.asList());
-        STATUS_FLOW.put("已取消", Arrays.asList());
+        STATUS_FLOW.put("ongoing",  Arrays.asList("closed"));
+        STATUS_FLOW.put("closed",   Arrays.asList("archived"));
+        STATUS_FLOW.put("archived", Arrays.asList());
     }
 
     @Autowired
@@ -56,6 +55,9 @@ public class ProjProjectServiceImpl implements IProjProjectService
 
     @Autowired
     private ProjTaskMapper taskMapper;
+
+    @Autowired
+    private ProjMaterialMapper materialMapper;
 
     /**
      * 查询项目详情
@@ -106,7 +108,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
         // 默认状态
         if (project.getStatus() == null || project.getStatus().isEmpty())
         {
-            project.setStatus("进行中");
+            project.setStatus("ongoing");
         }
         int rows = projectMapper.insertProject(project);
 
@@ -175,6 +177,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
 
     /**
      * 办结项目（状态改为已办结，不可逆）
+     * 同时自动创建资料记录，使项目出现在资料管理列表中
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -185,11 +188,18 @@ public class ProjProjectServiceImpl implements IProjProjectService
         {
             throw new ServiceException("项目不存在");
         }
-        if ("已办结".equals(project.getStatus()))
+        if ("closed".equals(project.getStatus()))
         {
             throw new ServiceException("该项目已办结，不能重复操作");
         }
-        return projectMapper.completeProject(id);
+        int rows = projectMapper.completeProject(id);
+        // 自动创建资料记录（默认待领取、待提交）
+        ProjMaterial material = new ProjMaterial();
+        material.setProjectId(id);
+        material.setStatus("pending");
+        material.setSubmitStatus("pending");
+        materialMapper.insertMaterial(material);
+        return rows;
     }
 
     /**
@@ -255,8 +265,14 @@ public class ProjProjectServiceImpl implements IProjProjectService
                     {
                         project.setId(existing.getId());
                         project.setUpdateBy(operName);
+                        if (project.getImportRemark() != null)
+                        {
+                            project.setRemark(project.getImportRemark());
+                        }
                         resolveCategoryAndLeaders(project);
                         updateProject(project);
+                        // 更新已有任务的日期/时长（Excel 导入的分配日期/验收日期/总时长覆盖到所有关联任务）
+                        updateImportedTaskFields(project.getId(), project);
                         successNum++;
                         successMsg.append("<br/>更新成功：" + project.getProjectCode());
                     }
@@ -268,10 +284,21 @@ public class ProjProjectServiceImpl implements IProjProjectService
                     continue;
                 }
                 // 新增
-                project.setStatus("进行中");
+                project.setStatus("ongoing");
                 project.setCreateBy(operName);
+                // 备注：从 Excel 导入字段写入 BaseEntity.remark
+                if (project.getImportRemark() != null)
+                {
+                    project.setRemark(project.getImportRemark());
+                }
                 resolveCategoryAndLeaders(project);
-                insertProject(project);
+                projectMapper.insertProject(project);                  // 1. 插入项目
+                Long[] leaderIds = project.getLeaderIds();
+                if (leaderIds != null && leaderIds.length > 0)
+                {
+                    leaderMapper.insertProjectLeaders(project.getId(), leaderIds, operName);  // 2. 负责人关联
+                    createImportedTask(project, operName);                                   // 3. 任务（含日期/时长）
+                }
                 successNum++;
                 successMsg.append("<br/>新增成功：" + project.getProjectCode());
             }
@@ -314,7 +341,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
             {
                 continue;
             }
-            project.setStatus("进行中");
+            project.setStatus("ongoing");
             project.setCreateBy(operName);
             resolveCategoryAndLeaders(project);
             projectMapper.insertProject(project);
@@ -387,9 +414,83 @@ public class ProjProjectServiceImpl implements IProjProjectService
             task.setProjectId(projectId);
             task.setUserId(userId);
             task.setTaskName(taskName);
-            task.setStatus("待开始");
+            task.setStatus("pending");
             task.setCreateBy(operName);
             taskMapper.insertTask(task);
+        }
+    }
+
+    /**
+     * Excel 导入时创建任务（含分配日期/验收日期/总时长）
+     * 每个负责人创建一条任务记录
+     *
+     * @param project  项目对象（含 leaderIds 和导入的日期/时长字段）
+     * @param operName 操作人
+     */
+    private void createImportedTask(ProjProject project, String operName)
+    {
+        Long[] leaderIds = project.getLeaderIds();
+        if (leaderIds == null || leaderIds.length == 0) return;
+
+        String taskName = (project.getProjectName() != null && !project.getProjectName().isEmpty())
+                ? project.getProjectName() : "项目任务";
+        for (Long userId : leaderIds)
+        {
+            ProjTask task = new ProjTask();
+            task.setProjectId(project.getId());
+            task.setUserId(userId);
+            task.setTaskName(taskName);
+            task.setAssignDate(project.getImportTaskAssignDate());
+            task.setActualFinishDate(project.getImportTaskFinishDate());
+            task.setTotalDuration(project.getImportTaskDuration());
+            task.setStatus("ongoing");
+            task.setCreateBy(operName);
+            taskMapper.insertTask(task);
+        }
+    }
+
+    /**
+     * Excel 更新导入时，用导入的日期/时长覆盖项目下所有已有任务
+     * 只更新非 null 字段，避免误清空
+     *
+     * @param projectId 项目ID
+     * @param project   含导入日期/时长的项目对象
+     */
+    private void updateImportedTaskFields(Long projectId, ProjProject project)
+    {
+        if (project.getImportTaskAssignDate() == null
+                && project.getImportTaskFinishDate() == null
+                && project.getImportTaskDuration() == null)
+        {
+            return; // 没有导入日期信息，跳过
+        }
+        ProjTask query = new ProjTask();
+        query.setProjectId(projectId);
+        List<ProjTask> tasks = taskMapper.selectTaskList(query);
+        if (tasks == null || tasks.isEmpty()) return;
+
+        for (ProjTask task : tasks)
+        {
+            boolean changed = false;
+            if (project.getImportTaskAssignDate() != null)
+            {
+                task.setAssignDate(project.getImportTaskAssignDate());
+                changed = true;
+            }
+            if (project.getImportTaskFinishDate() != null)
+            {
+                task.setActualFinishDate(project.getImportTaskFinishDate());
+                changed = true;
+            }
+            if (project.getImportTaskDuration() != null)
+            {
+                task.setTotalDuration(project.getImportTaskDuration());
+                changed = true;
+            }
+            if (changed)
+            {
+                taskMapper.updateTask(task);
+            }
         }
     }
 

@@ -84,4 +84,11 @@ public interface ProjContractMapper
      * @return 结果
      */
     public int updateContractStatus(@Param("id") Long id, @Param("status") String status);
+
+    /**
+     * 查询超时合同：登记时间超过7天 且 完成日期为空
+     *
+     * @return 超时合同列表
+     */
+    public List<Map<String, Object>> selectTimeoutContracts();
 }

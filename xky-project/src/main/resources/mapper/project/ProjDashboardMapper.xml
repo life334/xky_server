@@ -25,13 +25,12 @@
 
     <!-- 进行中项目数 -->
     <select id="countActiveProjects" resultType="int">
-        SELECT COUNT(*) FROM proj_project WHERE del_flag = '0' AND status = '进行中'
+        SELECT COUNT(*) FROM proj_project WHERE del_flag = '0' AND status = 'ongoing'
     </select>
 
-    <!-- 本期产值（内部+外部） -->
+    <!-- 本期产值 -->
     <select id="sumPeriodOutput" resultType="map">
-        SELECT COALESCE(SUM(internal_output), 0) AS internalOutput,
-               COALESCE(SUM(external_output), 0) AS externalOutput
+        SELECT COALESCE(SUM(internal_output) + SUM(external_output), 0) AS output
         FROM proj_workload
         WHERE del_flag = '0'
         <choose>
@@ -49,8 +48,7 @@
 
     <!-- 上期产值（环比基准） -->
     <select id="sumPrevPeriodOutput" resultType="map">
-        SELECT COALESCE(SUM(internal_output), 0) AS internalOutput,
-               COALESCE(SUM(external_output), 0) AS externalOutput
+        SELECT COALESCE(SUM(internal_output) + SUM(external_output), 0) AS output
         FROM proj_workload
         WHERE del_flag = '0'
         <choose>
@@ -76,8 +74,7 @@
             <!-- 本月：按日 -->
             <when test="period == 'month'">
                 SELECT to_char(d, 'MM-DD') AS label,
-                       COALESCE(SUM(w.internal_output), 0) AS internalOutput,
-                       COALESCE(SUM(w.external_output), 0) AS externalOutput
+                       COALESCE(SUM(w.internal_output) + SUM(w.external_output), 0) AS output
                 FROM generate_series(
                     date_trunc('month', now()),
                     date_trunc('month', now() + interval '1 month') - interval '1 day',
@@ -91,8 +88,7 @@
             <!-- 本季：按月（3个点） -->
             <when test="period == 'quarter'">
                 SELECT to_char(d, 'YYYY-MM') AS label,
-                       COALESCE(SUM(w.internal_output), 0) AS internalOutput,
-                       COALESCE(SUM(w.external_output), 0) AS externalOutput
+                       COALESCE(SUM(w.internal_output) + SUM(w.external_output), 0) AS output
                 FROM generate_series(
                     date_trunc('quarter', now()),
                     date_trunc('quarter', now() + interval '3 months') - interval '1 month',
@@ -106,8 +102,7 @@
             <!-- 本年：按月（12个点） -->
             <otherwise>
                 SELECT to_char(d, 'YYYY-MM') AS label,
-                       COALESCE(SUM(w.internal_output), 0) AS internalOutput,
-                       COALESCE(SUM(w.external_output), 0) AS externalOutput
+                       COALESCE(SUM(w.internal_output) + SUM(w.external_output), 0) AS output
                 FROM generate_series(
                     date_trunc('year', now()),
                     date_trunc('year', now() + interval '1 year') - interval '1 month',
@@ -150,7 +145,7 @@
                END AS progress
         FROM proj_project p
         LEFT JOIN proj_task t ON t.project_id = p.id AND t.del_flag = '0'
-        WHERE p.del_flag = '0' AND p.status = '进行中'
+        WHERE p.del_flag = '0' AND p.status = 'ongoing'
         GROUP BY p.id, p.project_name
         ORDER BY progress DESC, p.create_time DESC
         LIMIT 5

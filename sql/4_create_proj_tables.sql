@@ -65,6 +65,7 @@ CREATE TABLE proj_contract (
     contract_period     VARCHAR(100)    DEFAULT '',
     payment_terms       TEXT            DEFAULT '',
     status             VARCHAR(20)     DEFAULT 'draft',
+    is_settled          CHAR(1)         DEFAULT '0',
     extra_data          JSONB           DEFAULT '{}',
     del_flag            CHAR(1)         DEFAULT '0',
     create_by           VARCHAR(64)     DEFAULT '',
@@ -85,7 +86,7 @@ COMMENT ON COLUMN proj_contract.contract_type IS '合同类型（字典）';
 COMMENT ON COLUMN proj_contract.contract_amount IS '合同金额';
 COMMENT ON COLUMN proj_contract.received_amount IS '已到账金额';
 COMMENT ON COLUMN proj_contract.sign_date IS '签署日期';
-COMMENT ON COLUMN proj_contract.entrust_date IS '委托时间';
+COMMENT ON COLUMN proj_contract.entrust_date IS '登记时间';
 COMMENT ON COLUMN proj_contract.audit_date IS '审核日期';
 COMMENT ON COLUMN proj_contract.return_date IS '用户返回日期';
 COMMENT ON COLUMN proj_contract.finish_date IS '完成日期';
@@ -94,6 +95,7 @@ COMMENT ON COLUMN proj_contract.archive_path IS '归档目录';
 COMMENT ON COLUMN proj_contract.contract_period IS '合同期限';
 COMMENT ON COLUMN proj_contract.payment_terms IS '支付条件';
 COMMENT ON COLUMN proj_contract.status IS '合同状态';
+COMMENT ON COLUMN proj_contract.is_settled IS '是否结算（0=未结算 1=已结算）';
 COMMENT ON COLUMN proj_contract.extra_data IS '动态字段数据（JSONB）';
 COMMENT ON COLUMN proj_contract.del_flag IS '删除标志（0正常 2删除）';
 COMMENT ON COLUMN proj_contract.remark IS '备注';
@@ -262,6 +264,7 @@ CREATE TABLE proj_workload (
     external_price      DECIMAL(12,2)   DEFAULT NULL,
     internal_output     DECIMAL(12,2)   DEFAULT 0,
     external_output     DECIMAL(12,2)   DEFAULT 0,
+    workload            DECIMAL(12,4)   DEFAULT 0,
     price_source        VARCHAR(20)     DEFAULT 'dict',
     extra_data          JSONB           DEFAULT '{}',
     del_flag            CHAR(1)         DEFAULT '0',
@@ -283,6 +286,7 @@ COMMENT ON COLUMN proj_workload.internal_price IS '采用的内部单价';
 COMMENT ON COLUMN proj_workload.external_price IS '采用的外部单价';
 COMMENT ON COLUMN proj_workload.internal_output IS '内部产值（工作量×内部单价，自动计算）';
 COMMENT ON COLUMN proj_workload.external_output IS '外部产值（工作量×外部单价，自动计算）';
+COMMENT ON COLUMN proj_workload.workload IS '工作量（统一字段）';
 COMMENT ON COLUMN proj_workload.price_source IS '单价来源（contract=合同价 dict=字典默认价 manual=手动覆盖）';
 COMMENT ON COLUMN proj_workload.extra_data IS '动态字段数据（JSONB）';
 COMMENT ON COLUMN proj_workload.del_flag IS '删除标志（0正常 2删除）';
@@ -313,6 +317,7 @@ CREATE TABLE proj_payment (
     invoice_date        DATE            DEFAULT NULL,
     invoice_amount      DECIMAL(12,2)   DEFAULT 0,
     invoice_status      VARCHAR(20)     DEFAULT '',
+    received_status     VARCHAR(20)     DEFAULT 'pending',
     extra_data          JSONB           DEFAULT '{}',
     del_flag            CHAR(1)         DEFAULT '0',
     create_by           VARCHAR(64)     DEFAULT '',
@@ -334,6 +339,7 @@ COMMENT ON COLUMN proj_payment.invoice_no IS '发票号';
 COMMENT ON COLUMN proj_payment.invoice_date IS '发票日期';
 COMMENT ON COLUMN proj_payment.invoice_amount IS '发票金额';
 COMMENT ON COLUMN proj_payment.invoice_status IS '发票状态';
+COMMENT ON COLUMN proj_payment.received_status IS '到账状态（字典 proj_payment_received_status）';
 COMMENT ON COLUMN proj_payment.extra_data IS '动态字段数据（JSONB）';
 COMMENT ON COLUMN proj_payment.del_flag IS '删除标志（0正常 2删除）';
 COMMENT ON COLUMN proj_payment.remark IS '备注';
@@ -354,7 +360,9 @@ CREATE TABLE proj_material (
     contact_name        VARCHAR(50)     DEFAULT '',
     contact_phone       VARCHAR(30)     DEFAULT '',
     result_type         VARCHAR(50)     DEFAULT '',
+    archive_dir         VARCHAR(500)    DEFAULT '',
     status              VARCHAR(20)     DEFAULT '',
+    submit_status       VARCHAR(20)     DEFAULT 'pending',
     extra_data          JSONB           DEFAULT '{}',
     del_flag            CHAR(1)         DEFAULT '0',
     create_by           VARCHAR(64)     DEFAULT '',
@@ -370,7 +378,10 @@ COMMENT ON COLUMN proj_material.project_id IS '项目ID，关联 proj_project.id
 COMMENT ON COLUMN proj_material.submit_time IS '提交时间';
 COMMENT ON COLUMN proj_material.contact_name IS '联系人';
 COMMENT ON COLUMN proj_material.contact_phone IS '联系电话';
-COMMENT ON COLUMN proj_material.result_type IS '成果类型';
+COMMENT ON COLUMN proj_material.result_type IS '成果类型（字典 proj_material_result_type）';
+COMMENT ON COLUMN proj_material.archive_dir IS '目录';
+COMMENT ON COLUMN proj_material.status IS '资料流转状态（字典 proj_material_status）';
+COMMENT ON COLUMN proj_material.submit_status IS '提交状态（字典 proj_material_submit_status）';
 COMMENT ON COLUMN proj_material.extra_data IS '动态字段数据（JSONB）';
 COMMENT ON COLUMN proj_material.del_flag IS '删除标志（0正常 2删除）';
 COMMENT ON COLUMN proj_material.remark IS '备注';

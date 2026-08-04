@@ -79,6 +79,9 @@ public class ProjContract extends BaseEntity
     /** 合同状态（字典 proj_contract_status） */
     private String status;
 
+    /** 是否结算（0=未结算 1=已结算） */
+    private String isSettled;
+
     /** 动态字段数据（JSONB） */
     private String extraData;
 
@@ -280,6 +283,16 @@ public class ProjContract extends BaseEntity
         this.status = status;
     }
 
+    public String getIsSettled()
+    {
+        return isSettled;
+    }
+
+    public void setIsSettled(String isSettled)
+    {
+        this.isSettled = isSettled;
+    }
+
     public String getExtraData()
     {
         return extraData;
@@ -332,6 +345,7 @@ public class ProjContract extends BaseEntity
             .append("paymentTerms", getPaymentTerms())
             .append("receivedAmount", getReceivedAmount())
             .append("status", getStatus())
+            .append("isSettled", getIsSettled())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())
             .append("createBy", getCreateBy())

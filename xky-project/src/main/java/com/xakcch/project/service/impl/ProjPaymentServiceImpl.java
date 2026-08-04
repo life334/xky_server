@@ -1,6 +1,7 @@
 package com.xakcch.project.service.impl;
 
 import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.xakcch.project.domain.ProjPayment;
@@ -46,5 +47,17 @@ public class ProjPaymentServiceImpl implements IProjPaymentService
     public int deletePaymentByIds(Long[] ids)
     {
         return paymentMapper.deletePaymentByIds(ids);
+    }
+
+    @Override
+    public List<Map<String, Object>> selectPaymentOverviewList(Map<String, Object> params)
+    {
+        return paymentMapper.selectPaymentOverviewList(params);
+    }
+
+    @Override
+    public Map<String, Object> selectPaymentOverviewStats()
+    {
+        return paymentMapper.selectPaymentOverviewStats();
     }
 }

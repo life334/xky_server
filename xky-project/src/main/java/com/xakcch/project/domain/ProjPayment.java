@@ -51,6 +51,9 @@ public class ProjPayment extends BaseEntity
     /** 开票状态：未开/已开/已作废 */
     private String invoiceStatus;
 
+    /** 到账状态（字典 proj_payment_received_status） */
+    private String receivedStatus;
+
     /** 动态字段数据（JSONB） */
     private String extraData;
 
@@ -145,6 +148,9 @@ public class ProjPayment extends BaseEntity
 
     public String getInvoiceStatus() { return invoiceStatus; }
     public void setInvoiceStatus(String invoiceStatus) { this.invoiceStatus = invoiceStatus; }
+
+    public String getReceivedStatus() { return receivedStatus; }
+    public void setReceivedStatus(String receivedStatus) { this.receivedStatus = receivedStatus; }
 
     public String getExtraData()
     {

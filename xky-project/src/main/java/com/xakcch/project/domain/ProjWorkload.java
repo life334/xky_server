@@ -26,10 +26,10 @@ public class ProjWorkload extends BaseEntity
     /** 项目类别ID（小类），关联 proj_category.id */
     private Long categoryId;
 
-    /** 内部工作量 */
+    /** 内部工作量（@deprecated 请使用 workload） */
     private BigDecimal internalWorkload;
 
-    /** 外部工作量 */
+    /** 外部工作量（@deprecated 请使用 workload） */
     private BigDecimal externalWorkload;
 
     /** 采用的内部单价 */
@@ -38,11 +38,14 @@ public class ProjWorkload extends BaseEntity
     /** 采用的外部单价 */
     private BigDecimal externalPrice;
 
-    /** 内部产值（工作量×内部单价，自动计算） */
+    /** 内部产值（工作量 × 内部单价） */
     private BigDecimal internalOutput;
 
-    /** 外部产值（工作量×外部单价，自动计算） */
+    /** 外部产值（工作量 × 外部单价） */
     private BigDecimal externalOutput;
+
+    /** 工作量（统一字段，替代 internalWorkload + externalWorkload） */
+    private BigDecimal workload;
 
     /** 单价来源（contract=合同价 dict=字典默认价 manual=手动覆盖） */
     private String priceSource;
@@ -166,6 +169,16 @@ public class ProjWorkload extends BaseEntity
         this.externalOutput = externalOutput;
     }
 
+    public BigDecimal getWorkload()
+    {
+        return workload;
+    }
+
+    public void setWorkload(BigDecimal workload)
+    {
+        this.workload = workload;
+    }
+
     public String getPriceSource()
     {
         return priceSource;
@@ -239,6 +252,7 @@ public class ProjWorkload extends BaseEntity
             .append("externalPrice", getExternalPrice())
             .append("internalOutput", getInternalOutput())
             .append("externalOutput", getExternalOutput())
+            .append("workload", getWorkload())
             .append("priceSource", getPriceSource())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())

@@ -1,6 +1,7 @@
 package com.xakcch.project.service;
 
 import java.util.List;
+import java.util.Map;
 import com.xakcch.project.domain.ProjPayment;
 
 /**
@@ -34,4 +35,14 @@ public interface IProjPaymentService
      * 批量删除
      */
     public int deletePaymentByIds(Long[] ids);
+
+    /**
+     * 项目收款总览列表（按项目维度聚合付款）
+     */
+    public List<Map<String, Object>> selectPaymentOverviewList(Map<String, Object> params);
+
+    /**
+     * 项目收款总览 KPI 统计
+     */
+    public Map<String, Object> selectPaymentOverviewStats();
 }

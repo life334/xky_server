@@ -15,6 +15,7 @@ import com.xakcch.common.core.domain.AjaxResult;
 import com.xakcch.common.enums.BusinessType;
 import com.xakcch.project.domain.ProjContract;
 import com.xakcch.project.mapper.ProjContractMapper;
+import com.xakcch.project.mapper.ProjPaymentMapper;
 import com.xakcch.project.mapper.ProjProjectMapper;
 
 /**
@@ -31,6 +32,9 @@ public class ProjContractSettlementController extends BaseController
 
     @Autowired
     private ProjProjectMapper projectMapper;
+
+    @Autowired
+    private ProjPaymentMapper paymentMapper;
 
     private static final SimpleDateFormat DATE_FMT = new SimpleDateFormat("yyyy-MM-dd");
 
@@ -55,7 +59,9 @@ public class ProjContractSettlementController extends BaseController
             contractNode.put("signDate", c.getSignDate() != null ? DATE_FMT.format(c.getSignDate()) : "");
             contractNode.put("contractPeriod", c.getContractPeriod());
             contractNode.put("paymentTerms", c.getPaymentTerms());
-            contractNode.put("receivedAmount", c.getReceivedAmount());
+            // 实时计算已到账 = 该合同下所有项目的付款总额
+            contractNode.put("receivedAmount", paymentMapper.selectReceivedAmountByContractId(c.getId()));
+            contractNode.put("isSettled", c.getIsSettled());
             contractNode.put("remark", c.getRemark());
 
             // 子级：关联项目
@@ -108,7 +114,8 @@ public class ProjContractSettlementController extends BaseController
     }
 
     /**
-     * 保存合同结算（已到账 + 期限 + 支付条件 + 备注）
+     * 保存合同结算（期限 + 支付条件 + 是否结算 + 备注）
+     * 注：已到账金额由系统根据关联项目的付款记录实时计算，不再手动编辑
      */
     @PreAuthorize("@ss.hasPermi('project:contractSettlement:edit')")
     @Log(title = "合同结算", businessType = BusinessType.UPDATE)
@@ -124,9 +131,9 @@ public class ProjContractSettlementController extends BaseController
 
         ProjContract contract = new ProjContract();
         contract.setId(contractId);
-        contract.setReceivedAmount(toBigDecimal(params.get("receivedAmount")));
         contract.setContractPeriod((String) params.get("contractPeriod"));
         contract.setPaymentTerms((String) params.get("paymentTerms"));
+        contract.setIsSettled((String) params.get("isSettled"));
         contract.setRemark((String) params.get("remark"));
         contract.setUpdateBy(getUsername());
         contractMapper.updateContract(contract);

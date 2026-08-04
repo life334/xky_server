@@ -15,6 +15,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="externalPrice"     column="external_price"    />
         <result property="internalOutput"    column="internal_output"   />
         <result property="externalOutput"    column="external_output"   />
+        <result property="workload"         column="workload"          />
         <result property="priceSource"       column="price_source"      />
         <result property="extraData"         column="extra_data"        />
         <result property="delFlag"           column="del_flag"          />
@@ -33,6 +34,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_workload, w.external_workload,
                w.internal_price, w.external_price,
                w.internal_output, w.external_output,
+               w.workload,
                w.price_source, w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark
         from proj_workload w
@@ -43,6 +45,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_workload, w.external_workload,
                w.internal_price, w.external_price,
                w.internal_output, w.external_output,
+               w.workload,
                w.price_source, w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -73,6 +76,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_workload, w.external_workload,
                w.internal_price, w.external_price,
                w.internal_output, w.external_output,
+               w.workload,
                w.price_source, w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -96,6 +100,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="externalPrice != null">external_price,</if>
             <if test="internalOutput != null">internal_output,</if>
             <if test="externalOutput != null">external_output,</if>
+            <if test="workload != null">workload,</if>
             <if test="priceSource != null and priceSource != ''">price_source,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
             <if test="remark != null and remark != ''">remark,</if>
@@ -111,6 +116,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="externalPrice != null">#{externalPrice},</if>
             <if test="internalOutput != null">#{internalOutput},</if>
             <if test="externalOutput != null">#{externalOutput},</if>
+            <if test="workload != null">#{workload},</if>
             <if test="priceSource != null and priceSource != ''">#{priceSource},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="remark != null and remark != ''">#{remark},</if>
@@ -131,6 +137,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="externalPrice != null">external_price = #{externalPrice},</if>
             <if test="internalOutput != null">internal_output = #{internalOutput},</if>
             <if test="externalOutput != null">external_output = #{externalOutput},</if>
+            <if test="workload != null">workload = #{workload},</if>
             <if test="priceSource != null and priceSource != ''">price_source = #{priceSource},</if>
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             <if test="remark != null">remark = #{remark},</if>
@@ -152,6 +159,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_workload, w.external_workload,
                w.internal_price, w.external_price,
                w.internal_output, w.external_output,
+               w.workload,
                w.price_source, w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -171,6 +179,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             internal_workload, external_workload,
             internal_price, external_price,
             internal_output, external_output,
+            workload,
             price_source, extra_data, remark,
             create_by, create_time
         )values(
@@ -178,6 +187,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             #{internalWorkload}, #{externalWorkload},
             #{internalPrice}, #{externalPrice},
             #{internalOutput}, #{externalOutput},
+            #{workload},
             #{priceSource},
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="extraData == null or extraData == ''">null,</if>
@@ -192,6 +202,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             external_price = EXCLUDED.external_price,
             internal_output = EXCLUDED.internal_output,
             external_output = EXCLUDED.external_output,
+            workload = EXCLUDED.workload,
             price_source = EXCLUDED.price_source,
             extra_data = EXCLUDED.extra_data,
             remark = EXCLUDED.remark,

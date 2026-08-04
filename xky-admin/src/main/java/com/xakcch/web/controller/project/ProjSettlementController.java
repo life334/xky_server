@@ -14,9 +14,11 @@ import com.xakcch.common.annotation.Log;
 import com.xakcch.common.core.controller.BaseController;
 import com.xakcch.common.core.domain.AjaxResult;
 import com.xakcch.common.enums.BusinessType;
+import com.xakcch.project.domain.ProjContractPrice;
 import com.xakcch.project.domain.ProjPayment;
 import com.xakcch.project.domain.ProjProject;
 import com.xakcch.project.domain.ProjWorkload;
+import com.xakcch.project.mapper.ProjContractPriceMapper;
 import com.xakcch.project.mapper.ProjPaymentMapper;
 import com.xakcch.project.mapper.ProjWorkloadMapper;
 import com.xakcch.project.service.IProjProjectService;
@@ -39,17 +41,29 @@ public class ProjSettlementController extends BaseController
     @Autowired
     private ProjPaymentMapper paymentMapper;
 
+    @Autowired
+    private ProjContractPriceMapper contractPriceMapper;
+
     private static final SimpleDateFormat DATE_FMT = new SimpleDateFormat("yyyy-MM-dd");
 
     /**
-     * 查询费用结算树形列表（仅含已办结项目）
+     * 查询费用结算树形列表
+     * @param projectStatus 项目状态过滤，多个逗号分隔；默认"已办结,已归档"，传"all"显示全部
      */
     @PreAuthorize("@ss.hasPermi('project:settlement:list')")
     @GetMapping("/treeList")
-    public AjaxResult treeList(ProjProject project)
+    public AjaxResult treeList(ProjProject project,
+        @RequestParam(required = false) String projectStatus)
     {
-        // 只查已办结项目
-        project.setStatus("已办结");
+        if (projectStatus == null || projectStatus.isEmpty())
+        {
+            projectStatus = "closed,archived";
+        }
+        if (!"all".equals(projectStatus))
+        {
+            List<String> statusList = Arrays.asList(projectStatus.split(","));
+            project.getParams().put("statusList", statusList);
+        }
         List<ProjProject> projects = projectService.selectProjectList(project);
 
         List<Map<String, Object>> tree = new ArrayList<>();
@@ -68,22 +82,20 @@ public class ProjSettlementController extends BaseController
             List<Map<String, Object>> userChildren = buildUserChildren(workloads, p.getId());
 
             // 汇总项目级工作量
-            BigDecimal totalInternal = BigDecimal.ZERO;
-            BigDecimal totalExternal = BigDecimal.ZERO;
+            BigDecimal totalWorkload = BigDecimal.ZERO;
             BigDecimal totalInternalOutput = BigDecimal.ZERO;
             BigDecimal totalExternalOutput = BigDecimal.ZERO;
             for (ProjWorkload w : workloads)
             {
-                if (w.getInternalWorkload() != null) totalInternal = totalInternal.add(w.getInternalWorkload());
-                if (w.getExternalWorkload() != null) totalExternal = totalExternal.add(w.getExternalWorkload());
+                if (w.getWorkload() != null) totalWorkload = totalWorkload.add(w.getWorkload());
                 if (w.getInternalOutput() != null) totalInternalOutput = totalInternalOutput.add(w.getInternalOutput());
                 if (w.getExternalOutput() != null) totalExternalOutput = totalExternalOutput.add(w.getExternalOutput());
             }
 
-            projectNode.put("internalWorkload", totalInternal);
-            projectNode.put("externalWorkload", totalExternal);
+            projectNode.put("workload", totalWorkload);
             projectNode.put("internalOutput", totalInternalOutput);
             projectNode.put("externalOutput", totalExternalOutput);
+            projectNode.put("output", totalInternalOutput.add(totalExternalOutput));
             projectNode.put("children", userChildren);
             tree.add(projectNode);
         }
@@ -105,10 +117,19 @@ public class ProjSettlementController extends BaseController
         List<ProjWorkload> workloads = workloadMapper.selectWorkloadsByProjectId(projectId);
         List<ProjPayment> payments = paymentMapper.selectPaymentsByProjectId(projectId);
 
+        // 查询项目关联合同的类别单价（用于前端自动带出外部单价）
+        List<ProjContractPrice> contractPrices = Collections.emptyList();
+        Long contractId = project.getContractId();
+        if (contractId != null)
+        {
+            contractPrices = contractPriceMapper.selectPriceListByContractId(contractId);
+        }
+
         Map<String, Object> result = new HashMap<>();
         result.put("project", project);
         result.put("workloads", workloads);
         result.put("payments", payments);
+        result.put("contractPrices", contractPrices);
         return success(result);
     }
 
@@ -151,6 +172,7 @@ public class ProjSettlementController extends BaseController
                 w.setExternalPrice(toBigDecimal(wl.get("externalPrice")));
                 w.setInternalOutput(toBigDecimal(wl.get("internalOutput")));
                 w.setExternalOutput(toBigDecimal(wl.get("externalOutput")));
+                w.setWorkload(toBigDecimal(wl.get("workload")));
                 w.setPriceSource((String) wl.getOrDefault("priceSource", "manual"));
                 w.setRemark((String) wl.getOrDefault("remark", ""));
                 w.setCreateBy(username);
@@ -230,16 +252,14 @@ public class ProjSettlementController extends BaseController
             userNode.put("userName", userName);
 
             // 汇总该人员的工作量
-            BigDecimal uInternal = BigDecimal.ZERO;
-            BigDecimal uExternal = BigDecimal.ZERO;
+            BigDecimal uWorkload = BigDecimal.ZERO;
             BigDecimal uInternalOutput = BigDecimal.ZERO;
             BigDecimal uExternalOutput = BigDecimal.ZERO;
             List<Map<String, Object>> leafChildren = new ArrayList<>();
 
             for (ProjWorkload w : wList)
             {
-                if (w.getInternalWorkload() != null) uInternal = uInternal.add(w.getInternalWorkload());
-                if (w.getExternalWorkload() != null) uExternal = uExternal.add(w.getExternalWorkload());
+                if (w.getWorkload() != null) uWorkload = uWorkload.add(w.getWorkload());
                 if (w.getInternalOutput() != null) uInternalOutput = uInternalOutput.add(w.getInternalOutput());
                 if (w.getExternalOutput() != null) uExternalOutput = uExternalOutput.add(w.getExternalOutput());
 
@@ -247,8 +267,7 @@ public class ProjSettlementController extends BaseController
                 leaf.put("id", "w" + w.getId());
                 leaf.put("categoryName", w.getCategoryName());
                 leaf.put("categoryId", w.getCategoryId());
-                leaf.put("internalWorkload", w.getInternalWorkload());
-                leaf.put("externalWorkload", w.getExternalWorkload());
+                leaf.put("workload", w.getWorkload());
                 leaf.put("internalPrice", w.getInternalPrice());
                 leaf.put("externalPrice", w.getExternalPrice());
                 leaf.put("internalOutput", w.getInternalOutput());
@@ -256,10 +275,10 @@ public class ProjSettlementController extends BaseController
                 leafChildren.add(leaf);
             }
 
-            userNode.put("internalWorkload", uInternal);
-            userNode.put("externalWorkload", uExternal);
+            userNode.put("workload", uWorkload);
             userNode.put("internalOutput", uInternalOutput);
             userNode.put("externalOutput", uExternalOutput);
+            userNode.put("output", uInternalOutput.add(uExternalOutput));
             userNode.put("children", leafChildren);
             result.add(userNode);
         }

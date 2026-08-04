@@ -1,5 +1,6 @@
 package com.xakcch.web.controller.project;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import jakarta.servlet.http.HttpServletResponse;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import com.xakcch.common.annotation.Log;
 import com.xakcch.common.core.controller.BaseController;
@@ -39,11 +41,21 @@ public class ProjMaterialController extends BaseController
 
     /**
      * 查询资料提交列表（分页）
+     * 默认只显示"已办结"和"已归档"项目的资料，传 projectStatus=all 显示全部
      */
     @PreAuthorize("@ss.hasPermi('project:material:list')")
     @GetMapping("/list")
-    public TableDataInfo list(ProjMaterial material)
+    public TableDataInfo list(ProjMaterial material,
+        @RequestParam(required = false) String projectStatus)
     {
+        if (projectStatus == null || projectStatus.isEmpty())
+        {
+            projectStatus = "closed,archived";
+        }
+        if (!"all".equals(projectStatus))
+        {
+            material.getParams().put("statusList", Arrays.asList(projectStatus.split(",")));
+        }
         startPage();
         List<ProjMaterial> list = materialService.selectMaterialList(material);
         return getDataTable(list);
@@ -81,7 +93,7 @@ public class ProjMaterialController extends BaseController
     public AjaxResult add(@Validated @RequestBody ProjMaterial material)
     {
         material.setCreateBy(getUsername());
-        if (material.getStatus() == null) material.setStatus("待领取");
+        if (material.getStatus() == null) material.setStatus("pending");
         return toAjax(materialService.insertMaterial(material));
     }
 

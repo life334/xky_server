@@ -140,6 +140,13 @@ insert into sys_dict_type values(2,  '菜单状态', 'sys_show_hide',       '0',
 insert into sys_dict_type values(3,  '系统开关', 'sys_normal_disable',  '0', 'admin', now(), '', null, '系统开关列表');
 insert into sys_dict_type values(4,  '项目状态', 'proj_project_status',  '0', 'admin', now(), '', null, '项目状态列表');
 insert into sys_dict_type values(5,  '合同状态', 'proj_contract_status',  '0', 'admin', now(), '', null, '合同状态列表');
+insert into sys_dict_type values(6,  '成果类型', 'proj_material_result_type',  '0', 'admin', now(), '', null, '资料成果类型');
+insert into sys_dict_type values(7,  '资料状态', 'proj_material_status',  '0', 'admin', now(), '', null, '资料领取状态列表');
+insert into sys_dict_type values(8,  '任务状态', 'proj_task_status',      '0', 'admin', now(), '', null, '任务执行状态列表');
+insert into sys_dict_type values(9,  '付款类型',         'proj_payment_type',             '0', 'admin', now(), '', null, '付款类型列表');
+insert into sys_dict_type values(10, '付款到账状态',     'proj_payment_received_status',  '0', 'admin', now(), '', null, '付款到账状态列表');
+insert into sys_dict_type values(11, '付款概览状态',     'proj_payment_overview_status',  '0', 'admin', now(), '', null, '付款概览状态列表');
+insert into sys_dict_type values(12, '资料提交状态',     'proj_material_submit_status',   '0', 'admin', now(), '', null, '资料提交状态列表');
 
 
 -- ----------------------------
@@ -157,12 +164,9 @@ insert into sys_dict_data values(6,  1,  '正常',     '0',       'sys_normal_di
 insert into sys_dict_data values(7,  2,  '停用',     '1',       'sys_normal_disable',  '',   'danger',  'N', '0', 'admin', now(), '', null, '停用状态');
 
 -- 项目状态列表
-insert into sys_dict_data values(8,  1,  '待开始',     'pending',       'proj_project_status',     '',   'info', 'Y', '0', 'admin', now(), '', null, '待开始状态');
-insert into sys_dict_data values(9,  2,  '进行中',     'ongoing',       'proj_project_status',     '',   'primary', 'N', '0', 'admin', now(), '', null, '进行中状态');
-insert into sys_dict_data values(10,  3,  '已完成',     'completed',       'proj_project_status',     '',   'success', 'N', '0', 'admin', now(), '', null, '已完成状态');
-insert into sys_dict_data values(11,  4,  '已暂停',     'paused',       'proj_project_status',     '',   'warning', 'N', '0', 'admin', now(), '', null, '已暂停状态');
-insert into sys_dict_data values(12,  5,  '已办结',     'closed',       'proj_project_status',     '',   'success', 'N', '0', 'admin', now(), '', null, '已办结状态');
-insert into sys_dict_data values(13,  6,  '已取消',     'cancelled',       'proj_project_status',     '',   'danger', 'N', '0', 'admin', now(), '', null, '已取消状态');
+insert into sys_dict_data values(8,  1,  '进行中',   'ongoing',   'proj_project_status', '', 'primary', 'Y', '0', 'admin', now(), '', null, '进行中状态');
+insert into sys_dict_data values(9,  2,  '已办结',   'closed',    'proj_project_status', '', 'success', 'N', '0', 'admin', now(), '', null, '已办结状态');
+insert into sys_dict_data values(10, 3,  '已归档',   'archived',  'proj_project_status', '', '',        'N', '0', 'admin', now(), '', null, '已归档状态');
 
 -- 合同状态列表
 insert into sys_dict_data values(14,  1,  '草稿',     'draft',       'proj_contract_status',     '',   'info', 'Y', '0', 'admin', now(), '', null, '草稿状态');
@@ -170,6 +174,41 @@ insert into sys_dict_data values(15,  2,  '已签署',     'signed',       'proj
 insert into sys_dict_data values(16,  3,  '执行中',     'ongoing',       'proj_contract_status',     '',   'warning', 'N', '0', 'admin', now(), '', null, '执行中状态');
 insert into sys_dict_data values(17,  4,  '已完成',     'completed',       'proj_contract_status',     '',   'success', 'N', '0', 'admin', now(), '', null, '已完成状态');
 insert into sys_dict_data values(18,  5,  '已归档',     'archived',       'proj_contract_status',     '',   '', 'N', '0', 'admin', now(), '', null, '已归档状态');
+insert into sys_dict_data values(29, 6,  '已取消',     'cancelled',       'proj_contract_status',     '',   'danger', 'N', '0', 'admin', now(), '', null, '已取消状态');
+
+-- 资料状态列表（待领取/已领取/已归还）
+insert into sys_dict_data values(22, 1,  '待领取',   'pending',   'proj_material_status', '', 'info',    'Y', '0', 'admin', now(), '', null, '待领取状态');
+insert into sys_dict_data values(23, 2,  '已领取',   'received',  'proj_material_status', '', 'primary', 'N', '0', 'admin', now(), '', null, '已领取状态');
+insert into sys_dict_data values(24, 3,  '已归还',   'returned',  'proj_material_status', '', 'success', 'N', '0', 'admin', now(), '', null, '已归还状态');
+
+-- 任务状态列表（待开始/进行中/已完成/已暂停）
+insert into sys_dict_data values(25, 1,  '待开始',   'pending',    'proj_task_status', '', 'info',     'N', '0', 'admin', now(), '', null, '待开始状态');
+insert into sys_dict_data values(26, 2,  '进行中',   'ongoing',    'proj_task_status', '', 'primary',  'Y', '0', 'admin', now(), '', null, '进行中状态');
+insert into sys_dict_data values(27, 3,  '已完成',   'completed',  'proj_task_status', '', 'success',  'N', '0', 'admin', now(), '', null, '已完成状态');
+insert into sys_dict_data values(28, 4,  '已暂停',   'paused',     'proj_task_status', '', 'warning',  'N', '0', 'admin', now(), '', null, '已暂停状态');
+
+-- 资料成果类型列表
+insert into sys_dict_data values(19, 1, '纸质',     'paper',         'proj_material_result_type', '', '', 'N', '0', 'admin', now(), '', null, '纸质成果');
+insert into sys_dict_data values(20, 2, '电子',     'digital',       'proj_material_result_type', '', '', 'N', '0', 'admin', now(), '', null, '电子成果');
+insert into sys_dict_data values(21, 3, '纸质+电子', 'paper_digital',  'proj_material_result_type', '', '', 'N', '0', 'admin', now(), '', null, '纸质+电子成果');
+
+-- 付款类型列表
+insert into sys_dict_data values(30, 1, '预付款',   'advance',   'proj_payment_type', '', 'info',   'Y', '0', 'admin', now(), '', null, '预付款');
+insert into sys_dict_data values(31, 2, '进度款',   'progress',  'proj_payment_type', '', 'primary','N', '0', 'admin', now(), '', null, '进度款');
+insert into sys_dict_data values(32, 3, '尾款',    'final',     'proj_payment_type', '', 'success','N', '0', 'admin', now(), '', null, '尾款');
+
+-- 付款到账状态列表
+insert into sys_dict_data values(33, 1, '待收款',   'pending',   'proj_payment_received_status', '', 'warning',  'Y', '0', 'admin', now(), '', null, '待收款');
+insert into sys_dict_data values(34, 2, '已到账',   'received',  'proj_payment_received_status', '', 'success',  'N', '0', 'admin', now(), '', null, '已到账');
+
+-- 付款概览状态列表（SQL 计算字段，前端筛选用）
+insert into sys_dict_data values(35, 1, '未付款',   'unpaid',    'proj_payment_overview_status', '', 'danger',   'Y', '0', 'admin', now(), '', null, '未付款');
+insert into sys_dict_data values(36, 2, '部分付款', 'partial',   'proj_payment_overview_status', '', 'warning',  'N', '0', 'admin', now(), '', null, '部分付款');
+insert into sys_dict_data values(37, 3, '已结清',   'settled',   'proj_payment_overview_status', '', 'success',  'N', '0', 'admin', now(), '', null, '已结清');
+
+-- 资料提交状态列表
+insert into sys_dict_data values(38, 1, '待提交',   'pending',   'proj_material_submit_status',  '', 'warning',  'Y', '0', 'admin', now(), '', null, '待提交');
+insert into sys_dict_data values(39, 2, '已提交',   'submitted', 'proj_material_submit_status',  '', 'success',  'N', '0', 'admin', now(), '', null, '已提交');
 
 
 -- ----------------------------

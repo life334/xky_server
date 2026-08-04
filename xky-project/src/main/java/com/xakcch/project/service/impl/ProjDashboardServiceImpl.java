@@ -46,14 +46,9 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         // 本期产值 + 环比
         Map<String, Object> periodOutput = dashboardMapper.sumPeriodOutput(period);
         Map<String, Object> prevOutput = dashboardMapper.sumPrevPeriodOutput(period);
-        BigDecimal internalOutput = toBig(periodOutput.get("internaloutput"));
-        BigDecimal externalOutput = toBig(periodOutput.get("externaloutput"));
-        BigDecimal totalOutput = internalOutput.add(externalOutput);
-        BigDecimal prevTotal = toBig(prevOutput.get("internaloutput"))
-                .add(toBig(prevOutput.get("externaloutput")));
+        BigDecimal totalOutput = toBig(periodOutput.get("output"));
+        BigDecimal prevTotal = toBig(prevOutput.get("output"));
         kpis.put("periodOutput", totalOutput);
-        kpis.put("internalOutput", internalOutput);
-        kpis.put("externalOutput", externalOutput);
         kpis.put("outputTrend", calcTrend(totalOutput, prevTotal));
 
         // 合同总额 + 待收款
@@ -70,7 +65,7 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         int pendingMaterial = 0;
         for (Map<String, Object> m : materialStats)
         {
-            if ("待领取".equals(m.get("name")))
+            if ("pending".equals(m.get("name")))
             {
                 pendingMaterial = ((Number) m.get("value")).intValue();
             }
@@ -82,18 +77,15 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         // ===== 2. 产值趋势图 =====
         List<Map<String, Object>> trendData = dashboardMapper.outputTrend(period);
         List<String> trendLabels = new ArrayList<>();
-        List<BigDecimal> trendInternal = new ArrayList<>();
-        List<BigDecimal> trendExternal = new ArrayList<>();
+        List<BigDecimal> trendValues = new ArrayList<>();
         for (Map<String, Object> row : trendData)
         {
             trendLabels.add((String) row.get("label"));
-            trendInternal.add(toBig(row.get("internaloutput")));
-            trendExternal.add(toBig(row.get("externaloutput")));
+            trendValues.add(toBig(row.get("output")));
         }
         Map<String, Object> outputTrend = new HashMap<>();
         outputTrend.put("labels", trendLabels);
-        outputTrend.put("internal", trendInternal);
-        outputTrend.put("external", trendExternal);
+        outputTrend.put("values", trendValues);
         result.put("outputTrend", outputTrend);
 
         // ===== 3. 项目状态分布 =====
@@ -113,9 +105,9 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         {
             String status = (String) m.get("name");
             int count = ((Number) m.get("value")).intValue();
-            if ("待领取".equals(status)) pendingReceive = count;
-            else if ("已领取".equals(status)) pendingReturn = count;
-            else if ("已归还".equals(status)) guaranteed = count;
+            if ("pending".equals(status)) pendingReceive = count;
+            else if ("received".equals(status)) pendingReturn = count;
+            else if ("returned".equals(status)) guaranteed = count;
         }
         materialFlow.put("pendingReceive", pendingReceive);
         materialFlow.put("pendingReturn", pendingReturn);

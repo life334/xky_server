@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjAlertLogMapper">
+
+    <insert id="insertAlertLog">
+        insert into proj_alert_log(rule_id, triggered_at, alert_content, is_read, del_flag, create_time)
+        values (#{ruleId}, now(), #{content}, '0', '0', now())
+    </insert>
+
+    <select id="countUnreadByContent" resultType="long">
+        select count(1) from proj_alert_log
+        where alert_content = #{content} and is_read = '0' and del_flag = '0'
+    </select>
+
+    <select id="countUnread" resultType="long">
+        select count(1) from proj_alert_log
+        where is_read = '0' and del_flag = '0'
+    </select>
+
+    <select id="selectUnreadList" resultType="java.util.LinkedHashMap">
+        select id, alert_content as "alertContent", triggered_at as "triggeredAt", is_read as "isRead"
+        from proj_alert_log
+        where is_read = '0' and del_flag = '0'
+        order by triggered_at desc
+        limit #{limit}
+    </select>
+
+</mapper>

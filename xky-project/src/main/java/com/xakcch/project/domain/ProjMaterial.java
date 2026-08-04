@@ -31,11 +31,17 @@ public class ProjMaterial extends BaseEntity
     /** 联系电话 */
     private String contactPhone;
 
-    /** 成果类型 */
+    /** 成果类型（字典 proj_material_result_type） */
     private String resultType;
+
+    /** 目录（用户自由填写） */
+    private String archiveDir;
 
     /** 资料状态：待领取/已领取/已归还 */
     private String status;
+
+    /** 提交状态（字典 proj_material_submit_status） */
+    private String submitStatus;
 
     /** 动态字段数据（JSONB） */
     private String extraData;
@@ -44,6 +50,15 @@ public class ProjMaterial extends BaseEntity
     private String delFlag;
 
     // ===== 以下为非持久化字段，列表/详情展示用 =====
+
+    /** 工程编号（JOIN proj_project） */
+    private String projectCode;
+
+    /** 委托任务（JOIN proj_project） */
+    private String engineeringProject;
+
+    /** 工程地点（JOIN proj_project） */
+    private String projectLocation;
 
     /** 项目名称（JOIN proj_project） */
     private String projectName;
@@ -110,6 +125,16 @@ public class ProjMaterial extends BaseEntity
         this.resultType = resultType;
     }
 
+    public String getArchiveDir()
+    {
+        return archiveDir;
+    }
+
+    public void setArchiveDir(String archiveDir)
+    {
+        this.archiveDir = archiveDir;
+    }
+
     public String getStatus()
     {
         return status;
@@ -118,6 +143,16 @@ public class ProjMaterial extends BaseEntity
     public void setStatus(String status)
     {
         this.status = status;
+    }
+
+    public String getSubmitStatus()
+    {
+        return submitStatus;
+    }
+
+    public void setSubmitStatus(String submitStatus)
+    {
+        this.submitStatus = submitStatus;
     }
 
     public String getExtraData()
@@ -140,6 +175,36 @@ public class ProjMaterial extends BaseEntity
         this.delFlag = delFlag;
     }
 
+    public String getProjectCode()
+    {
+        return projectCode;
+    }
+
+    public void setProjectCode(String projectCode)
+    {
+        this.projectCode = projectCode;
+    }
+
+    public String getEngineeringProject()
+    {
+        return engineeringProject;
+    }
+
+    public void setEngineeringProject(String engineeringProject)
+    {
+        this.engineeringProject = engineeringProject;
+    }
+
+    public String getProjectLocation()
+    {
+        return projectLocation;
+    }
+
+    public void setProjectLocation(String projectLocation)
+    {
+        this.projectLocation = projectLocation;
+    }
+
     public String getProjectName()
     {
         return projectName;
@@ -155,10 +220,14 @@ public class ProjMaterial extends BaseEntity
         return new ToStringBuilder(this, ToStringStyle.MULTI_LINE_STYLE)
             .append("id", getId())
             .append("projectId", getProjectId())
+            .append("projectCode", getProjectCode())
+            .append("engineeringProject", getEngineeringProject())
+            .append("projectLocation", getProjectLocation())
             .append("submitTime", getSubmitTime())
             .append("contactName", getContactName())
             .append("contactPhone", getContactPhone())
             .append("resultType", getResultType())
+            .append("archiveDir", getArchiveDir())
             .append("status", getStatus())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())

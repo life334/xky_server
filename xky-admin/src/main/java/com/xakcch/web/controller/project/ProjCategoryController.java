@@ -58,6 +58,17 @@ public class ProjCategoryController extends BaseController
     }
 
     /**
+     * 查询项目类别树结构（含单价等完整字段，供费用结算等需要带出单价的场景使用）
+     */
+    @GetMapping("/treeselectFull")
+    public AjaxResult treeselectFull(ProjCategory category)
+    {
+        List<ProjCategory> categories = categoryService.selectCategoryList(category);
+        List<ProjCategory> tree = categoryService.buildCategoryTree(categories);
+        return success(tree);
+    }
+
+    /**
      * 根据项目类别编号获取详细信息
      */
     @PreAuthorize("@ss.hasPermi('project:category:query')")

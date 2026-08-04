@@ -1,6 +1,7 @@
 package com.xakcch.web.controller.project;
 
 import java.util.List;
+import java.util.Map;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import com.xakcch.common.annotation.Log;
 import com.xakcch.common.core.controller.BaseController;
@@ -102,5 +104,28 @@ public class ProjPaymentController extends BaseController
     public AjaxResult remove(@PathVariable Long[] ids)
     {
         return toAjax(paymentService.deletePaymentByIds(ids));
+    }
+
+    /**
+     * 项目收款总览列表（分页，按项目维度聚合：合同额、已收、未收、进度、状态）
+     */
+    @PreAuthorize("@ss.hasPermi('project:payment:list')")
+    @GetMapping("/overview")
+    public TableDataInfo overview(@RequestParam Map<String, Object> params)
+    {
+        startPage();
+        List<Map<String, Object>> list = paymentService.selectPaymentOverviewList(params);
+        return getDataTable(list);
+    }
+
+    /**
+     * 项目收款总览 KPI 统计（总数/未付款/部分付款/已结清/应收合计/已收合计）
+     */
+    @PreAuthorize("@ss.hasPermi('project:payment:list')")
+    @GetMapping("/overview/stats")
+    public AjaxResult overviewStats()
+    {
+        Map<String, Object> stats = paymentService.selectPaymentOverviewStats();
+        return success(stats);
     }
 }

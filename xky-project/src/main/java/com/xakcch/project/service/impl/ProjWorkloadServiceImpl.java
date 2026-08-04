@@ -40,8 +40,8 @@ public class ProjWorkloadServiceImpl implements IProjWorkloadService
 
     /**
      * 新增工作量
-     * 自动计算产值：内部产值 = 内部工作量 × 内部单价
-     *               外部产值 = 外部工作量 × 外部单价
+     * 自动计算产值：内部产值 = 工作量 × 内部单价
+     *               外部产值 = 工作量 × 外部单价
      */
     @Override
     public int insertWorkload(ProjWorkload workload)
@@ -79,22 +79,22 @@ public class ProjWorkloadServiceImpl implements IProjWorkloadService
 
     /**
      * 自动计算产值
-     * 内部产值 = 内部工作量 × 内部单价
-     * 外部产值 = 外部工作量 × 外部单价
+     * 内部产值 = 工作量 × 内部单价
+     * 外部产值 = 工作量 × 外部单价
      */
     private void calcOutput(ProjWorkload workload)
     {
-        if (workload.getInternalWorkload() != null && workload.getInternalPrice() != null)
+        if (workload.getWorkload() != null && workload.getInternalPrice() != null)
         {
             workload.setInternalOutput(
-                workload.getInternalWorkload().multiply(workload.getInternalPrice())
+                workload.getWorkload().multiply(workload.getInternalPrice())
                     .setScale(2, BigDecimal.ROUND_HALF_UP)
             );
         }
-        if (workload.getExternalWorkload() != null && workload.getExternalPrice() != null)
+        if (workload.getWorkload() != null && workload.getExternalPrice() != null)
         {
             workload.setExternalOutput(
-                workload.getExternalWorkload().multiply(workload.getExternalPrice())
+                workload.getWorkload().multiply(workload.getExternalPrice())
                     .setScale(2, BigDecimal.ROUND_HALF_UP)
             );
         }

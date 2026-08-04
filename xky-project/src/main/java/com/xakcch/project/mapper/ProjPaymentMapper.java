@@ -1,6 +1,8 @@
 package com.xakcch.project.mapper;
 
 import java.util.List;
+import java.util.Map;
+import java.math.BigDecimal;
 import com.xakcch.project.domain.ProjPayment;
 
 /**
@@ -50,4 +52,27 @@ public interface ProjPaymentMapper
      * @return 结果
      */
     public int upsertPayment(ProjPayment payment);
+
+    /**
+     * 项目收款总览列表（按项目维度聚合付款：合同额、已收、未收、进度、状态）
+     *
+     * @param params 查询参数（projectName, paymentStatus）
+     * @return 收款总览列表
+     */
+    public List<Map<String, Object>> selectPaymentOverviewList(Map<String, Object> params);
+
+    /**
+     * 项目收款总览 KPI 统计（总数/未付款/部分付款/已结清/应收合计/已收合计）
+     *
+     * @return KPI 统计
+     */
+    public Map<String, Object> selectPaymentOverviewStats();
+
+    /**
+     * 按合同ID聚合该合同下所有项目的实收总额
+     *
+     * @param contractId 合同ID
+     * @return 收款总额
+     */
+    public BigDecimal selectReceivedAmountByContractId(Long contractId);
 }

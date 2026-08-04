@@ -26,7 +26,7 @@ public class ProjProject extends BaseEntity
     private String projectName;
 
     /** 工程项目（自由文本，用户自行填写） */
-    @Excel(name = "工程项目")
+    @Excel(name = "委托任务")
     private String engineeringProject;
 
     /** 项目类别ID（小类），关联 proj_category.id */
@@ -37,15 +37,15 @@ public class ProjProject extends BaseEntity
     private String clientUnit;
 
     /** 联系人 */
-    @Excel(name = "联系人")
+    @Excel(name = "委托联系人")
     private String contactName;
 
     /** 联系电话 */
-    @Excel(name = "联系电话")
+    @Excel(name = "联系人电话")
     private String contactPhone;
 
     /** 工程地点 */
-    @Excel(name = "工程地点")
+    @Excel(name = "委托地点")
     private String projectLocation;
 
     /** 合同ID，关联 proj_contract.id */
@@ -70,11 +70,15 @@ public class ProjProject extends BaseEntity
     private String contractName;
 
     /** 负责人姓名列表（逗号分隔，JOIN proj_leader + sys_user） */
-    @Excel(name = "负责人")
+    @Excel(name = "项目负责人")
     private String leaderNames;
 
     /** 负责人用户ID数组（表单提交用） */
     private Long[] leaderIds;
+
+    /** 【导入】备注 → BaseEntity.remark */
+    @Excel(name = "备注")
+    private String importRemark;
 
     // ===== 以下为任务聚合字段（列表展示用） =====
 
@@ -86,6 +90,20 @@ public class ProjProject extends BaseEntity
 
     /** 总时长天数（MAX actual_finish_date - MIN assign_date） */
     private Integer totalDuration;
+
+    // ===== 以下为 Excel 导入专用字段（transient，不存入 proj_project） =====
+
+    /** 【导入】分配日期 → proj_task.assign_date */
+    @Excel(name = "分配日期", dateFormat = "yyyy-MM-dd")
+    private java.util.Date importTaskAssignDate;
+
+    /** 【导入】验收日期 → proj_task.actual_finish_date */
+    @Excel(name = "验收日期", dateFormat = "yyyy-MM-dd")
+    private java.util.Date importTaskFinishDate;
+
+    /** 【导入】总时长 → proj_task.total_duration */
+    @Excel(name = "总时长")
+    private Integer importTaskDuration;
 
     public Long getId()
     {
@@ -287,6 +305,46 @@ public class ProjProject extends BaseEntity
         this.totalDuration = totalDuration;
     }
 
+    public String getImportRemark()
+    {
+        return importRemark;
+    }
+
+    public void setImportRemark(String importRemark)
+    {
+        this.importRemark = importRemark;
+    }
+
+    public java.util.Date getImportTaskAssignDate()
+    {
+        return importTaskAssignDate;
+    }
+
+    public void setImportTaskAssignDate(java.util.Date importTaskAssignDate)
+    {
+        this.importTaskAssignDate = importTaskAssignDate;
+    }
+
+    public java.util.Date getImportTaskFinishDate()
+    {
+        return importTaskFinishDate;
+    }
+
+    public void setImportTaskFinishDate(java.util.Date importTaskFinishDate)
+    {
+        this.importTaskFinishDate = importTaskFinishDate;
+    }
+
+    public Integer getImportTaskDuration()
+    {
+        return importTaskDuration;
+    }
+
+    public void setImportTaskDuration(Integer importTaskDuration)
+    {
+        this.importTaskDuration = importTaskDuration;
+    }
+
     @Override
     public String toString() {
         return new ToStringBuilder(this, ToStringStyle.MULTI_LINE_STYLE)
@@ -308,9 +366,13 @@ public class ProjProject extends BaseEntity
             .append("updateBy", getUpdateBy())
             .append("updateTime", getUpdateTime())
             .append("remark", getRemark())
+            .append("importRemark", getImportRemark())
             .append("assignDate", getAssignDate())
             .append("durationRequire", getDurationRequire())
             .append("totalDuration", getTotalDuration())
+            .append("importTaskAssignDate", getImportTaskAssignDate())
+            .append("importTaskFinishDate", getImportTaskFinishDate())
+            .append("importTaskDuration", getImportTaskDuration())
             .toString();
     }
 }

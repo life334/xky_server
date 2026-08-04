@@ -8,7 +8,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.xakcch.common.exception.ServiceException;
 import com.xakcch.project.domain.ProjContract;
+import com.xakcch.project.domain.ProjMaterial;
+import com.xakcch.project.domain.ProjProject;
 import com.xakcch.project.mapper.ProjContractMapper;
+import com.xakcch.project.mapper.ProjMaterialMapper;
+import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.service.IProjContractService;
 
 /**
@@ -22,13 +26,19 @@ public class ProjContractServiceImpl implements IProjContractService
     @Autowired
     private ProjContractMapper contractMapper;
 
+    @Autowired
+    private ProjProjectMapper projectMapper;
+
+    @Autowired
+    private ProjMaterialMapper materialMapper;
+
     /** 合同状态流转规则 */
     private static final Map<String, List<String>> STATUS_TRANSITIONS = new HashMap<>();
     static {
-        STATUS_TRANSITIONS.put("草稿",   Arrays.asList("已签署", "已取消"));
-        STATUS_TRANSITIONS.put("已签署", Arrays.asList("执行中", "已取消"));
-        STATUS_TRANSITIONS.put("执行中", Arrays.asList("已完成", "已取消"));
-        STATUS_TRANSITIONS.put("已完成", Arrays.asList("已归档", "已取消"));
+        STATUS_TRANSITIONS.put("draft",     Arrays.asList("signed", "cancelled"));
+        STATUS_TRANSITIONS.put("signed",    Arrays.asList("ongoing", "cancelled"));
+        STATUS_TRANSITIONS.put("ongoing",   Arrays.asList("completed", "cancelled"));
+        STATUS_TRANSITIONS.put("completed", Arrays.asList("archived", "cancelled"));
         // 已归档、已取消 → 终态，不允许流转
     }
 
@@ -71,7 +81,9 @@ public class ProjContractServiceImpl implements IProjContractService
     @Override
     public int insertContract(ProjContract contract)
     {
-        return contractMapper.insertContract(contract);
+        int rows = contractMapper.insertContract(contract);
+        tryAutoArchive(contract.getId());
+        return rows;
     }
 
     /**
@@ -80,7 +92,45 @@ public class ProjContractServiceImpl implements IProjContractService
     @Override
     public int updateContract(ProjContract contract)
     {
-        return contractMapper.updateContract(contract);
+        int rows = contractMapper.updateContract(contract);
+        tryAutoArchive(contract.getId());
+        return rows;
+    }
+
+    /**
+     * 自动归档：合同 archive_path 填写后，检查关联的已办结项目是否满足归档条件
+     */
+    private void tryAutoArchive(Long contractId)
+    {
+        if (contractId == null) return;
+        ProjContract contract = contractMapper.selectContractById(contractId);
+        if (contract == null || contract.getArchivePath() == null || contract.getArchivePath().isEmpty()) return;
+
+        // 获取该合同下所有项目
+        List<Map<String, Object>> projectMaps = projectMapper.selectProjectsByContractId(contractId);
+        for (Map<String, Object> pm : projectMaps)
+        {
+            Long projectId = toLong(pm.get("project_id"));
+            if (projectId == null) continue;
+            ProjProject project = projectMapper.selectProjectById(projectId);
+            if (project == null || !"closed".equals(project.getStatus())) continue;
+
+            ProjMaterial matQuery = new ProjMaterial();
+            matQuery.setProjectId(projectId);
+            List<ProjMaterial> materials = materialMapper.selectMaterialList(matQuery);
+            boolean hasResultType = materials.stream().anyMatch(m -> m.getResultType() != null && !m.getResultType().isEmpty());
+            if (hasResultType)
+            {
+                projectMapper.updateProjectStatus(projectId, "archived");
+            }
+        }
+    }
+
+    private Long toLong(Object obj)
+    {
+        if (obj == null) return null;
+        if (obj instanceof Number) return ((Number) obj).longValue();
+        try { return Long.parseLong(obj.toString()); } catch (Exception e) { return null; }
     }
 
     /**
@@ -114,7 +164,7 @@ public class ProjContractServiceImpl implements IProjContractService
         }
         String currentStatus = contract.getStatus();
         // 终态不可变更
-        if ("已归档".equals(currentStatus) || "已取消".equals(currentStatus))
+        if ("archived".equals(currentStatus) || "cancelled".equals(currentStatus))
         {
             throw new ServiceException("当前状态【" + currentStatus + "】为终态，不允许变更");
         }

@@ -11,7 +11,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="contactName"       column="contact_name"      />
         <result property="contactPhone"      column="contact_phone"     />
         <result property="resultType"        column="result_type"       />
+        <result property="archiveDir"        column="archive_dir"       />
         <result property="status"            column="status"            />
+        <result property="submitStatus"     column="submit_status"     />
         <result property="extraData"         column="extra_data"        />
         <result property="delFlag"           column="del_flag"          />
         <result property="createBy"          column="create_by"         />
@@ -20,20 +22,25 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="updateTime"        column="update_time"       />
         <result property="remark"            column="remark"            />
         <result property="projectName"       column="project_name"      />
+        <result property="projectCode"       column="project_code"      />
+        <result property="engineeringProject" column="engineering_project"/>
+        <result property="projectLocation"   column="project_location"  />
     </resultMap>
 
     <sql id="selectMaterialVo">
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
-               m.result_type, m.status, m.extra_data::text as extra_data, m.del_flag,
+               m.result_type, m.archive_dir, m.status, m.submit_status,
+               m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark
         from proj_material m
     </sql>
 
     <select id="selectMaterialList" parameterType="ProjMaterial" resultMap="ProjMaterialResult">
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
-               m.result_type, m.status, m.extra_data::text as extra_data, m.del_flag,
+               m.result_type, m.archive_dir, m.status, m.submit_status,
+               m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
-               p.project_name
+               p.project_name, p.project_code, p.engineering_project, p.project_location
         from proj_material m
         left join proj_project p on p.id = m.project_id
         where m.del_flag = '0'
@@ -49,14 +56,21 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="status != null and status != ''">
             and m.status = #{status}
         </if>
+        <if test="params.statusList != null and params.statusList.size() > 0">
+            and p.status in
+            <foreach item="s" collection="params.statusList" open="(" separator="," close=")">
+                #{s}
+            </foreach>
+        </if>
         order by m.id desc
     </select>
 
     <select id="selectMaterialById" parameterType="Long" resultMap="ProjMaterialResult">
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
-               m.result_type, m.status, m.extra_data::text as extra_data, m.del_flag,
+               m.result_type, m.archive_dir, m.status, m.submit_status,
+               m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
-               p.project_name
+               p.project_name, p.project_code, p.engineering_project, p.project_location
         from proj_material m
         left join proj_project p on p.id = m.project_id
         where m.id = #{id}
@@ -69,7 +83,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="contactName != null and contactName != ''">contact_name,</if>
             <if test="contactPhone != null and contactPhone != ''">contact_phone,</if>
             <if test="resultType != null and resultType != ''">result_type,</if>
+            <if test="archiveDir != null and archiveDir != ''">archive_dir,</if>
             <if test="status != null and status != ''">status,</if>
+            <if test="submitStatus != null and submitStatus != ''">submit_status,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
             <if test="remark != null and remark != ''">remark,</if>
             <if test="createBy != null and createBy != ''">create_by,</if>
@@ -80,7 +96,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="contactName != null and contactName != ''">#{contactName},</if>
             <if test="contactPhone != null and contactPhone != ''">#{contactPhone},</if>
             <if test="resultType != null and resultType != ''">#{resultType},</if>
+            <if test="archiveDir != null and archiveDir != ''">#{archiveDir},</if>
             <if test="status != null and status != ''">#{status},</if>
+            <if test="submitStatus != null and submitStatus != ''">#{submitStatus},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="remark != null and remark != ''">#{remark},</if>
             <if test="createBy != null and createBy != ''">#{createBy},</if>
@@ -96,7 +114,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="contactName != null">contact_name = #{contactName},</if>
             <if test="contactPhone != null">contact_phone = #{contactPhone},</if>
             <if test="resultType != null">result_type = #{resultType},</if>
+            <if test="archiveDir != null">archive_dir = #{archiveDir},</if>
             <if test="status != null">status = #{status},</if>
+            <if test="submitStatus != null and submitStatus != ''">submit_status = #{submitStatus},</if>
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>

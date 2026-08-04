@@ -92,6 +92,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="status != null and status != ''">
             AND p.status = #{status}
         </if>
+        <if test="params.statusList != null">
+            AND p.status in
+            <foreach collection="params.statusList" item="s" open="(" separator="," close=")">
+                #{s}
+            </foreach>
+        </if>
         <if test="params.beginTime != null and params.beginTime != ''">
             AND p.create_time &gt;= to_timestamp(#{params.beginTime}, 'YYYY-MM-DD HH24:MI:SS')
         </if>
@@ -204,7 +210,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </delete>
 
     <update id="completeProject" parameterType="Long">
-        update proj_project set status = '已办结', update_time = now() where id = #{id}
+        update proj_project set status = 'closed', update_time = now() where id = #{id}
     </update>
 
     <update id="updateProjectStatus">
