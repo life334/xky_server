@@ -62,6 +62,30 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 #{s}
             </foreach>
         </if>
+        <if test="submitStatus != null and submitStatus != ''">
+            AND m.submit_status = #{submitStatus}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (m.contact_name like concat('%', #{keyword}, '%')
+                 or m.archive_dir like concat('%', #{keyword}, '%')
+                 or p.project_code like concat('%', #{keyword}, '%')
+                 or p.project_name like concat('%', #{keyword}, '%'))
+        </if>
+        <if test="submitTimeBegin != null">
+            AND m.submit_time &gt;= #{submitTimeBegin}
+        </if>
+        <if test="submitTimeEnd != null">
+            AND m.submit_time &lt;= #{submitTimeEnd}
+        </if>
+        <if test="contactPhone != null and contactPhone != ''">
+            AND m.contact_phone like concat('%', #{contactPhone}, '%')
+        </if>
+        <if test="projectCode != null and projectCode != ''">
+            AND p.project_code like concat('%', #{projectCode}, '%')
+        </if>
+        <if test="projectLocation != null and projectLocation != ''">
+            AND p.project_location like concat('%', #{projectLocation}, '%')
+        </if>
         order by m.id desc
     </select>
 
@@ -136,5 +160,16 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         update proj_material set status = #{status}, update_time = now(), update_by = #{updateBy}
         where id = #{id}
     </update>
+
+    <!-- 按状态统计资料数量 -->
+    <select id="selectMaterialStatusCounts" resultType="map">
+        select m.status, count(1) as cnt
+        from proj_material m
+        left join proj_project p on p.id = m.project_id
+        where m.del_flag = '0'
+          and p.status in ('closed', 'archived')
+        group by m.status
+        order by m.status
+    </select>
 
 </mapper>

@@ -91,6 +91,41 @@ public class ProjContract extends BaseEntity
     /** 关联项目数（非数据库字段，列表查询时填充） */
     private Integer projectCount;
 
+    // ===== 以下为 transient 查询参数（不入库） =====
+
+    /** 全局搜索关键词 */
+    private transient String keyword;
+
+    /** 签署日期范围-开始 */
+    private transient Date signDateBegin;
+
+    /** 签署日期范围-结束 */
+    private transient Date signDateEnd;
+
+    /** 委托时间范围-开始 */
+    private transient Date entrustDateBegin;
+
+    /** 委托时间范围-结束 */
+    private transient Date entrustDateEnd;
+
+    /** 合同金额下限 */
+    private transient BigDecimal contractAmountMin;
+
+    /** 合同金额上限 */
+    private transient BigDecimal contractAmountMax;
+
+    /** 审核日期范围-开始 */
+    private transient Date auditDateBegin;
+
+    /** 审核日期范围-结束 */
+    private transient Date auditDateEnd;
+
+    /** 完成日期范围-开始 */
+    private transient Date finishDateBegin;
+
+    /** 完成日期范围-结束 */
+    private transient Date finishDateEnd;
+
     // ===== getter/setter =====
 
     public Long getId()
@@ -322,6 +357,29 @@ public class ProjContract extends BaseEntity
     {
         this.projectCount = projectCount;
     }
+
+    public String getKeyword() { return keyword; }
+    public void setKeyword(String keyword) { this.keyword = keyword; }
+    public Date getSignDateBegin() { return signDateBegin; }
+    public void setSignDateBegin(Date signDateBegin) { this.signDateBegin = signDateBegin; }
+    public Date getSignDateEnd() { return signDateEnd; }
+    public void setSignDateEnd(Date signDateEnd) { this.signDateEnd = signDateEnd; }
+    public Date getEntrustDateBegin() { return entrustDateBegin; }
+    public void setEntrustDateBegin(Date entrustDateBegin) { this.entrustDateBegin = entrustDateBegin; }
+    public Date getEntrustDateEnd() { return entrustDateEnd; }
+    public void setEntrustDateEnd(Date entrustDateEnd) { this.entrustDateEnd = entrustDateEnd; }
+    public BigDecimal getContractAmountMin() { return contractAmountMin; }
+    public void setContractAmountMin(BigDecimal contractAmountMin) { this.contractAmountMin = contractAmountMin; }
+    public BigDecimal getContractAmountMax() { return contractAmountMax; }
+    public void setContractAmountMax(BigDecimal contractAmountMax) { this.contractAmountMax = contractAmountMax; }
+    public Date getAuditDateBegin() { return auditDateBegin; }
+    public void setAuditDateBegin(Date auditDateBegin) { this.auditDateBegin = auditDateBegin; }
+    public Date getAuditDateEnd() { return auditDateEnd; }
+    public void setAuditDateEnd(Date auditDateEnd) { this.auditDateEnd = auditDateEnd; }
+    public Date getFinishDateBegin() { return finishDateBegin; }
+    public void setFinishDateBegin(Date finishDateBegin) { this.finishDateBegin = finishDateBegin; }
+    public Date getFinishDateEnd() { return finishDateEnd; }
+    public void setFinishDateEnd(Date finishDateEnd) { this.finishDateEnd = finishDateEnd; }
 
     @Override
     public String toString() {

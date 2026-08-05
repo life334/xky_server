@@ -1,6 +1,7 @@
 package com.xakcch.project.service;
 
 import java.util.List;
+import java.util.Map;
 import com.xakcch.project.domain.ProjMaterial;
 import com.xakcch.project.domain.ProjMaterialFlow;
 
@@ -36,4 +37,11 @@ public interface IProjMaterialService
      * 查询流转记录
      */
     public List<ProjMaterialFlow> getFlowList(Long materialId);
+
+    /**
+     * 统计各状��下的资料数量
+     *
+     * @return [{ status: "pending", cnt: 5 }, ...]
+     */
+    public List<Map<String, Object>> getStatusCounts();
 }

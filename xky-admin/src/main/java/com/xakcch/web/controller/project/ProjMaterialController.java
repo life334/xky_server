@@ -75,6 +75,17 @@ public class ProjMaterialController extends BaseController
     }
 
     /**
+     * 统计各状态下的资料数量（状态胶囊导航用）
+     */
+    @PreAuthorize("@ss.hasPermi('project:material:list')")
+    @GetMapping("/statusCounts")
+    public AjaxResult statusCounts()
+    {
+        List<Map<String, Object>> list = materialService.getStatusCounts();
+        return success(list);
+    }
+
+    /**
      * 根据ID获取详细信息
      */
     @PreAuthorize("@ss.hasPermi('project:material:query')")

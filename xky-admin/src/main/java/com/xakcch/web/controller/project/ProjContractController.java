@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import com.xakcch.common.annotation.Log;
 import com.xakcch.common.core.controller.BaseController;
@@ -62,6 +63,29 @@ public class ProjContractController extends BaseController
         List<ProjContract> list = contractService.selectContractList(contract);
         ExcelUtil<ProjContract> util = new ExcelUtil<ProjContract>(ProjContract.class);
         util.exportExcel(response, list, "合同信息数据");
+    }
+
+    /**
+     * 统计各状态下的合同数量（状态胶囊导航用）
+     */
+    @PreAuthorize("@ss.hasPermi('project:contract:list')")
+    @GetMapping("/statusCounts")
+    public AjaxResult statusCounts()
+    {
+        List<Map<String, Object>> list = contractService.getStatusCounts();
+        return success(list);
+    }
+
+    /**
+     * 查询字段去重值列表（高级筛选下拉选项用）
+     * 支持字段：clientUnit（委托单位）、contactName（联系人）、contractType（合同类型）
+     */
+    @PreAuthorize("@ss.hasPermi('project:contract:list')")
+    @GetMapping("/distinctValues")
+    public AjaxResult distinctValues(@RequestParam String field)
+    {
+        List<String> list = contractService.getDistinctValues(field);
+        return success(list);
     }
 
     /**

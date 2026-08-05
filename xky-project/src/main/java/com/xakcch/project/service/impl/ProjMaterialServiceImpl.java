@@ -2,6 +2,7 @@ package com.xakcch.project.service.impl;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -143,5 +144,11 @@ public class ProjMaterialServiceImpl implements IProjMaterialService
     public List<ProjMaterialFlow> getFlowList(Long materialId)
     {
         return flowMapper.selectFlowListByMaterialId(materialId);
+    }
+
+    @Override
+    public List<Map<String, Object>> getStatusCounts()
+    {
+        return materialMapper.selectMaterialStatusCounts();
     }
 }

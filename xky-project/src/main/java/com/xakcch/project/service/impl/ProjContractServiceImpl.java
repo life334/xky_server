@@ -176,4 +176,29 @@ public class ProjContractServiceImpl implements IProjContractService
         }
         return contractMapper.updateContractStatus(id, targetStatus);
     }
+
+    @Override
+    public List<Map<String, Object>> getStatusCounts()
+    {
+        return contractMapper.selectContractStatusCounts();
+    }
+
+    /** 允许去重查询的字段白名单（防 SQL 注入） */
+    private static final List<String> DISTINCT_FIELDS = Arrays.asList("client_unit", "contact_name", "contract_type");
+
+    @Override
+    public List<String> getDistinctValues(String field)
+    {
+        String column = field == null ? "" : field.trim();
+        // 驼峰转下划线
+        if (column.contains("_") == false)
+        {
+            column = column.replaceAll("([A-Z])", "_$1").toLowerCase();
+        }
+        if (!DISTINCT_FIELDS.contains(column))
+        {
+            throw new ServiceException("不支持的字段: " + field);
+        }
+        return contractMapper.selectDistinctValues(column);
+    }
 }

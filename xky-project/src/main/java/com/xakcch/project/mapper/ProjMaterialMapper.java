@@ -1,6 +1,7 @@
 package com.xakcch.project.mapper;
 
 import java.util.List;
+import java.util.Map;
 import org.apache.ibatis.annotations.Param;
 import com.xakcch.project.domain.ProjMaterial;
 
@@ -40,4 +41,11 @@ public interface ProjMaterialMapper
      * 更新资料状态
      */
     public int updateMaterialStatus(@Param("id") Long id, @Param("status") String status, @Param("updateBy") String updateBy);
+
+    /**
+     * 按状态统计资料数量（状态胶囊导航用）
+     *
+     * @return [{ status: "pending", cnt: 5 }, ...]
+     */
+    public List<Map<String, Object>> selectMaterialStatusCounts();
 }

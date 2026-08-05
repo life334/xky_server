@@ -82,6 +82,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="contactName != null and contactName != ''">
             AND p.contact_name like concat('%', #{contactName}, '%')
         </if>
+        <if test="contactPhone != null and contactPhone != ''">
+            AND p.contact_phone like concat('%', #{contactPhone}, '%')
+        </if>
         <if test="projectLocation != null and projectLocation != ''">
             AND p.project_location like concat('%', #{projectLocation}, '%')
         </if>

@@ -1,6 +1,7 @@
 package com.xakcch.project.service;
 
 import java.util.List;
+import java.util.Map;
 import com.xakcch.project.domain.ProjContract;
 
 /**
@@ -74,4 +75,19 @@ public interface IProjContractService
      * @return 结果
      */
     public int changeContractStatus(Long id, String targetStatus);
+
+    /**
+     * 统计各状态下的合同数量
+     *
+     * @return [{ status: "signed", cnt: 10 }, ...]
+     */
+    public List<Map<String, Object>> getStatusCounts();
+
+    /**
+     * 查询字段去重值（高级筛选下拉选项用）
+     *
+     * @param field 字段名（白名单校验）
+     * @return 去重值列表
+     */
+    public List<String> getDistinctValues(String field);
 }

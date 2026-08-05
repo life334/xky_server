@@ -91,4 +91,19 @@ public interface ProjContractMapper
      * @return 超时合同列表
      */
     public List<Map<String, Object>> selectTimeoutContracts();
+
+    /**
+     * 按状态统计合同数量（状态胶囊导航用）
+     *
+     * @return [{ status: "signed", cnt: 10 }, ...]
+     */
+    public List<Map<String, Object>> selectContractStatusCounts();
+
+    /**
+     * 查询字段去重值（高级筛选下拉选项用）
+     *
+     * @param field 列名（白名单校验）
+     * @return 去重值列表
+     */
+    public List<String> selectDistinctValues(@Param("field") String field);
 }

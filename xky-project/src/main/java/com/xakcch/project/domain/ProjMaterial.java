@@ -63,6 +63,17 @@ public class ProjMaterial extends BaseEntity
     /** 项目名称（JOIN proj_project） */
     private String projectName;
 
+    // ===== 以下为 transient 查询参数（不入库） =====
+
+    /** 全局搜索关键词 */
+    private transient String keyword;
+
+    /** 提交时间范围-开始 */
+    private transient Date submitTimeBegin;
+
+    /** 提交时间范围-结束 */
+    private transient Date submitTimeEnd;
+
     // ===== getter/setter =====
 
     public Long getId()
@@ -214,6 +225,13 @@ public class ProjMaterial extends BaseEntity
     {
         this.projectName = projectName;
     }
+
+    public String getKeyword() { return keyword; }
+    public void setKeyword(String keyword) { this.keyword = keyword; }
+    public Date getSubmitTimeBegin() { return submitTimeBegin; }
+    public void setSubmitTimeBegin(Date submitTimeBegin) { this.submitTimeBegin = submitTimeBegin; }
+    public Date getSubmitTimeEnd() { return submitTimeEnd; }
+    public void setSubmitTimeEnd(Date submitTimeEnd) { this.submitTimeEnd = submitTimeEnd; }
 
     @Override
     public String toString() {

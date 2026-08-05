@@ -147,6 +147,7 @@ insert into sys_dict_type values(9,  '付款类型',         'proj_payment_type'
 insert into sys_dict_type values(10, '付款到账状态',     'proj_payment_received_status',  '0', 'admin', now(), '', null, '付款到账状态列表');
 insert into sys_dict_type values(11, '付款概览状态',     'proj_payment_overview_status',  '0', 'admin', now(), '', null, '付款概览状态列表');
 insert into sys_dict_type values(12, '资料提交状态',     'proj_material_submit_status',   '0', 'admin', now(), '', null, '资料提交状态列表');
+insert into sys_dict_type values(13, '合同类型',         'proj_contract_type',            '0', 'admin', now(), '', null, '合同类型列表');
 
 
 -- ----------------------------
@@ -209,6 +210,13 @@ insert into sys_dict_data values(37, 3, '已结清',   'settled',   'proj_paymen
 -- 资料提交状态列表
 insert into sys_dict_data values(38, 1, '待提交',   'pending',   'proj_material_submit_status',  '', 'warning',  'Y', '0', 'admin', now(), '', null, '待提交');
 insert into sys_dict_data values(39, 2, '已提交',   'submitted', 'proj_material_submit_status',  '', 'success',  'N', '0', 'admin', now(), '', null, '已提交');
+
+-- 合同类型列表
+insert into sys_dict_data values(40, 1, '勘察合同',   'survey',        'proj_contract_type', '', '',       'Y', '0', 'admin', now(), '', null, '勘察合同');
+insert into sys_dict_data values(41, 2, '测绘合同',   'mapping',       'proj_contract_type', '', '',       'N', '0', 'admin', now(), '', null, '测绘合同');
+insert into sys_dict_data values(42, 3, '设计合同',   'design',        'proj_contract_type', '', '',       'N', '0', 'admin', now(), '', null, '设计合同');
+insert into sys_dict_data values(43, 4, '施工合同',   'construction',  'proj_contract_type', '', '',       'N', '0', 'admin', now(), '', null, '施工合同');
+insert into sys_dict_data values(44, 5, '其他合同',   'other',         'proj_contract_type', '', '',       'N', '0', 'admin', now(), '', null, '其他合同');
 
 
 -- ----------------------------

@@ -72,6 +72,42 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="status != null and status != ''">
             AND status = #{status}
         </if>
+        <if test="keyword != null and keyword != ''">
+            AND (contract_no like concat('%', #{keyword}, '%')
+                 or contract_name like concat('%', #{keyword}, '%')
+                 or client_unit like concat('%', #{keyword}, '%')
+                 or contact_name like concat('%', #{keyword}, '%'))
+        </if>
+        <if test="signDateBegin != null">
+            AND sign_date &gt;= #{signDateBegin}
+        </if>
+        <if test="signDateEnd != null">
+            AND sign_date &lt;= #{signDateEnd}
+        </if>
+        <if test="entrustDateBegin != null">
+            AND entrust_date &gt;= #{entrustDateBegin}
+        </if>
+        <if test="entrustDateEnd != null">
+            AND entrust_date &lt;= #{entrustDateEnd}
+        </if>
+        <if test="auditDateBegin != null">
+            AND audit_date &gt;= #{auditDateBegin}
+        </if>
+        <if test="auditDateEnd != null">
+            AND audit_date &lt;= #{auditDateEnd}
+        </if>
+        <if test="finishDateBegin != null">
+            AND finish_date &gt;= #{finishDateBegin}
+        </if>
+        <if test="finishDateEnd != null">
+            AND finish_date &lt;= #{finishDateEnd}
+        </if>
+        <if test="contractAmountMin != null">
+            AND contract_amount &gt;= #{contractAmountMin}
+        </if>
+        <if test="contractAmountMax != null">
+            AND contract_amount &lt;= #{contractAmountMax}
+        </if>
         ) t
         order by create_time desc
     </select>
@@ -207,6 +243,23 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           and entrust_date &lt; now() - interval '7 days'
           and finish_date is null
         order by entrust_date asc
+    </select>    <!-- 按状态统计合同数量（NULL/空状态归为 draft） -->
+    <select id="selectContractStatusCounts" resultType="map">
+        select COALESCE(NULLIF(status, ''), 'draft') as status, count(1) as cnt
+        from proj_contract
+        where del_flag = '0'
+        group by COALESCE(NULLIF(status, ''), 'draft')
+        order by status
+    </select>
+
+    <!-- 查询字段去重值（高级筛选下拉选项用） -->
+    <select id="selectDistinctValues" resultType="string">
+        select distinct ${field}
+        from proj_contract
+        where del_flag = '0'
+          and ${field} is not null
+          and ${field} != ''
+        order by ${field}
     </select>
 
 </mapper>
