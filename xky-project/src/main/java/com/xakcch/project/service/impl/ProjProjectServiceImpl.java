@@ -529,4 +529,22 @@ public class ProjProjectServiceImpl implements IProjProjectService
             taskMapper.deleteTaskByProjectIdAndUserIds(projectId, toRemove);
         }
     }
+
+    @Override
+    public List<Map<String, Object>> getStatusCounts()
+    {
+        return projectMapper.selectProjectStatusCounts();
+    }
+
+    @Override
+    public List<String> getDistinctValues(String field)
+    {
+        // 字段白名单校验，防止 SQL 注入
+        String[] allowedFields = {"client_unit", "engineering_project"};
+        if (!Arrays.asList(allowedFields).contains(field))
+        {
+            throw new ServiceException("不支持的查询字段: " + field);
+        }
+        return projectMapper.selectDistinctValues(field);
+    }
 }

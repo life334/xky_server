@@ -92,4 +92,19 @@ public interface ProjProjectMapper
      * @return 项目列表（Map: project_id, project_code, project_name, engineering_project, client_unit, category_name, contract_price）
      */
     public List<Map<String, Object>> selectProjectsByContractId(Long contractId);
+
+    /**
+     * 按状态统计项目数量（胶囊导航用）
+     *
+     * @return [{ status: "ongoing", cnt: 15 }, ...]
+     */
+    public List<Map<String, Object>> selectProjectStatusCounts();
+
+    /**
+     * 查询某字段的去重值列表（高级筛选下拉选项用）
+     *
+     * @param field 数据库列名（仅限白名单：client_unit, engineering_project）
+     * @return 去重字符串列表
+     */
+    public List<String> selectDistinctValues(@Param("field") String field);
 }

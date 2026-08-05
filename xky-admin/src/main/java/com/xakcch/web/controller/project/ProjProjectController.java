@@ -1,6 +1,7 @@
 package com.xakcch.web.controller.project;
 
 import java.util.List;
+import java.util.Map;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import com.xakcch.common.annotation.Log;
@@ -58,6 +60,29 @@ public class ProjProjectController extends BaseController
         List<ProjProject> list = projectService.selectProjectList(project);
         ExcelUtil<ProjProject> util = new ExcelUtil<ProjProject>(ProjProject.class);
         util.exportExcel(response, list, "项目信息数据");
+    }
+
+    /**
+     * 查询字段去重值列表（高级筛选下拉选项用）
+     * 支持字段：clientUnit（委托单位）、engineeringProject（工程项目）
+     */
+    @PreAuthorize("@ss.hasPermi('project:project:list')")
+    @GetMapping("/distinctValues")
+    public AjaxResult distinctValues(@RequestParam String field)
+    {
+        List<String> list = projectService.getDistinctValues(field);
+        return success(list);
+    }
+
+    /**
+     * 统计各状态下的项目数量（状态胶囊导航用）
+     */
+    @PreAuthorize("@ss.hasPermi('project:project:list')")
+    @GetMapping("/statusCounts")
+    public AjaxResult statusCounts()
+    {
+        List<Map<String, Object>> list = projectService.getStatusCounts();
+        return success(list);
     }
 
     /**

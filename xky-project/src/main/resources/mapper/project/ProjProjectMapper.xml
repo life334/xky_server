@@ -71,6 +71,34 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             where t.project_id = p.id and t.del_flag = '0'
         ) ta on true
         where p.del_flag = '0'
+        <if test="keyword != null and keyword != ''">
+            AND (p.project_code like concat('%', #{keyword}, '%')
+                OR p.project_name like concat('%', #{keyword}, '%')
+                OR p.client_unit like concat('%', #{keyword}, '%')
+                OR p.engineering_project like concat('%', #{keyword}, '%')
+                OR p.contact_name like concat('%', #{keyword}, '%')
+                OR p.project_location like concat('%', #{keyword}, '%'))
+        </if>
+        <if test="contactName != null and contactName != ''">
+            AND p.contact_name like concat('%', #{contactName}, '%')
+        </if>
+        <if test="projectLocation != null and projectLocation != ''">
+            AND p.project_location like concat('%', #{projectLocation}, '%')
+        </if>
+        <if test="leaderId != null">
+            AND EXISTS (select 1 from proj_leader l
+                where l.project_id = p.id and l.user_id = #{leaderId} and l.del_flag = '0')
+        </if>
+        <if test="assignDateBegin != null and assignDateBegin != ''">
+            AND EXISTS (select 1 from proj_task t
+                where t.project_id = p.id and t.assign_date &gt;= to_date(#{assignDateBegin}, 'YYYY-MM-DD')
+                and t.del_flag = '0')
+        </if>
+        <if test="assignDateEnd != null and assignDateEnd != ''">
+            AND EXISTS (select 1 from proj_task t
+                where t.project_id = p.id and t.assign_date &lt;= to_date(#{assignDateEnd}, 'YYYY-MM-DD')
+                and t.del_flag = '0')
+        </if>
         <if test="projectCode != null and projectCode != ''">
             AND p.project_code like concat('%', #{projectCode}, '%')
         </if>
@@ -237,6 +265,25 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where p.contract_id = #{contractId}
           and p.del_flag = '0'
         order by p.create_time
+    </select>
+
+    <!-- 查询某字段的去重值列表（高级筛选下拉选项用） -->
+    <select id="selectDistinctValues" resultType="string">
+        select distinct ${field} as val
+        from proj_project
+        where del_flag = '0'
+          and ${field} is not null
+          and ${field} != ''
+        order by ${field}
+    </select>
+
+    <!-- 各状态下项目数量统计 -->
+    <select id="selectProjectStatusCounts" resultType="map">
+        select status, count(1) as cnt
+        from proj_project
+        where del_flag = '0'
+        group by status
+        order by status
     </select>
 
 </mapper>

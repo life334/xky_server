@@ -1,6 +1,7 @@
 package com.xakcch.project.service;
 
 import java.util.List;
+import java.util.Map;
 import com.xakcch.project.domain.ProjProject;
 
 /**
@@ -101,4 +102,19 @@ public interface IProjProjectService
      * @return 成功数量
      */
     public int batchInsertProject(List<ProjProject> projectList, String operName);
+
+    /**
+     * 统计各状态下的项目数量
+     *
+     * @return [{ status: "ongoing", cnt: 15 }, ...]
+     */
+    public List<Map<String, Object>> getStatusCounts();
+
+    /**
+     * 查询某字段的去重值列表（高级筛选下拉选项用）
+     *
+     * @param field 字段标识：clientUnit / engineeringProject
+     * @return 去重字符串列表
+     */
+    public List<String> getDistinctValues(String field);
 }

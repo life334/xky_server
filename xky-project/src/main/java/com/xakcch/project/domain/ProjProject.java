@@ -105,6 +105,20 @@ public class ProjProject extends BaseEntity
     @Excel(name = "总时长")
     private Integer importTaskDuration;
 
+    // ===== 以下为列表查询专用字段 =====
+
+    /** 全局关键字搜索（匹配工程编号/项目名称/委托单位/工程项目/联系人/工程地点） */
+    private String keyword;
+
+    /** 负责人筛选（proj_leader.user_id） */
+    private Long leaderId;
+
+    /** 安排日期范围起始 */
+    private String assignDateBegin;
+
+    /** 安排日期范围结束 */
+    private String assignDateEnd;
+
     public Long getId()
     {
         return id;
@@ -343,6 +357,46 @@ public class ProjProject extends BaseEntity
     public void setImportTaskDuration(Integer importTaskDuration)
     {
         this.importTaskDuration = importTaskDuration;
+    }
+
+    public String getKeyword()
+    {
+        return keyword;
+    }
+
+    public void setKeyword(String keyword)
+    {
+        this.keyword = keyword;
+    }
+
+    public Long getLeaderId()
+    {
+        return leaderId;
+    }
+
+    public void setLeaderId(Long leaderId)
+    {
+        this.leaderId = leaderId;
+    }
+
+    public String getAssignDateBegin()
+    {
+        return assignDateBegin;
+    }
+
+    public void setAssignDateBegin(String assignDateBegin)
+    {
+        this.assignDateBegin = assignDateBegin;
+    }
+
+    public String getAssignDateEnd()
+    {
+        return assignDateEnd;
+    }
+
+    public void setAssignDateEnd(String assignDateEnd)
+    {
+        this.assignDateEnd = assignDateEnd;
     }
 
     @Override
