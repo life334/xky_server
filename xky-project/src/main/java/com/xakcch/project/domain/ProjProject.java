@@ -60,10 +60,21 @@ public class ProjProject extends BaseEntity
     /** 删除标志（0正常 2删除） */
     private String delFlag;
 
+    /** 安排日期 */
+    @Excel(name = "安排日期", dateFormat = "yyyy-MM-dd")
+    private java.util.Date assignDate;
+
+    /** 工期要求（天） */
+    @Excel(name = "工期要求")
+    private Integer durationRequire;
+
+    /** 总时长（天） */
+    @Excel(name = "总时长")
+    private Integer totalDuration;
+
     // ===== 以下为非持久化字段，列表/详情展示用 =====
 
-    /** 项目类别名称（JOIN proj_category） */
-    @Excel(name = "项目类别")
+    /** 项目类别名称（JOIN proj_category，仅列表展示用，不再参与Excel导入导出） */
     private String categoryName;
 
     /** 合同名称（JOIN proj_contract） */
@@ -79,17 +90,6 @@ public class ProjProject extends BaseEntity
     /** 【导入】备注 → BaseEntity.remark */
     @Excel(name = "备注")
     private String importRemark;
-
-    // ===== 以下为任务聚合字段（列表展示用） =====
-
-    /** 最早安排日期（MIN proj_task.assign_date） */
-    private java.util.Date assignDate;
-
-    /** 工期要求天数（MAX required_finish_date - MIN assign_date） */
-    private Integer durationRequire;
-
-    /** 总时长天数（MAX actual_finish_date - MIN assign_date） */
-    private Integer totalDuration;
 
     // ===== 以下为 Excel 导入专用字段（transient，不存入 proj_project） =====
 

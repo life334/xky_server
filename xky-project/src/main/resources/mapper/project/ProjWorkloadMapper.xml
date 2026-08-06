@@ -25,7 +25,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="updateTime"        column="update_time"       />
         <result property="remark"            column="remark"            />
         <result property="projectName"       column="project_name"      />
-        <result property="userName"          column="user_name"         />
+        <result property="userName"          column="nick_name"         />
         <result property="categoryName"      column="category_name"     />
     </resultMap>
 
@@ -49,7 +49,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.price_source, w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
-               u.user_name,
+               u.nick_name,
                c.name as category_name
         from proj_workload w
         left join proj_project p on p.id = w.project_id
@@ -80,7 +80,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.price_source, w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
-               u.user_name,
+               u.nick_name,
                c.name as category_name
         from proj_workload w
         left join proj_project p on p.id = w.project_id
@@ -163,14 +163,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.price_source, w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
-               u.user_name,
+               u.nick_name,
                c.name as category_name
         from proj_workload w
         left join proj_project p on p.id = w.project_id
         left join sys_user u on u.user_id = w.user_id
         left join proj_category c on c.id = w.category_id
         where w.project_id = #{projectId} and w.del_flag = '0'
-        order by u.user_name, c.name
+        order by u.nick_name, c.name
     </select>
 
     <insert id="upsertWorkload" parameterType="ProjWorkload">

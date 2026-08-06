@@ -19,6 +19,7 @@ import com.xakcch.project.domain.ProjPayment;
 import com.xakcch.project.domain.ProjProject;
 import com.xakcch.project.domain.ProjWorkload;
 import com.xakcch.project.mapper.ProjContractPriceMapper;
+import com.xakcch.project.mapper.ProjLeaderMapper;
 import com.xakcch.project.mapper.ProjPaymentMapper;
 import com.xakcch.project.mapper.ProjWorkloadMapper;
 import com.xakcch.project.service.IProjProjectService;
@@ -43,6 +44,9 @@ public class ProjSettlementController extends BaseController
 
     @Autowired
     private ProjContractPriceMapper contractPriceMapper;
+
+    @Autowired
+    private ProjLeaderMapper leaderMapper;
 
     private static final SimpleDateFormat DATE_FMT = new SimpleDateFormat("yyyy-MM-dd");
 
@@ -130,6 +134,7 @@ public class ProjSettlementController extends BaseController
         result.put("workloads", workloads);
         result.put("payments", payments);
         result.put("contractPrices", contractPrices);
+        result.put("leaderIds", leaderMapper.selectLeaderIdsByProjectId(projectId));
         return success(result);
     }
 
@@ -152,8 +157,8 @@ public class ProjSettlementController extends BaseController
         String remark = (String) params.getOrDefault("remark", "");
 
         // 1. Save payments（预付款 + 尾款）
-        savePaymentIfPresent((Map<String, Object>) params.get("prepay"), projectId, "预付款", username, remark);
-        savePaymentIfPresent((Map<String, Object>) params.get("tail"), projectId, "尾款", username, remark);
+        savePaymentIfPresent((Map<String, Object>) params.get("prepay"), projectId, "advance", username, remark);
+        savePaymentIfPresent((Map<String, Object>) params.get("tail"), projectId, "final", username, remark);
 
         // 2. Save workloads
         @SuppressWarnings("unchecked")
@@ -207,8 +212,8 @@ public class ProjSettlementController extends BaseController
         ProjPayment tail = null;
         for (ProjPayment pm : payments)
         {
-            if ("预付款".equals(pm.getPaymentType())) prepay = pm;
-            else if ("尾款".equals(pm.getPaymentType())) tail = pm;
+            if ("advance".equals(pm.getPaymentType())) prepay = pm;
+            else if ("final".equals(pm.getPaymentType())) tail = pm;
         }
         if (prepay != null)
         {
@@ -293,16 +298,13 @@ public class ProjSettlementController extends BaseController
         pm.setProjectId(projectId);
         pm.setPaymentType(type);
         pm.setAmount(toBigDecimal(payMap.get("amount")));
-        Object payTime = payMap.get("payTime");
-        if (payTime instanceof Date)
-        {
-            pm.setPayTime((Date) payTime);
-        }
+        pm.setPayTime(toDate(payMap.get("payTime")));
+        // 空值防御：金额和日期都为空时不插入付款记录
+        if (pm.getAmount() == null && pm.getPayTime() == null) return;
         pm.setPayUnit((String) payMap.get("payUnit"));
         pm.setPayMethod((String) payMap.get("payMethod"));
         pm.setInvoiceNo((String) payMap.get("invoiceNo"));
-        Object invDate = payMap.get("invoiceDate");
-        if (invDate instanceof Date) pm.setInvoiceDate((Date) invDate);
+        pm.setInvoiceDate(toDate(payMap.get("invoiceDate")));
         pm.setInvoiceAmount(toBigDecimal(payMap.get("invoiceAmount")));
         pm.setInvoiceStatus((String) payMap.get("invoiceStatus"));
         pm.setRemark(remark);
@@ -324,5 +326,12 @@ public class ProjSettlementController extends BaseController
         if (obj == null) return null;
         if (obj instanceof BigDecimal) return (BigDecimal) obj;
         try { return new BigDecimal(obj.toString()); } catch (Exception e) { return null; }
+    }
+
+    private Date toDate(Object obj)
+    {
+        if (obj == null) return null;
+        if (obj instanceof Date) return (Date) obj;
+        try { return DATE_FMT.parse(obj.toString()); } catch (Exception e) { return null; }
     }
 }

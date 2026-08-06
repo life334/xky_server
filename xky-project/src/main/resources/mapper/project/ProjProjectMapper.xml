@@ -37,6 +37,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select p.id, p.project_code, p.project_name, p.engineering_project,
                p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
                p.project_location, p.contract_id, p.status,
+               p.assign_date, p.duration_require, p.total_duration,
                p.extra_data::text as extra_data, p.del_flag,
                p.create_by, p.create_time, p.update_by, p.update_time, p.remark
         from proj_project p
@@ -46,14 +47,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select p.id, p.project_code, p.project_name, p.engineering_project,
                p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
                p.project_location, p.contract_id, p.status,
+               p.assign_date, p.duration_require, p.total_duration,
                p.extra_data::text as extra_data, p.del_flag,
                p.create_by, p.create_time, p.update_by, p.update_time, p.remark,
                c.name as category_name,
                ct.contract_name,
-               coalesce(ln.leader_names, '') as leader_names,
-               ta.assign_date,
-               ta.duration_require,
-               ta.total_duration
+               coalesce(ln.leader_names, '') as leader_names
         from proj_project p
         left join proj_category c on c.id = p.project_category_id
         left join proj_contract ct on ct.id = p.contract_id
@@ -63,13 +62,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             inner join sys_user u on u.user_id = l.user_id
             where l.project_id = p.id and l.del_flag = '0'
         ) ln on true
-        left join lateral (
-            select min(t.assign_date) as assign_date,
-                   (max(t.required_finish_date) - min(t.assign_date)) as duration_require,
-                   (max(t.actual_finish_date) - min(t.assign_date)) as total_duration
-        from proj_task t
-            where t.project_id = p.id and t.del_flag = '0'
-        ) ta on true
         where p.del_flag = '0'
         <if test="keyword != null and keyword != ''">
             AND (p.project_code like concat('%', #{keyword}, '%')
@@ -93,14 +85,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 where l.project_id = p.id and l.user_id = #{leaderId} and l.del_flag = '0')
         </if>
         <if test="assignDateBegin != null and assignDateBegin != ''">
-            AND EXISTS (select 1 from proj_task t
-                where t.project_id = p.id and t.assign_date &gt;= to_date(#{assignDateBegin}, 'YYYY-MM-DD')
-                and t.del_flag = '0')
+            AND p.assign_date &gt;= to_date(#{assignDateBegin}, 'YYYY-MM-DD')
         </if>
         <if test="assignDateEnd != null and assignDateEnd != ''">
-            AND EXISTS (select 1 from proj_task t
-                where t.project_id = p.id and t.assign_date &lt;= to_date(#{assignDateEnd}, 'YYYY-MM-DD')
-                and t.del_flag = '0')
+            AND p.assign_date &lt;= to_date(#{assignDateEnd}, 'YYYY-MM-DD')
         </if>
         <if test="projectCode != null and projectCode != ''">
             AND p.project_code like concat('%', #{projectCode}, '%')
@@ -142,14 +130,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select p.id, p.project_code, p.project_name, p.engineering_project,
                p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
                p.project_location, p.contract_id, p.status,
+               p.assign_date, p.duration_require, p.total_duration,
                p.extra_data::text as extra_data, p.del_flag,
                p.create_by, p.create_time, p.update_by, p.update_time, p.remark,
                c.name as category_name,
                ct.contract_name,
-               coalesce(ln.leader_names, '') as leader_names,
-               ta.assign_date,
-               ta.duration_require,
-               ta.total_duration
+               coalesce(ln.leader_names, '') as leader_names
         from proj_project p
         left join proj_category c on c.id = p.project_category_id
         left join proj_contract ct on ct.id = p.contract_id
@@ -159,13 +145,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             inner join sys_user u on u.user_id = l.user_id
             where l.project_id = p.id and l.del_flag = '0'
         ) ln on true
-        left join lateral (
-            select min(t.assign_date) as assign_date,
-                   (max(t.required_finish_date) - min(t.assign_date)) as duration_require,
-                   (max(t.actual_finish_date) - min(t.assign_date)) as total_duration
-        from proj_task t
-            where t.project_id = p.id and t.del_flag = '0'
-        ) ta on true
         where p.id = #{id}
     </select>
 
@@ -186,6 +165,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="projectLocation != null">project_location,</if>
             <if test="contractId != null">contract_id,</if>
             <if test="status != null and status != ''">status,</if>
+            <if test="assignDate != null">assign_date,</if>
+            <if test="durationRequire != null">duration_require,</if>
+            <if test="totalDuration != null">total_duration,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
             <if test="remark != null and remark != ''">remark,</if>
             <if test="createBy != null and createBy != ''">create_by,</if>
@@ -201,6 +183,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="projectLocation != null">#{projectLocation},</if>
             <if test="contractId != null">#{contractId},</if>
             <if test="status != null and status != ''">#{status},</if>
+            <if test="assignDate != null">#{assignDate},</if>
+            <if test="durationRequire != null">#{durationRequire},</if>
+            <if test="totalDuration != null">#{totalDuration},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="remark != null and remark != ''">#{remark},</if>
             <if test="createBy != null and createBy != ''">#{createBy},</if>
@@ -221,6 +206,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="projectLocation != null">project_location = #{projectLocation},</if>
             <if test="contractId != null">contract_id = #{contractId},</if>
             <if test="status != null and status != ''">status = #{status},</if>
+            <if test="assignDate != null">assign_date = #{assignDate},</if>
+            <if test="durationRequire != null">duration_require = #{durationRequire},</if>
+            <if test="totalDuration != null">total_duration = #{totalDuration},</if>
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>

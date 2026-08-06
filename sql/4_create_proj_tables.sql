@@ -147,6 +147,9 @@ CREATE TABLE proj_project (
     project_location        VARCHAR(300)    DEFAULT '',
     contract_id             BIGINT          DEFAULT NULL,
     status                  VARCHAR(20)     DEFAULT '',
+    assign_date             DATE            DEFAULT NULL,
+    duration_require        INTEGER         DEFAULT NULL,
+    total_duration          INTEGER         DEFAULT NULL,
     extra_data              JSONB           DEFAULT '{}',
     del_flag                CHAR(1)         DEFAULT '0',
     create_by               VARCHAR(64)     DEFAULT '',
@@ -169,6 +172,9 @@ COMMENT ON COLUMN proj_project.project_location IS '工程地点';
 COMMENT ON COLUMN proj_project.contract_id IS '合同ID，关联 proj_contract.id';
 COMMENT ON COLUMN proj_project.status IS '项目状态';
 COMMENT ON COLUMN proj_project.extra_data IS '动态字段数据（JSONB）';
+COMMENT ON COLUMN proj_project.assign_date IS '安排日期（项目级）';
+COMMENT ON COLUMN proj_project.duration_require IS '工期要求（天）';
+COMMENT ON COLUMN proj_project.total_duration IS '总时长（天）';
 COMMENT ON COLUMN proj_project.del_flag IS '删除标志（0正常 2删除）';
 COMMENT ON COLUMN proj_project.remark IS '备注';
 
@@ -176,6 +182,7 @@ CREATE INDEX idx_proj_project_code ON proj_project(project_code);
 CREATE INDEX idx_proj_project_category ON proj_project(project_category_id);
 CREATE INDEX idx_proj_project_contract ON proj_project(contract_id);
 CREATE INDEX idx_proj_project_status ON proj_project(status);
+CREATE INDEX idx_proj_project_assign_date ON proj_project(assign_date);
 CREATE INDEX idx_proj_project_extra ON proj_project USING GIN (extra_data);
 
 
