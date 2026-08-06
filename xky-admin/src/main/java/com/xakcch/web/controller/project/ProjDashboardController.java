@@ -28,12 +28,13 @@ public class ProjDashboardController extends BaseController
     /**
      * 获取驾驶舱聚合数据
      *
-     * @param period 时间周期：month(本月) / quarter(本季) / year(本年)，默认 month
+     * @param beginDate 统计起始日期（yyyy-MM-dd），必填
+     * @param endDate   统计截止日期（yyyy-MM-dd），必填
      */
     @GetMapping
-    public AjaxResult getDashboard(@RequestParam(defaultValue = "month") String period)
+    public AjaxResult getDashboard(@RequestParam String beginDate, @RequestParam String endDate)
     {
-        return AjaxResult.success(dashboardService.getDashboardData(period));
+        return AjaxResult.success(dashboardService.getDashboardData(beginDate, endDate));
     }
 
     /**

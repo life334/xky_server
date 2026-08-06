@@ -11,76 +11,62 @@ import org.apache.ibatis.annotations.Param;
  */
 public interface ProjDashboardMapper
 {
-    /**
-     * 在册项目总数
-     */
+    // ===== 项目KPI =====
+
+    /** 在册项目总数 */
     public int countAllProjects();
 
-    /**
-     * 本月新增项目数（环比基准）
-     */
-    public int countProjectsThisMonth();
+    /** 指定日期范围内新增项目数 */
+    public int countNewProjectsInRange(@Param("beginDate") String beginDate, @Param("endDate") String endDate);
 
-    /**
-     * 上月新增项目数（环比基准）
-     */
-    public int countProjectsLastMonth();
+    /** 指定日期范围内办结项目数 */
+    public int countCompletedInRange(@Param("beginDate") String beginDate, @Param("endDate") String endDate);
 
-    /**
-     * 进行中项目数
-     */
+    /** 进行中项目数 */
     public int countActiveProjects();
 
-    /**
-     * 本期产值（内部+外部），按 period 决定时间范围
-     *
-     * @param period month/quarter/year
-     * @return Map: internalOutput, externalOutput
-     */
-    public Map<String, Object> sumPeriodOutput(@Param("period") String period);
+    // ===== 财务KPI =====
 
-    /**
-     * 上期产值（环比基准）
-     */
-    public Map<String, Object> sumPrevPeriodOutput(@Param("period") String period);
+    /** 指定日期范围内到账总额（proj_payment.received_status='received'） */
+    public Map<String, Object> sumPeriodPayment(@Param("beginDate") String beginDate, @Param("endDate") String endDate);
 
-    /**
-     * 产值趋势（按 period 粒度聚合）
-     *
-     * @param period month=按日 / quarter=按月3个 / year=按月12个
-     * @return List of Map: label, internalOutput, externalOutput
-     */
-    public List<Map<String, Object>> outputTrend(@Param("period") String period);
+    /** 本年累计到账 */
+    public Map<String, Object> sumAnnualPayment();
 
-    /**
-     * 合同总金额 + 已到账总额
-     */
+    /** 指定日期范围内产值总额 */
+    public Map<String, Object> sumPeriodOutput(@Param("beginDate") String beginDate, @Param("endDate") String endDate);
+
+    /** 本年累计产值 */
+    public Map<String, Object> sumAnnualOutput();
+
+    /** 合同总额 + 已到账总额 */
     public Map<String, Object> contractPaymentSummary();
 
-    /**
-     * 项目状态分布
-     */
-    public List<Map<String, Object>> projectStatusDist();
+    /** 合同总数 */
+    public int countContracts();
 
-    /**
-     * 进行中项目进度 TOP5（完成任务/总任务）
-     */
-    public List<Map<String, Object>> projectProgressTop5();
+    // ===== 预警 =====
 
-    /**
-     * 超期任务列表（未完成 + 截止日期已过）
-     */
+    /** 超期任务列表 */
     public List<Map<String, Object>> overdueTaskAlerts();
 
-    /**
-     * 资料流转状态统计
-     */
+    /** 资料流转统计 */
     public List<Map<String, Object>> materialFlowStats();
 
-    /**
-     * 我的待办任务（当前用户未完成的任务）
-     *
-     * @param userId 当前登录用户ID
-     */
-    public List<Map<String, Object>> myTodoTasks(@Param("userId") Long userId);
+    // ===== 图表数据 =====
+
+    /** 产值与到账趋势（按月） */
+    public List<Map<String, Object>> outputPaymentTrend(@Param("beginDate") String beginDate, @Param("endDate") String endDate);
+
+    /** 项目类型产值分布 */
+    public List<Map<String, Object>> categoryOutputDist(@Param("beginDate") String beginDate, @Param("endDate") String endDate);
+
+    /** 产值累计趋势（按月） */
+    public List<Map<String, Object>> outputCumulativeTrend(@Param("beginDate") String beginDate, @Param("endDate") String endDate);
+
+    /** 项目动态趋势（按月 新增/办结） */
+    public List<Map<String, Object>> projectDynamicTrend(@Param("beginDate") String beginDate, @Param("endDate") String endDate);
+
+    /** 合同收款进度列表 */
+    public List<Map<String, Object>> contractPaymentList();
 }

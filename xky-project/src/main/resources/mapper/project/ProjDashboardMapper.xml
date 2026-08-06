@@ -2,121 +2,64 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.xakcch.project.mapper.ProjDashboardMapper">
 
-    <!-- ==================== KPI ==================== -->
+    <!-- ==================== 项目KPI ==================== -->
 
-    <!-- 在册项目总数 -->
     <select id="countAllProjects" resultType="int">
         SELECT COUNT(*) FROM proj_project WHERE del_flag = '0'
     </select>
 
-    <!-- 本月新增项目数 -->
-    <select id="countProjectsThisMonth" resultType="int">
-        SELECT COUNT(*) FROM proj_project
-        WHERE del_flag = '0' AND create_time >= date_trunc('month', now())
-    </select>
-
-    <!-- 上月新增项目数 -->
-    <select id="countProjectsLastMonth" resultType="int">
+    <select id="countNewProjectsInRange" resultType="int">
         SELECT COUNT(*) FROM proj_project
         WHERE del_flag = '0'
-          AND create_time >= date_trunc('month', now() - interval '1 month')
-          AND create_time &lt; date_trunc('month', now())
+          AND create_time &gt;= #{beginDate}::date
+          AND create_time &lt;  #{endDate}::date + interval '1 day'
     </select>
 
-    <!-- 进行中项目数 -->
+    <select id="countCompletedInRange" resultType="int">
+        SELECT COUNT(*) FROM proj_project
+        WHERE del_flag = '0'
+          AND status = 'completed'
+          AND update_time &gt;= #{beginDate}::date
+          AND update_time &lt;  #{endDate}::date + interval '1 day'
+    </select>
+
     <select id="countActiveProjects" resultType="int">
         SELECT COUNT(*) FROM proj_project WHERE del_flag = '0' AND status = 'ongoing'
     </select>
 
-    <!-- 本期产值 -->
+    <!-- ==================== 财务KPI ==================== -->
+
+    <select id="sumPeriodPayment" resultType="map">
+        SELECT COALESCE(SUM(amount), 0) AS amount
+        FROM proj_payment
+        WHERE del_flag = '0'
+          AND received_status = 'received'
+          AND pay_time &gt;= #{beginDate}::date
+          AND pay_time &lt;  #{endDate}::date + interval '1 day'
+    </select>
+
+    <select id="sumAnnualPayment" resultType="map">
+        SELECT COALESCE(SUM(amount), 0) AS amount
+        FROM proj_payment
+        WHERE del_flag = '0'
+          AND received_status = 'received'
+          AND pay_time &gt;= date_trunc('year', CURRENT_DATE)
+    </select>
+
     <select id="sumPeriodOutput" resultType="map">
-        SELECT COALESCE(SUM(internal_output) + SUM(external_output), 0) AS output
+        SELECT COALESCE(SUM(internal_output) + SUM(external_output), 0) AS amount
         FROM proj_workload
         WHERE del_flag = '0'
-        <choose>
-            <when test="period == 'month'">
-                AND create_time >= date_trunc('month', now())
-            </when>
-            <when test="period == 'quarter'">
-                AND create_time >= date_trunc('quarter', now())
-            </when>
-            <otherwise>
-                AND create_time >= date_trunc('year', now())
-            </otherwise>
-        </choose>
+          AND create_time &gt;= #{beginDate}::date
+          AND create_time &lt;  #{endDate}::date + interval '1 day'
     </select>
 
-    <!-- 上期产值（环比基准） -->
-    <select id="sumPrevPeriodOutput" resultType="map">
-        SELECT COALESCE(SUM(internal_output) + SUM(external_output), 0) AS output
+    <select id="sumAnnualOutput" resultType="map">
+        SELECT COALESCE(SUM(internal_output) + SUM(external_output), 0) AS amount
         FROM proj_workload
         WHERE del_flag = '0'
-        <choose>
-            <when test="period == 'month'">
-                AND create_time >= date_trunc('month', now() - interval '1 month')
-                AND create_time &lt; date_trunc('month', now())
-            </when>
-            <when test="period == 'quarter'">
-                AND create_time >= date_trunc('quarter', now() - interval '3 months')
-                AND create_time &lt; date_trunc('quarter', now())
-            </when>
-            <otherwise>
-                AND create_time >= date_trunc('year', now() - interval '1 year')
-                AND create_time &lt; date_trunc('year', now())
-            </otherwise>
-        </choose>
+          AND create_time &gt;= date_trunc('year', CURRENT_DATE)
     </select>
-
-    <!-- ==================== 产值趋势 ==================== -->
-
-    <select id="outputTrend" resultType="map">
-        <choose>
-            <!-- 本月：按日 -->
-            <when test="period == 'month'">
-                SELECT to_char(d, 'MM-DD') AS label,
-                       COALESCE(SUM(w.internal_output) + SUM(w.external_output), 0) AS output
-                FROM generate_series(
-                    date_trunc('month', now()),
-                    date_trunc('month', now() + interval '1 month') - interval '1 day',
-                    '1 day'::interval
-                ) d
-                LEFT JOIN proj_workload w
-                    ON date_trunc('day', w.create_time) = d AND w.del_flag = '0'
-                GROUP BY d
-                ORDER BY d
-            </when>
-            <!-- 本季：按月（3个点） -->
-            <when test="period == 'quarter'">
-                SELECT to_char(d, 'YYYY-MM') AS label,
-                       COALESCE(SUM(w.internal_output) + SUM(w.external_output), 0) AS output
-                FROM generate_series(
-                    date_trunc('quarter', now()),
-                    date_trunc('quarter', now() + interval '3 months') - interval '1 month',
-                    '1 month'::interval
-                ) d
-                LEFT JOIN proj_workload w
-                    ON date_trunc('month', w.create_time) = d AND w.del_flag = '0'
-                GROUP BY d
-                ORDER BY d
-            </when>
-            <!-- 本年：按月（12个点） -->
-            <otherwise>
-                SELECT to_char(d, 'YYYY-MM') AS label,
-                       COALESCE(SUM(w.internal_output) + SUM(w.external_output), 0) AS output
-                FROM generate_series(
-                    date_trunc('year', now()),
-                    date_trunc('year', now() + interval '1 year') - interval '1 month',
-                    '1 month'::interval
-                ) d
-                LEFT JOIN proj_workload w
-                    ON date_trunc('month', w.create_time) = d AND w.del_flag = '0'
-                GROUP BY d
-                ORDER BY d
-            </otherwise>
-        </choose>
-    </select>
-
-    <!-- ==================== 合同收款 ==================== -->
 
     <select id="contractPaymentSummary" resultType="map">
         SELECT COALESCE(SUM(contract_amount), 0) AS totalAmount,
@@ -124,34 +67,11 @@
         FROM proj_contract WHERE del_flag = '0'
     </select>
 
-    <!-- ==================== 项目状态分布 ==================== -->
-
-    <select id="projectStatusDist" resultType="map">
-        SELECT status AS name, COUNT(*) AS value
-        FROM proj_project WHERE del_flag = '0'
-        GROUP BY status ORDER BY COUNT(*) DESC
+    <select id="countContracts" resultType="int">
+        SELECT COUNT(*) FROM proj_contract WHERE del_flag = '0'
     </select>
 
-    <!-- ==================== 项目进度 TOP5 ==================== -->
-
-    <select id="projectProgressTop5" resultType="map">
-        SELECT p.id, p.project_name AS projectName,
-               COUNT(t.id) AS totalTasks,
-               COUNT(CASE WHEN t.actual_finish_date IS NOT NULL THEN 1 END) AS completedTasks,
-               CASE WHEN COUNT(t.id) > 0
-                    THEN ROUND(COUNT(CASE WHEN t.actual_finish_date IS NOT NULL THEN 1 END)::numeric
-                         / COUNT(t.id) * 100, 1)
-                    ELSE 0
-               END AS progress
-        FROM proj_project p
-        LEFT JOIN proj_task t ON t.project_id = p.id AND t.del_flag = '0'
-        WHERE p.del_flag = '0' AND p.status = 'ongoing'
-        GROUP BY p.id, p.project_name
-        ORDER BY progress DESC, p.create_time DESC
-        LIMIT 5
-    </select>
-
-    <!-- ==================== 超期任务预警 ==================== -->
+    <!-- ==================== 预警 ==================== -->
 
     <select id="overdueTaskAlerts" resultType="map">
         SELECT t.id, t.task_name AS taskName, p.project_name AS projectName,
@@ -167,30 +87,115 @@
         LIMIT 10
     </select>
 
-    <!-- ==================== 资料流转统计 ==================== -->
-
     <select id="materialFlowStats" resultType="map">
         SELECT status AS name, COUNT(*) AS value
         FROM proj_material WHERE del_flag = '0'
         GROUP BY status
     </select>
 
-    <!-- ==================== 我的待办任务 ==================== -->
+    <!-- ==================== 图表：产值与到账趋势（按月） ==================== -->
 
-    <select id="myTodoTasks" resultType="map">
-        SELECT t.id, t.task_name AS taskName, p.project_name AS projectName,
-               t.required_finish_date AS requiredFinishDate, t.status, t.assign_date AS assignDate,
-               CASE
-                   WHEN t.required_finish_date IS NOT NULL AND t.required_finish_date &lt; CURRENT_DATE
-                   THEN (CURRENT_DATE - t.required_finish_date::date)
-                   ELSE 0
-               END AS overdueDays
-        FROM proj_task t
-        JOIN proj_project p ON p.id = t.project_id
-        WHERE t.del_flag = '0' AND p.del_flag = '0'
-          AND t.user_id = #{userId}
-          AND t.actual_finish_date IS NULL
-        ORDER BY t.required_finish_date ASC NULLS LAST
+    <select id="outputPaymentTrend" resultType="map">
+        SELECT to_char(m, 'YYYY-MM') AS label,
+               COALESCE(SUM(w.total_output), 0) AS output,
+               COALESCE(SUM(p.total_payment), 0) AS payment
+        FROM generate_series(
+            date_trunc('month', #{beginDate}::date),
+            date_trunc('month', #{endDate}::date),
+            '1 month'::interval
+        ) m
+        LEFT JOIN (
+            SELECT date_trunc('month', create_time) AS mo,
+                   SUM(COALESCE(internal_output, 0) + COALESCE(external_output, 0)) AS total_output
+            FROM proj_workload WHERE del_flag = '0'
+            GROUP BY date_trunc('month', create_time)
+        ) w ON w.mo = m
+        LEFT JOIN (
+            SELECT date_trunc('month', pay_time) AS mo,
+                   SUM(COALESCE(amount, 0)) AS total_payment
+            FROM proj_payment WHERE del_flag = '0' AND received_status = 'received'
+            GROUP BY date_trunc('month', pay_time)
+        ) p ON p.mo = m
+        GROUP BY m
+        ORDER BY m
+    </select>
+
+    <!-- ==================== 图表：项目类型产值分布 ==================== -->
+
+    <select id="categoryOutputDist" resultType="map">
+        SELECT COALESCE(c.name, '未分类') AS name,
+               COALESCE(SUM(w.internal_output) + SUM(w.external_output), 0) AS value
+        FROM proj_workload w
+        LEFT JOIN proj_category c ON c.id = w.category_id AND c.del_flag = '0'
+        WHERE w.del_flag = '0'
+          AND w.create_time &gt;= #{beginDate}::date
+          AND w.create_time &lt;  #{endDate}::date + interval '1 day'
+        GROUP BY c.name
+        ORDER BY value DESC
+    </select>
+
+    <!-- ==================== 图表：产值累计趋势（按月） ==================== -->
+
+    <select id="outputCumulativeTrend" resultType="map">
+        SELECT label,
+               SUM(monthly) OVER (ORDER BY label ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative
+        FROM (
+            SELECT to_char(m, 'YYYY-MM') AS label,
+                   COALESCE(SUM(w.total_output), 0) AS monthly
+            FROM generate_series(
+                date_trunc('year', #{beginDate}::date),
+                date_trunc('month', #{endDate}::date),
+                '1 month'::interval
+            ) m
+            LEFT JOIN (
+                SELECT date_trunc('month', create_time) AS mo,
+                       SUM(COALESCE(internal_output, 0) + COALESCE(external_output, 0)) AS total_output
+                FROM proj_workload WHERE del_flag = '0'
+                GROUP BY date_trunc('month', create_time)
+            ) w ON w.mo = m
+            GROUP BY m
+        ) t
+        ORDER BY label
+    </select>
+
+    <!-- ==================== 图表：项目动态趋势（按月） ==================== -->
+
+    <select id="projectDynamicTrend" resultType="map">
+        SELECT to_char(m, 'YYYY-MM') AS label,
+               COALESCE(np.cnt, 0) AS newProjects,
+               COALESCE(cp.cnt, 0) AS completedProjects
+        FROM generate_series(
+            date_trunc('month', #{beginDate}::date),
+            date_trunc('month', #{endDate}::date),
+            '1 month'::interval
+        ) m
+        LEFT JOIN (
+            SELECT date_trunc('month', create_time) AS mo, COUNT(*) AS cnt
+            FROM proj_project WHERE del_flag = '0'
+            GROUP BY date_trunc('month', create_time)
+        ) np ON np.mo = m
+        LEFT JOIN (
+            SELECT date_trunc('month', update_time) AS mo, COUNT(*) AS cnt
+            FROM proj_project WHERE del_flag = '0' AND status = 'completed'
+            GROUP BY date_trunc('month', update_time)
+        ) cp ON cp.mo = m
+        ORDER BY m
+    </select>
+
+    <!-- ==================== 图表：合同收款进度 ==================== -->
+
+    <select id="contractPaymentList" resultType="map">
+        SELECT contract_no AS contractNo,
+               contract_name AS contractName,
+               COALESCE(contract_amount, 0) AS contractAmount,
+               COALESCE(received_amount, 0) AS receivedAmount,
+               CASE WHEN COALESCE(contract_amount, 0) > 0
+                    THEN ROUND(received_amount / contract_amount * 100, 1)
+                    ELSE 0
+               END AS progress
+        FROM proj_contract
+        WHERE del_flag = '0'
+        ORDER BY contract_amount DESC
         LIMIT 10
     </select>
 

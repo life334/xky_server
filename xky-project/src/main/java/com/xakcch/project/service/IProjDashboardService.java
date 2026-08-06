@@ -12,8 +12,9 @@ public interface IProjDashboardService
     /**
      * 获取驾驶舱聚合数据
      *
-     * @param period 时间周期（month/quarter/year），影响产值KPI和趋势图
+     * @param beginDate 统计起始日期（yyyy-MM-dd）
+     * @param endDate   统计截止日期（yyyy-MM-dd）
      * @return 聚合数据
      */
-    public Map<String, Object> getDashboardData(String period);
+    public Map<String, Object> getDashboardData(String beginDate, String endDate);
 }

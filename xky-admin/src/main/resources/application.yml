@@ -57,7 +57,7 @@ spring:
     # 国际化资源文件路径
     basename: i18n/messages
   profiles:
-    active: prod,druid
+    active: dev,druid
   # 文件上传
   servlet:
     multipart:
@@ -68,8 +68,8 @@ spring:
   # 服务模块
   devtools:
     restart:
-      # 热部署开关
-      enabled: true
+      # 热部署开关（关闭避免端口随机分配）
+      enabled: false
 
 # token配置
 token:
