@@ -4,7 +4,7 @@
 	<property name="log.path" value="${LOG_PATH:-./logs}" />
     <!-- 日志输出格式 -->
 	<property name="log.pattern" value="%d{HH:mm:ss.SSS} [%thread] %-5level %logger{20} - [%method,%line] - %msg%n" />
-    <property name="app.name" value="zj-admin" />
+    <property name="app.name" value="xky-admin" />
 
 	<!-- 控制台输出 -->
 	<appender name="console" class="ch.qos.logback.core.ConsoleAppender">

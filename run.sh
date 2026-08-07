@@ -1,6 +1,6 @@
 #!/bin/sh
 # ./run.sh start 启动 stop 停止 restart 重启 status 状态
-AppName="zj-admin.jar"
+AppName="xky-admin.jar"
 APP_DIR=$(cd "$(dirname "$0")" && pwd)
 JAR_FILE="$APP_DIR/$AppName"
 LOG_DIR="$APP_DIR/logs"
