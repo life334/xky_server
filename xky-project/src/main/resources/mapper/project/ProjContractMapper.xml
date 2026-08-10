@@ -112,16 +112,18 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by create_time desc
     </select>
 
-    <!-- 查询指定合同的全部已有单价记录 -->
+    <!-- 查询指定合同的全部已有单价记录（含大类层级） -->
     <select id="selectPriceListByContractId" parameterType="Long" resultType="map">
         select
             cp.id           as price_id,
             cp.contract_id,
             cp.category_id,
             cp.price,
-            c.name          as category_name
+            c.name          as category_name,
+            pc.name         as parent_name
         from proj_contract_price cp
         inner join proj_category c on c.id = cp.category_id and c.del_flag = '0'
+        left join proj_category pc on pc.id = c.parent_id and pc.del_flag = '0'
         where cp.contract_id = #{contractId}
           and cp.del_flag = '0'
         order by c.parent_id, c.sort_order

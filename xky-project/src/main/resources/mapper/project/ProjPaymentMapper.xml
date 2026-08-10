@@ -245,6 +245,26 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         ) t
     </select>
 
+    <!-- 按合同查询各项目到账明细（预付款/尾款/进度款分类合计 + 项目信息） -->
+    <select id="selectReceivedDetailByContractId" parameterType="Long" resultType="map">
+        SELECT
+            p.id              AS project_id,
+            p.project_code    AS project_code,
+            p.project_name    AS project_name,
+            p.engineering_project,
+            p.client_unit,
+            p.status          AS project_status,
+            COALESCE(SUM(pay.amount) FILTER(WHERE pay.payment_type = 'advance'), 0)  AS advance_amount,
+            COALESCE(SUM(pay.amount) FILTER(WHERE pay.payment_type = 'final'), 0)    AS final_amount,
+            COALESCE(SUM(pay.amount), 0) AS total_received
+        FROM proj_project p
+        LEFT JOIN proj_payment pay ON pay.project_id = p.id AND pay.del_flag = '0'
+        WHERE p.contract_id = #{contractId}
+          AND p.del_flag = '0'
+        GROUP BY p.id
+        ORDER BY p.create_time
+    </select>
+
     <!-- 按合同聚合收款总额 -->
     <select id="selectReceivedAmountByContractId" parameterType="Long" resultType="java.math.BigDecimal">
         SELECT COALESCE(SUM(pay.amount), 0)

@@ -244,6 +244,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             p.project_name   as project_name,
             p.engineering_project,
             p.client_unit,
+            p.contact_name,
+            p.contact_phone,
             p.project_location,
             p.status         as status,
             c.name           as category_name,
@@ -259,13 +261,32 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </select>
 
     <!-- 查询某字段的去重值列表（高级筛选下拉选项用） -->
+    <!-- client_unit 需要 UNION 项目表和合同表，保证全系统下拉一致 -->
     <select id="selectDistinctValues" resultType="string">
-        select distinct ${field} as val
-        from proj_project
-        where del_flag = '0'
-          and ${field} is not null
-          and ${field} != ''
-        order by ${field}
+        <choose>
+            <when test="field == 'client_unit'">
+                select distinct client_unit as val
+                from proj_project
+                where del_flag = '0'
+                  and client_unit is not null
+                  and client_unit != ''
+                union
+                select distinct client_unit as val
+                from proj_contract
+                where del_flag = '0'
+                  and client_unit is not null
+                  and client_unit != ''
+                order by val
+            </when>
+            <otherwise>
+                select distinct ${field} as val
+                from proj_project
+                where del_flag = '0'
+                  and ${field} is not null
+                  and ${field} != ''
+                order by ${field}
+            </otherwise>
+        </choose>
     </select>
 
     <!-- 各状态下项目数量统计 -->

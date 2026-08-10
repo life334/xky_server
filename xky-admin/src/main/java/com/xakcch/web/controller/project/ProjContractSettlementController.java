@@ -67,33 +67,38 @@ public class ProjContractSettlementController extends BaseController
             // 子级：关联项目
             List<Map<String, Object>> projects = projectMapper.selectProjectsByContractId(c.getId());
             List<Map<String, Object>> projectChildren = new ArrayList<>();
-
-            // 汇总合同单价（去重后拼接展示）
-            Set<String> categoryPriceSet = new LinkedHashSet<>();
             for (Map<String, Object> p : projects)
             {
-                String catName = (String) p.get("category_name");
-                Object priceObj = p.get("contract_price");
-                if (catName != null)
-                {
-                    String priceStr = priceObj != null ? priceObj.toString() : "—";
-                    categoryPriceSet.add(catName + " " + priceStr);
-                }
-
                 Map<String, Object> child = new LinkedHashMap<>();
                 child.put("id", "c" + c.getId() + "_p" + p.get("project_id"));
                 child.put("projectCode", p.get("project_code"));
                 child.put("projectName", p.get("project_name"));
                 child.put("engineeringProject", p.get("engineering_project"));
                 child.put("clientUnit", p.get("client_unit"));
+                child.put("contactName", p.get("contact_name"));
+                child.put("contactPhone", p.get("contact_phone"));
+                child.put("projectLocation", p.get("project_location"));
+                child.put("status", p.get("status"));
                 child.put("categoryName", p.get("category_name"));
-                child.put("contractPrice", priceObj);
+                child.put("contractPrice", p.get("contract_price"));
                 projectChildren.add(child);
             }
 
-            // 合同单价汇总文字
-            int priceCount = categoryPriceSet.size();
-            contractNode.put("priceSummary", priceCount > 0 ? priceCount + "项" : "—");
+            // 合同单价汇总（直接从 proj_contract_price 查，不依赖项目）
+            List<Map<String, Object>> priceList = contractMapper.selectPriceListByContractId(c.getId());
+            Set<String> categoryPriceSet = new LinkedHashSet<>();
+            for (Map<String, Object> item : priceList)
+            {
+                String parentName = (String) item.get("parent_name");
+                String catName = (String) item.get("category_name");
+                Object priceObj = item.get("price");
+                if (catName != null)
+                {
+                    String fullName = parentName != null ? parentName + " > " + catName : catName;
+                    String priceStr = priceObj != null ? priceObj.toString() : "";
+                    categoryPriceSet.add(fullName + " " + priceStr);
+                }
+            }
             contractNode.put("priceDetail", categoryPriceSet);
 
             contractNode.put("children", projectChildren);
@@ -111,6 +116,17 @@ public class ProjContractSettlementController extends BaseController
     {
         List<Map<String, Object>> prices = contractMapper.selectPriceListByContractId(contractId);
         return success(prices);
+    }
+
+    /**
+     * 查询指定合同的到账明细（按项目聚合：预付款/尾款/进度款分类合计）
+     */
+    @PreAuthorize("@ss.hasPermi('project:contractSettlement:query')")
+    @GetMapping("/receivedDetail/{contractId}")
+    public AjaxResult receivedDetail(@PathVariable Long contractId)
+    {
+        List<Map<String, Object>> detail = paymentMapper.selectReceivedDetailByContractId(contractId);
+        return success(detail);
     }
 
     /**

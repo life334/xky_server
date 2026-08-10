@@ -27,7 +27,7 @@ INSERT INTO sys_menu VALUES (502, '项目类别', 4, 6, 'category', 'project/cat
 
 
 INSERT INTO sys_menu VALUES (504, '合同列表', 5, 1, 'list', 'project/contract/index', '', 'ContractList', 1, 0, 'C', '0', '0', 'project:contract:list', 'list', 'admin', now(), '', NULL, '合同列表页面');
-INSERT INTO sys_menu VALUES (505, '合同单价', 5, 2, 'price', 'project/contract/price/index', '', 'ContractPrice', 1, 0, 'C', '0', '0', 'project:contract:price:list', 'money', 'admin', now(), '', NULL, '合同单价配置');
+-- INSERT INTO sys_menu VALUES (505, '合同单价', 5, 2, 'price', 'project/contract/price/index', '', 'ContractPrice', 1, 0, 'C', '0', '0', 'project:contract:price:list', 'money', 'admin', now(), '', NULL, '合同单价配置');
 INSERT INTO sys_menu VALUES (509, '合同结算', 5, 3, 'contractSettlement', 'project/contractSettlement/index', '', 'ContractSettlement', 1, 0, 'C', '0', '0', 'project:contractSettlement:list', 'money', 'admin', now(), '', NULL, '合同结算菜单');
 
 -- 项目类别按钮

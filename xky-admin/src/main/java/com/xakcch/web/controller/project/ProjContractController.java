@@ -111,7 +111,9 @@ public class ProjContractController extends BaseController
             return error("新增合同'" + contract.getContractName() + "'失败，合同编号已存在");
         }
         contract.setCreateBy(getUsername());
-        return toAjax(contractService.insertContract(contract));
+        contractService.insertContract(contract);
+        // 返回新创建的合同ID，供前端紧接着保存合同单价使用
+        return AjaxResult.success(contract.getId());
     }
 
     /**
