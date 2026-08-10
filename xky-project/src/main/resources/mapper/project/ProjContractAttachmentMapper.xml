@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjContractAttachmentMapper">
+
+    <resultMap type="ProjContractAttachment" id="AttachmentResult">
+        <id     property="id"           column="id"           />
+        <result property="contractId"   column="contract_id"  />
+        <result property="fileName"     column="file_name"    />
+        <result property="filePath"     column="file_path"    />
+        <result property="fileSize"     column="file_size"    />
+        <result property="fileType"     column="file_type"    />
+        <result property="fileCategory" column="file_category"/>
+        <result property="isFinal"      column="is_final"     />
+        <result property="version"      column="version"      />
+        <result property="sortOrder"    column="sort_order"   />
+        <result property="delFlag"      column="del_flag"     />
+        <result property="createBy"     column="create_by"    />
+        <result property="createTime"   column="create_time"  />
+        <result property="updateBy"     column="update_by"    />
+        <result property="updateTime"   column="update_time"  />
+        <result property="remark"       column="remark"       />
+    </resultMap>
+
+    <resultMap type="ProjContractAttachmentLog" id="AttachmentLogResult">
+        <id     property="id"           column="id"           />
+        <result property="attachmentId" column="attachment_id"/>
+        <result property="contractId"   column="contract_id"  />
+        <result property="fileName"     column="file_name"    />
+        <result property="filePath"     column="file_path"    />
+        <result property="fileSize"     column="file_size"    />
+        <result property="fileType"     column="file_type"    />
+        <result property="fileCategory" column="file_category"/>
+        <result property="isFinal"      column="is_final"     />
+        <result property="version"      column="version"      />
+        <result property="action"       column="action"       />
+        <result property="operator"     column="operator"     />
+        <result property="operateTime"  column="operate_time" />
+        <result property="remark"       column="remark"       />
+    </resultMap>
+
+    <sql id="selectAttachmentVo">
+        select id, contract_id, file_name, file_path, file_size, file_type,
+               file_category, is_final, version, sort_order, del_flag,
+               create_by, create_time, update_by, update_time, remark
+        from proj_contract_attachment
+    </sql>
+
+    <select id="selectAttachmentsByContractId" parameterType="Long" resultMap="AttachmentResult">
+        <include refid="selectAttachmentVo"/>
+        where contract_id = #{contractId}
+          and del_flag = '0'
+        order by sort_order, id
+    </select>
+
+    <select id="selectAttachmentById" parameterType="Long" resultMap="AttachmentResult">
+        <include refid="selectAttachmentVo"/>
+        where id = #{id}
+    </select>
+
+    <insert id="insertAttachment" parameterType="ProjContractAttachment" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_contract_attachment (
+            contract_id, file_name, file_path, file_size, file_type,
+            file_category, is_final, version, sort_order,
+            create_by, create_time
+        ) values (
+            #{contractId}, #{fileName}, #{filePath}, #{fileSize}, #{fileType},
+            #{fileCategory}, #{isFinal}, #{version}, #{sortOrder},
+            #{createBy}, now()
+        )
+    </insert>
+
+    <update id="updateAttachment" parameterType="ProjContractAttachment">
+        update proj_contract_attachment
+        <set>
+            file_name   = #{fileName},
+            file_path   = #{filePath},
+            file_size   = #{fileSize},
+            file_type   = #{fileType},
+            is_final    = #{isFinal},
+            version     = #{version},
+            update_by   = #{updateBy},
+            update_time = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <update id="deleteAttachmentById" parameterType="Long">
+        update proj_contract_attachment
+        set del_flag = '2', update_time = now()
+        where id = #{id}
+    </update>
+
+    <!-- 版本历史 -->
+    <select id="selectHistoryByAttachmentId" parameterType="Long" resultMap="AttachmentLogResult">
+        select id, attachment_id, contract_id, file_name, file_path, file_size, file_type,
+               file_category, is_final, version, action, operator, operate_time, remark
+        from proj_contract_attachment_log
+        where attachment_id = #{attachmentId}
+        order by version desc
+    </select>
+
+    <insert id="insertAttachmentLog" parameterType="ProjContractAttachmentLog" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_contract_attachment_log (
+            attachment_id, contract_id, file_name, file_path, file_size, file_type,
+            file_category, is_final, version, action, operator, operate_time, remark
+        ) values (
+            #{attachmentId}, #{contractId}, #{fileName}, #{filePath}, #{fileSize}, #{fileType},
+            #{fileCategory}, #{isFinal}, #{version}, #{action}, #{operator}, now(), #{remark}
+        )
+    </insert>
+
+</mapper>

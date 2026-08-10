@@ -148,6 +148,7 @@ insert into sys_dict_type values(10, '付款到账状态',     'proj_payment_rec
 insert into sys_dict_type values(11, '付款概览状态',     'proj_payment_overview_status',  '0', 'admin', now(), '', null, '付款概览状态列表');
 insert into sys_dict_type values(12, '资料提交状态',     'proj_material_submit_status',   '0', 'admin', now(), '', null, '资料提交状态列表');
 insert into sys_dict_type values(13, '合同类型',         'proj_contract_type',            '0', 'admin', now(), '', null, '合同类型列表');
+insert into sys_dict_type values(14, '合同附件分类',         'proj_attachment_category',            '0', 'admin', now(), '', null, '合同附件的文件归类');
 
 
 -- ----------------------------
@@ -217,6 +218,11 @@ insert into sys_dict_data values(41, 2, '测绘合同',   'mapping',       'proj
 insert into sys_dict_data values(42, 3, '设计合同',   'design',        'proj_contract_type', '', '',       'N', '0', 'admin', now(), '', null, '设计合同');
 insert into sys_dict_data values(43, 4, '施工合同',   'construction',  'proj_contract_type', '', '',       'N', '0', 'admin', now(), '', null, '施工合同');
 insert into sys_dict_data values(44, 5, '其他合同',   'other',         'proj_contract_type', '', '',       'N', '0', 'admin', now(), '', null, '其他合同');
+
+-- 合同附件分类列表
+insert into sys_dict_data values(45, 1, '合同正本',   'contract',        'proj_attachment_category', '', '',       'N', '0', 'admin', now(), '', null, '合同正本');
+insert into sys_dict_data values(46, 2, '补充协议',   'supplement',       'proj_attachment_category', '', '',       'N', '0', 'admin', now(), '', null, '补充协议');
+insert into sys_dict_data values(47, 3, '其它',   'other',       'proj_attachment_category', '', '',       'N', '0', 'admin', now(), '', null, '其它');
 
 
 -- ----------------------------
