@@ -40,7 +40,6 @@ public class ProjProjectController extends BaseController
     /**
      * 查询项目列表（分页）
      */
-    @PreAuthorize("@ss.hasPermi('project:project:list')")
     @GetMapping("/list")
     public TableDataInfo list(ProjProject project)
     {
@@ -66,7 +65,6 @@ public class ProjProjectController extends BaseController
      * 查询字段去重值列表（高级筛选下拉选项用）
      * 支持字段：clientUnit（委托单位）、engineeringProject（工程项目）
      */
-    @PreAuthorize("@ss.hasPermi('project:project:list')")
     @GetMapping("/distinctValues")
     public AjaxResult distinctValues(@RequestParam String field)
     {
@@ -77,7 +75,6 @@ public class ProjProjectController extends BaseController
     /**
      * 统计各状态下的项目数量（状态胶囊导航用）
      */
-    @PreAuthorize("@ss.hasPermi('project:project:list')")
     @GetMapping("/statusCounts")
     public AjaxResult statusCounts()
     {
@@ -88,7 +85,6 @@ public class ProjProjectController extends BaseController
     /**
      * 根据项目编号获取详细信息
      */
-    @PreAuthorize("@ss.hasPermi('project:project:query')")
     @GetMapping(value = "/{id}")
     public AjaxResult getInfo(@PathVariable Long id)
     {

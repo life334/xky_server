@@ -28,7 +28,6 @@ public class ProjFieldDefController extends BaseController
     /**
      * 查询动态字段定义列表
      */
-    @PreAuthorize("@ss.hasPermi('system:fieldDef:list')")
     @GetMapping("/list")
     public TableDataInfo list(ProjFieldDef fieldDef)
     {
@@ -40,7 +39,6 @@ public class ProjFieldDefController extends BaseController
     /**
      * 根据ID查询
      */
-    @PreAuthorize("@ss.hasPermi('system:fieldDef:query')")
     @GetMapping(value = "/{id}")
     public AjaxResult getInfo(@PathVariable Long id)
     {

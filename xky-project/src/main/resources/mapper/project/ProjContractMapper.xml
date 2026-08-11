@@ -28,6 +28,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="extraData"       column="extra_data"       />
         <result property="delFlag"         column="del_flag"         />
         <result property="projectCount"   column="project_count"   />
+        <result property="paidCount"      column="paid_count"      />
+        <result property="paidTotal"      column="paid_total"      />
         <result property="createBy"        column="create_by"        />
         <result property="createTime"      column="create_time"      />
         <result property="updateBy"        column="update_by"        />
@@ -45,7 +47,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </sql>
 
     <select id="selectContractList" parameterType="ProjContract" resultMap="ProjContractResult">
-        select t.*, (select count(1) from proj_project p where p.contract_id = t.id and p.del_flag = '0') as project_count
+        select t.*,
+               (select count(1) from proj_project p where p.contract_id = t.id and p.del_flag = '0') as project_count,
+               (select count(1) from proj_payment pay
+                  inner join proj_project pj on pj.id = pay.project_id and pj.del_flag = '0'
+                  where pj.contract_id = t.id and pay.del_flag = '0') as paid_count,
+               (select coalesce(sum(pay.amount), 0) from proj_payment pay
+                  inner join proj_project pj on pj.id = pay.project_id and pj.del_flag = '0'
+                  where pj.contract_id = t.id and pay.del_flag = '0') as paid_total
         from (
         select id, contract_no, contract_name, client_unit, contact_name, contact_phone,
                contract_type, contract_amount, sign_date, entrust_date, audit_date,
@@ -262,6 +271,33 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           and ${field} is not null
           and ${field} != ''
         order by ${field}
+    </select>
+
+    <!-- 批量查询合同的付款明细列表（聚合关联项目），用于列表页展示 -->
+    <select id="selectPaidListByContractIds" resultType="map">
+        select
+            pj.contract_id as "contractId",
+            pay.id as "paymentId",
+            pay.amount as "amount",
+            pay.pay_time as "payTime",
+            pay.pay_unit as "payUnit",
+            pay.payment_type as "paymentType",
+            pj.id as "projectId",
+            pj.project_name as "projectName",
+            pj.project_code as "projectCode",
+            pj.client_unit as "clientUnit",
+            pj.contact_name as "contactName",
+            pj.contact_phone as "contactPhone",
+            pj.engineering_project as "engineeringProject",
+            pj.project_location as "projectLocation"
+        from proj_payment pay
+        inner join proj_project pj on pj.id = pay.project_id and pj.del_flag = '0'
+        where pay.del_flag = '0'
+          and pj.contract_id in
+          <foreach collection="list" item="cid" open="(" separator="," close=")">
+              #{cid}
+          </foreach>
+        order by pay.pay_time asc
     </select>
 
 </mapper>

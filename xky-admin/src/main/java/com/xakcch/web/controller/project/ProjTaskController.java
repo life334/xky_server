@@ -37,7 +37,6 @@ public class ProjTaskController extends BaseController
     /**
      * 查询任务列表（分页）
      */
-    @PreAuthorize("@ss.hasPermi('project:task:list')")
     @GetMapping("/list")
     public TableDataInfo list(ProjTask task)
     {
@@ -62,7 +61,6 @@ public class ProjTaskController extends BaseController
     /**
      * 根据任务编号获取详细信息
      */
-    @PreAuthorize("@ss.hasPermi('project:task:query')")
     @GetMapping(value = "/{id}")
     public AjaxResult getInfo(@PathVariable Long id)
     {

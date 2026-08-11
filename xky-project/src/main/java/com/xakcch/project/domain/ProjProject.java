@@ -1,7 +1,10 @@
 package com.xakcch.project.domain;
 
+import java.math.BigDecimal;
+import java.util.Date;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.xakcch.common.annotation.Excel;
 import com.xakcch.common.core.domain.BaseEntity;
 
@@ -109,6 +112,21 @@ public class ProjProject extends BaseEntity
 
     /** 全局关键字搜索（匹配工程编号/项目名称/委托单位/工程项目/联系人/工程地点） */
     private String keyword;
+
+    // ===== 以下为首笔付款字段（表单提交用，非持久化） =====
+
+    /** 首笔付款金额 */
+    private transient BigDecimal firstPaymentAmount;
+
+    /** 首笔付款时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private transient Date firstPaymentTime;
+
+    /** 首笔付款单位 */
+    private transient String firstPaymentUnit;
+
+    /** 首笔付款方式 */
+    private transient String firstPaymentMethod;
 
     /** 负责人筛选（proj_leader.user_id） */
     private Long leaderId;
@@ -359,6 +377,15 @@ public class ProjProject extends BaseEntity
         this.importTaskDuration = importTaskDuration;
     }
 
+    public BigDecimal getFirstPaymentAmount() { return firstPaymentAmount; }
+    public void setFirstPaymentAmount(BigDecimal firstPaymentAmount) { this.firstPaymentAmount = firstPaymentAmount; }
+    public Date getFirstPaymentTime() { return firstPaymentTime; }
+    public void setFirstPaymentTime(Date firstPaymentTime) { this.firstPaymentTime = firstPaymentTime; }
+    public String getFirstPaymentUnit() { return firstPaymentUnit; }
+    public void setFirstPaymentUnit(String firstPaymentUnit) { this.firstPaymentUnit = firstPaymentUnit; }
+    public String getFirstPaymentMethod() { return firstPaymentMethod; }
+    public void setFirstPaymentMethod(String firstPaymentMethod) { this.firstPaymentMethod = firstPaymentMethod; }
+
     public String getKeyword()
     {
         return keyword;
@@ -427,6 +454,9 @@ public class ProjProject extends BaseEntity
             .append("importTaskAssignDate", getImportTaskAssignDate())
             .append("importTaskFinishDate", getImportTaskFinishDate())
             .append("importTaskDuration", getImportTaskDuration())
+            .append("firstPaymentAmount", getFirstPaymentAmount())
+            .append("firstPaymentTime", getFirstPaymentTime())
+            .append("firstPaymentUnit", getFirstPaymentUnit())
             .toString();
     }
 }

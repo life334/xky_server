@@ -29,7 +29,6 @@ public class ProjContractPriceController extends BaseController
     /**
      * 获取指定合同的全部类别树 + 已填单价
      */
-    @PreAuthorize("@ss.hasPermi('project:contract:price:list')")
     @GetMapping("/list")
     public AjaxResult list(@RequestParam Long contractId)
     {

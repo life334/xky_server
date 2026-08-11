@@ -2,6 +2,8 @@ package com.xakcch.project.domain;
 
 import java.math.BigDecimal;
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -113,6 +115,17 @@ public class ProjContract extends BaseEntity
 
     /** 合同金额上限 */
     private transient BigDecimal contractAmountMax;
+
+    // ===== 付款汇总字段（列表展示用，非持久化） =====
+
+    /** 付款总笔数（聚合关联项目） */
+    private transient Integer paidCount;
+
+    /** 已付总金额 */
+    private transient BigDecimal paidTotal;
+
+    /** 付款明细列表（前端展示用） */
+    private transient List<Map<String, Object>> paidList;
 
     /** 审核日期范围-开始 */
     private transient Date auditDateBegin;
@@ -372,6 +385,12 @@ public class ProjContract extends BaseEntity
     public void setContractAmountMin(BigDecimal contractAmountMin) { this.contractAmountMin = contractAmountMin; }
     public BigDecimal getContractAmountMax() { return contractAmountMax; }
     public void setContractAmountMax(BigDecimal contractAmountMax) { this.contractAmountMax = contractAmountMax; }
+    public Integer getPaidCount() { return paidCount; }
+    public void setPaidCount(Integer paidCount) { this.paidCount = paidCount; }
+    public BigDecimal getPaidTotal() { return paidTotal; }
+    public void setPaidTotal(BigDecimal paidTotal) { this.paidTotal = paidTotal; }
+    public List<Map<String, Object>> getPaidList() { return paidList; }
+    public void setPaidList(List<Map<String, Object>> paidList) { this.paidList = paidList; }
     public Date getAuditDateBegin() { return auditDateBegin; }
     public void setAuditDateBegin(Date auditDateBegin) { this.auditDateBegin = auditDateBegin; }
     public Date getAuditDateEnd() { return auditDateEnd; }

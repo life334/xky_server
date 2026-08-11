@@ -65,6 +65,18 @@ public class SysUserController extends BaseController
         return getDataTable(list);
     }
 
+    /**
+     * 获取用户选项列表（下拉框专用，无需权限）
+     */
+    @GetMapping("/options")
+    public AjaxResult options(SysUser user)
+    {
+        List<SysUser> list = userService.selectUserList(user);
+        AjaxResult ajax = AjaxResult.success();
+        ajax.put("rows", list);
+        return ajax;
+    }
+
     @Log(title = "用户管理", businessType = BusinessType.EXPORT)
     @PreAuthorize("@ss.hasPermi('system:user:export')")
     @PostMapping("/export")

@@ -41,7 +41,6 @@ public class ProjContractSettlementController extends BaseController
     /**
      * 查询合同结算树形列表
      */
-    @PreAuthorize("@ss.hasPermi('project:contractSettlement:list')")
     @GetMapping("/treeList")
     public AjaxResult treeList()
     {
@@ -110,7 +109,6 @@ public class ProjContractSettlementController extends BaseController
     /**
      * 查询指定合同的单价明细（弹窗用，按类别展开）
      */
-    @PreAuthorize("@ss.hasPermi('project:contractSettlement:query')")
     @GetMapping("/priceDetail/{contractId}")
     public AjaxResult priceDetail(@PathVariable Long contractId)
     {
@@ -121,7 +119,6 @@ public class ProjContractSettlementController extends BaseController
     /**
      * 查询指定合同的到账明细（按项目聚合：预付款/尾款/进度款分类合计）
      */
-    @PreAuthorize("@ss.hasPermi('project:contractSettlement:query')")
     @GetMapping("/receivedDetail/{contractId}")
     public AjaxResult receivedDetail(@PathVariable Long contractId)
     {

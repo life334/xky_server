@@ -39,7 +39,6 @@ public class ProjPaymentController extends BaseController
     /**
      * 查询付款记录列表（分页）
      */
-    @PreAuthorize("@ss.hasPermi('project:payment:list')")
     @GetMapping("/list")
     public TableDataInfo list(ProjPayment payment)
     {
@@ -64,7 +63,6 @@ public class ProjPaymentController extends BaseController
     /**
      * 根据ID获取详细信息
      */
-    @PreAuthorize("@ss.hasPermi('project:payment:query')")
     @GetMapping(value = "/{id}")
     public AjaxResult getInfo(@PathVariable Long id)
     {
@@ -109,7 +107,6 @@ public class ProjPaymentController extends BaseController
     /**
      * 项目收款总览列表（分页，按项目维度聚合：合同额、已收、未收、进度、状态）
      */
-    @PreAuthorize("@ss.hasPermi('project:payment:list')")
     @GetMapping("/overview")
     public TableDataInfo overview(@RequestParam Map<String, Object> params)
     {
@@ -121,7 +118,6 @@ public class ProjPaymentController extends BaseController
     /**
      * 项目收款总览 KPI 统计（总数/未付款/部分付款/已结清/应收合计/已收合计）
      */
-    @PreAuthorize("@ss.hasPermi('project:payment:list')")
     @GetMapping("/overview/stats")
     public AjaxResult overviewStats()
     {

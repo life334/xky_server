@@ -54,7 +54,6 @@ public class ProjSettlementController extends BaseController
      * 查询费用结算树形列表
      * @param projectStatus 项目状态过滤，多个逗号分隔；默认"已办结,已归档"，传"all"显示全部
      */
-    @PreAuthorize("@ss.hasPermi('project:settlement:list')")
     @GetMapping("/treeList")
     public AjaxResult treeList(ProjProject project,
         @RequestParam(required = false) String projectStatus)
@@ -109,7 +108,6 @@ public class ProjSettlementController extends BaseController
     /**
      * 查询项目结算详情（含工作量明细 + 付款记录，供编辑弹窗使用）
      */
-    @PreAuthorize("@ss.hasPermi('project:settlement:query')")
     @GetMapping("/{projectId}")
     public AjaxResult getDetail(@PathVariable Long projectId)
     {

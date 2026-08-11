@@ -106,4 +106,12 @@ public interface ProjContractMapper
      * @return 去重值列表
      */
     public List<String> selectDistinctValues(@Param("field") String field);
+
+    /**
+     * 批量查询合同的付款明细（聚合关联项目），避免 N+1
+     *
+     * @param contractIds 合同ID列表
+     * @return 付款明细列表，包含 contractId / paymentId / amount / payTime / payUnit / paymentType / projectId / projectName
+     */
+    public List<Map<String, Object>> selectPaidListByContractIds(List<Long> contractIds);
 }

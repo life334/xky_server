@@ -1,9 +1,11 @@
 package com.xakcch.project.service.impl;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.xakcch.common.exception.ServiceException;
@@ -57,7 +59,10 @@ public class ProjContractServiceImpl implements IProjContractService
     @Override
     public List<ProjContract> selectContractList(ProjContract contract)
     {
-        return contractMapper.selectContractList(contract);
+        List<ProjContract> list = contractMapper.selectContractList(contract);
+        // 批量填充付款明细（避免 N+1）
+        fillPaidList(list);
+        return list;
     }
 
     /**
@@ -175,6 +180,41 @@ public class ProjContractServiceImpl implements IProjContractService
             throw new ServiceException("不允许从【" + currentStatus + "】变更为【" + targetStatus + "】");
         }
         return contractMapper.updateContractStatus(id, targetStatus);
+    }
+
+    /**
+     * 批量填充合同的付款明细列表（避免 N+1）
+     */
+    private void fillPaidList(List<ProjContract> list)
+    {
+        if (list == null || list.isEmpty()) return;
+        List<Long> ids = list.stream()
+                .map(ProjContract::getId)
+                .filter(id -> id != null)
+                .collect(Collectors.toList());
+        if (ids.isEmpty()) return;
+
+        List<Map<String, Object>> allPayments = contractMapper.selectPaidListByContractIds(ids);
+        // 按 contractId 分组
+        Map<Long, List<Map<String, Object>>> grouped = new HashMap<>();
+        if (allPayments != null)
+        {
+            for (Map<String, Object> row : allPayments)
+            {
+                Object cidObj = row.get("contractId");
+                Long cid = cidObj instanceof Number ? ((Number) cidObj).longValue() : null;
+                if (cid != null)
+                {
+                    grouped.computeIfAbsent(cid, k -> new ArrayList<>()).add(row);
+                }
+            }
+        }
+        // 回填到每个合同对象
+        for (ProjContract c : list)
+        {
+            List<Map<String, Object>> payments = grouped.get(c.getId());
+            c.setPaidList(payments != null ? payments : new ArrayList<>());
+        }
     }
 
     @Override

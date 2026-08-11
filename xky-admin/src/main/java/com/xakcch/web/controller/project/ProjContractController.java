@@ -43,7 +43,6 @@ public class ProjContractController extends BaseController
     /**
      * 查询合同列表（分页）
      */
-    @PreAuthorize("@ss.hasPermi('project:contract:list')")
     @GetMapping("/list")
     public TableDataInfo list(ProjContract contract)
     {
@@ -68,7 +67,6 @@ public class ProjContractController extends BaseController
     /**
      * 统计各状态下的合同数量（状态胶囊导航用）
      */
-    @PreAuthorize("@ss.hasPermi('project:contract:list')")
     @GetMapping("/statusCounts")
     public AjaxResult statusCounts()
     {
@@ -80,7 +78,6 @@ public class ProjContractController extends BaseController
      * 查询字段去重值列表（高级筛选下拉选项用）
      * 支持字段：clientUnit（委托单位）、contactName（联系人）、contractType（合同类型）
      */
-    @PreAuthorize("@ss.hasPermi('project:contract:list')")
     @GetMapping("/distinctValues")
     public AjaxResult distinctValues(@RequestParam String field)
     {
@@ -91,7 +88,6 @@ public class ProjContractController extends BaseController
     /**
      * 根据合同ID获取详细信息
      */
-    @PreAuthorize("@ss.hasPermi('project:contract:query')")
     @GetMapping(value = "/{id}")
     public AjaxResult getInfo(@PathVariable Long id)
     {
@@ -157,7 +153,6 @@ public class ProjContractController extends BaseController
     /**
      * 查询合同关联的项目列表
      */
-    @PreAuthorize("@ss.hasPermi('project:contract:query')")
     @GetMapping("/{id}/projects")
     public AjaxResult projectsByContract(@PathVariable Long id)
     {

@@ -38,7 +38,6 @@ public class ProjCategoryController extends BaseController
     /**
      * 获取项目类别列表
      */
-    @PreAuthorize("@ss.hasPermi('project:category:list')")
     @GetMapping("/list")
     public AjaxResult list(ProjCategory category)
     {
@@ -71,7 +70,6 @@ public class ProjCategoryController extends BaseController
     /**
      * 根据项目类别编号获取详细信息
      */
-    @PreAuthorize("@ss.hasPermi('project:category:query')")
     @GetMapping(value = "/{id}")
     public AjaxResult getInfo(@PathVariable Long id)
     {

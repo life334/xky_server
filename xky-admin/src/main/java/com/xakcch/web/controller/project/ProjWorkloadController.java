@@ -37,7 +37,6 @@ public class ProjWorkloadController extends BaseController
     /**
      * 查询工作量列表（分页）
      */
-    @PreAuthorize("@ss.hasPermi('project:workload:list')")
     @GetMapping("/list")
     public TableDataInfo list(ProjWorkload workload)
     {
@@ -62,7 +61,6 @@ public class ProjWorkloadController extends BaseController
     /**
      * 根据ID获取详细信息
      */
-    @PreAuthorize("@ss.hasPermi('project:workload:query')")
     @GetMapping(value = "/{id}")
     public AjaxResult getInfo(@PathVariable Long id)
     {

@@ -13,11 +13,13 @@ import com.xakcch.common.exception.ServiceException;
 import com.xakcch.common.utils.SecurityUtils;
 import com.xakcch.project.domain.ProjCategory;
 import com.xakcch.project.domain.ProjMaterial;
+import com.xakcch.project.domain.ProjPayment;
 import com.xakcch.project.domain.ProjProject;
 import com.xakcch.project.domain.ProjTask;
 import com.xakcch.project.mapper.ProjCategoryMapper;
 import com.xakcch.project.mapper.ProjLeaderMapper;
 import com.xakcch.project.mapper.ProjMaterialMapper;
+import com.xakcch.project.mapper.ProjPaymentMapper;
 import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.mapper.ProjTaskMapper;
 import com.xakcch.project.service.IProjProjectService;
@@ -59,6 +61,9 @@ public class ProjProjectServiceImpl implements IProjProjectService
     @Autowired
     private ProjMaterialMapper materialMapper;
 
+    @Autowired
+    private ProjPaymentMapper paymentMapper;
+
     /**
      * 查询项目详情
      */
@@ -70,6 +75,8 @@ public class ProjProjectServiceImpl implements IProjProjectService
         {
             // 回填负责人ID列表，供前端表单回显
             project.setLeaderIds(leaderMapper.selectLeaderIdsByProjectId(id));
+            // 回填首笔付款数据
+            fillFirstPayment(project);
         }
         return project;
     }
@@ -121,6 +128,10 @@ public class ProjProjectServiceImpl implements IProjProjectService
             createTasksForLeaders(project.getId(), project.getProjectName(),
                     Arrays.asList(leaderIds), project.getCreateBy());
         }
+
+        // 保存首笔付款（如有）
+        saveFirstPayment(project);
+
         return rows;
     }
 
@@ -147,6 +158,10 @@ public class ProjProjectServiceImpl implements IProjProjectService
 
         // 增量同步任务
         syncTasksOnLeaderChange(project.getId(), project.getProjectName(), newLeaderList, project.getUpdateBy());
+
+        // 保存首笔付款（如有）
+        saveFirstPayment(project);
+
         return rows;
     }
 
@@ -527,6 +542,61 @@ public class ProjProjectServiceImpl implements IProjProjectService
         if (!toRemove.isEmpty())
         {
             taskMapper.deleteTaskByProjectIdAndUserIds(projectId, toRemove);
+        }
+    }
+
+    /**
+     * 保存首笔付款（插入或更新 project_id = 当前项目且 payment_type = 'advance' 的记录）
+     * 如果首笔付款金额为空，则删除已有的 advance 记录
+     */
+    private void saveFirstPayment(ProjProject project)
+    {
+        if (project.getFirstPaymentAmount() != null && project.getFirstPaymentAmount().compareTo(java.math.BigDecimal.ZERO) > 0)
+        {
+            ProjPayment payment = new ProjPayment();
+            payment.setProjectId(project.getId());
+            payment.setPaymentType("advance");
+            payment.setAmount(project.getFirstPaymentAmount());
+            payment.setPayTime(project.getFirstPaymentTime());
+            payment.setPayUnit(project.getFirstPaymentUnit());
+            payment.setPayMethod(project.getFirstPaymentMethod());
+            payment.setCreateBy(project.getUpdateBy() != null ? project.getUpdateBy() : project.getCreateBy());
+            payment.setRemark("签约首付款");
+            paymentMapper.upsertPayment(payment);
+        }
+        else
+        {
+            // 金额为空或 ≤0 → 清空已有的首付款记录
+            ProjPayment query = new ProjPayment();
+            query.setProjectId(project.getId());
+            query.setPaymentType("advance");
+            List<ProjPayment> existing = paymentMapper.selectPaymentList(query);
+            if (existing != null && !existing.isEmpty())
+            {
+                for (ProjPayment p : existing)
+                {
+                    paymentMapper.deletePaymentByIds(new Long[]{p.getId()});
+                }
+            }
+        }
+    }
+
+    /**
+     * 回填首笔付款数据到项目对象（编辑回显用）
+     */
+    private void fillFirstPayment(ProjProject project)
+    {
+        ProjPayment query = new ProjPayment();
+        query.setProjectId(project.getId());
+        query.setPaymentType("advance");
+        List<ProjPayment> list = paymentMapper.selectPaymentList(query);
+        if (list != null && !list.isEmpty())
+        {
+            ProjPayment p = list.get(0);
+            project.setFirstPaymentAmount(p.getAmount());
+            project.setFirstPaymentTime(p.getPayTime());
+            project.setFirstPaymentUnit(p.getPayUnit());
+            project.setFirstPaymentMethod(p.getPayMethod());
         }
     }
 

@@ -43,7 +43,6 @@ public class ProjMaterialController extends BaseController
      * 查询资料提交列表（分页）
      * 默认只显示"已办结"和"已归档"项目的资料，传 projectStatus=all 显示全部
      */
-    @PreAuthorize("@ss.hasPermi('project:material:list')")
     @GetMapping("/list")
     public TableDataInfo list(ProjMaterial material,
         @RequestParam(required = false) String projectStatus)
@@ -77,7 +76,6 @@ public class ProjMaterialController extends BaseController
     /**
      * 统计各状态下的资料数量（状态胶囊导航用）
      */
-    @PreAuthorize("@ss.hasPermi('project:material:list')")
     @GetMapping("/statusCounts")
     public AjaxResult statusCounts()
     {
@@ -88,7 +86,6 @@ public class ProjMaterialController extends BaseController
     /**
      * 根据ID获取详细信息
      */
-    @PreAuthorize("@ss.hasPermi('project:material:query')")
     @GetMapping(value = "/{id}")
     public AjaxResult getInfo(@PathVariable Long id)
     {
@@ -168,7 +165,6 @@ public class ProjMaterialController extends BaseController
     /**
      * 查询流转记录
      */
-    @PreAuthorize("@ss.hasPermi('project:material:query')")
     @GetMapping("/flow/{id}")
     public AjaxResult flowList(@PathVariable Long id)
     {
