@@ -131,7 +131,7 @@ public class ProjSettlementController extends BaseController
             // 填充付款信息到项目节点
             fillPaymentInfo(projectNode, payments, p.getId());
 
-            // 按人员分组构建工作量树
+            // 按人员分组构建工作量树（保留 children 字段，兼容旧接口调用方；前端平表模式不再使用）
             List<Map<String, Object>> userChildren = buildUserChildren(workloads, p.getId());
 
             // 汇总项目级工作量
@@ -145,10 +145,13 @@ public class ProjSettlementController extends BaseController
                 if (w.getExternalOutput() != null) totalExternalOutput = totalExternalOutput.add(w.getExternalOutput());
             }
 
+            BigDecimal totalOutput = totalInternalOutput.add(totalExternalOutput);
             projectNode.put("workload", totalWorkload);
             projectNode.put("internalOutput", totalInternalOutput);
             projectNode.put("externalOutput", totalExternalOutput);
-            projectNode.put("output", totalInternalOutput.add(totalExternalOutput));
+            projectNode.put("output", totalOutput);
+            // 结算状态 + 已收/待收差额（与 overview 口径一致，供列表状态列/展开卡/底部核对条直接使用）
+            fillSettlementSummary(projectNode, payments, totalOutput);
             projectNode.put("children", userChildren);
             tree.add(projectNode);
         }
@@ -344,6 +347,35 @@ public class ProjSettlementController extends BaseController
             node.put("invoiceAmount", invoiceSource.getInvoiceAmount());
             node.put("invoiceStatus", invoiceSource.getInvoiceStatus());
         }
+    }
+
+    /** 填充结算核对摘要：已收 / 待收差额 / 结算状态（settled=已结清 pending=未结清 overdue=超额） */
+    private void fillSettlementSummary(Map<String, Object> node, List<ProjPayment> payments, BigDecimal totalOutput)
+    {
+        BigDecimal receivedAmount = BigDecimal.ZERO;
+        for (ProjPayment pm : payments)
+        {
+            if (pm.getAmount() != null) receivedAmount = receivedAmount.add(pm.getAmount());
+        }
+        BigDecimal pendingAmount = totalOutput.subtract(receivedAmount);
+
+        String settlementStatus;
+        if (pendingAmount.compareTo(BigDecimal.ZERO) < 0)
+        {
+            settlementStatus = "overdue";
+        }
+        else if (pendingAmount.compareTo(BigDecimal.ZERO) == 0 && totalOutput.compareTo(BigDecimal.ZERO) > 0)
+        {
+            settlementStatus = "settled";
+        }
+        else
+        {
+            settlementStatus = "pending";
+        }
+
+        node.put("receivedAmount", receivedAmount);
+        node.put("pendingAmount", pendingAmount);
+        node.put("settlementStatus", settlementStatus);
     }
 
     /** 按人员分组构建二级树节点 */
