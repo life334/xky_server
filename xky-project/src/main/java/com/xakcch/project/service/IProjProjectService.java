@@ -117,4 +117,12 @@ public interface IProjProjectService
      * @return 去重字符串列表
      */
     public List<String> getDistinctValues(String field);
+
+    /**
+     * 查询项目列表可显隐列的元数据（前端显隐列面板 + 动态渲染表格用）
+     * 物理字段从 information_schema 动态读取，另含 JOIN 展示字段、系统字段、动态字段
+     *
+     * @return [{ key, label, type, group, defaultVisible, prop }, ...]
+     */
+    public List<Map<String, Object>> getListColumns();
 }

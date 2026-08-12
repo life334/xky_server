@@ -123,7 +123,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="params.endTime != null and params.endTime != ''">
             AND p.create_time &lt;= to_timestamp(#{params.endTime}, 'YYYY-MM-DD HH24:MI:SS')
         </if>
-        order by p.create_time desc, p.id desc
+        order by p.id desc
     </select>
 
     <select id="selectProjectById" parameterType="Long" resultMap="ProjProjectResult">
@@ -300,6 +300,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where del_flag = '0'
         group by status
         order by status
+    </select>
+
+    <!-- 动态读取指定表的物理列元数据（列名 + 中文注释），供列表列显隐功能复用 -->
+    <select id="selectTableColumns" parameterType="string" resultType="java.util.Map">
+        select column_name as "columnName",
+               coalesce(col_description(#{tableName}::regclass, ordinal_position), column_name) as "columnComment"
+        from information_schema.columns
+        where table_name = #{tableName}
+        order by ordinal_position
     </select>
 
 </mapper>

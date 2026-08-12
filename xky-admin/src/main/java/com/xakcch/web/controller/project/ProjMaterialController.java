@@ -84,6 +84,16 @@ public class ProjMaterialController extends BaseController
     }
 
     /**
+     * 查询资料列表可显隐列的元数据（显隐列面板 + 表格动态渲染用）
+     * 物理字段从 information_schema 动态读取，另含 JOIN 字段、系统字段、动态字段
+     */
+    @GetMapping("/columns")
+    public AjaxResult columns()
+    {
+        return success(materialService.getListColumns());
+    }
+
+    /**
      * 根据ID获取详细信息
      */
     @GetMapping(value = "/{id}")
@@ -130,19 +140,18 @@ public class ProjMaterialController extends BaseController
 
     /**
      * 领取资料
+     * 担保人由后端从资料记录读取（资料编辑页维护），前端仅需确认
      */
     @PreAuthorize("@ss.hasPermi('project:material:borrow')")
     @Log(title = "资料领取", businessType = BusinessType.UPDATE)
     @PutMapping("/borrow/{id}")
-    public AjaxResult borrow(@PathVariable Long id, @RequestBody Map<String, Object> params)
+    public AjaxResult borrow(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> params)
     {
         LoginUser loginUser = SecurityUtils.getLoginUser();
         Long userId = loginUser.getUser().getUserId();
         String userName = loginUser.getUser().getNickName();
-        Long guarantorId = params.get("guarantorId") != null
-            ? Long.valueOf(params.get("guarantorId").toString()) : null;
-        String remark = params.get("remark") != null ? params.get("remark").toString() : null;
-        materialService.borrowMaterial(id, guarantorId, remark, userId, userName);
+        String remark = params != null && params.get("remark") != null ? params.get("remark").toString() : null;
+        materialService.borrowMaterial(id, remark, userId, userName);
         return success();
     }
 

@@ -3,16 +3,20 @@ package com.xakcch.project.service.impl;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.xakcch.common.exception.ServiceException;
 import com.xakcch.project.domain.ProjContract;
+import com.xakcch.project.domain.ProjFieldDef;
 import com.xakcch.project.domain.ProjMaterial;
 import com.xakcch.project.domain.ProjProject;
 import com.xakcch.project.mapper.ProjContractMapper;
+import com.xakcch.project.mapper.ProjFieldDefMapper;
 import com.xakcch.project.mapper.ProjMaterialMapper;
 import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.service.IProjContractService;
@@ -33,6 +37,9 @@ public class ProjContractServiceImpl implements IProjContractService
 
     @Autowired
     private ProjMaterialMapper materialMapper;
+
+    @Autowired
+    private ProjFieldDefMapper fieldDefMapper;
 
     /** 合同状态流转规则 */
     private static final Map<String, List<String>> STATUS_TRANSITIONS = new HashMap<>();
@@ -240,5 +247,124 @@ public class ProjContractServiceImpl implements IProjContractService
             throw new ServiceException("不支持的字段: " + field);
         }
         return contractMapper.selectDistinctValues(column);
+    }
+
+    /**
+     * 合同列表可显隐列元数据：
+     * 业务字段（含 JOIN/计算展示字段）→ 系统字段 → 动态字段（proj_field_def）
+     * 物理表新增列时，未在固定清单中的列会自动追加到业务组末尾（默认隐藏）
+     */
+    @Override
+    public List<Map<String, Object>> getListColumns()
+    {
+        List<Map<String, Object>> columns = new ArrayList<>();
+
+        // ---- 业务字段（固定顺序，默认可见性 = 当前页面展示列） ----
+        addColumn(columns, "contractNo", "合同编号", "text", "business", true, "contractNo");
+        addColumn(columns, "contractName", "合同名称", "text", "business", true, "contractName");
+        addColumn(columns, "clientUnit", "委托单位", "text", "business", true, "clientUnit");
+        addColumn(columns, "contractType", "合同类型", "dict", "business", true, "contractType");
+        addColumn(columns, "contractAmount", "合同金额", "money", "business", true, "contractAmount");
+        addColumn(columns, "projectCount", "关联项目数", "count", "business", true, "projectCount");
+        addColumn(columns, "paymentProgress", "付款进度", "progress", "business", true, "paymentProgress");
+        addColumn(columns, "attachment", "附件", "attachment", "business", true, "attachment");
+        addColumn(columns, "paidCount", "付款笔数", "count", "business", false, "paidCount");
+        addColumn(columns, "paidTotal", "已付款总额", "money", "business", false, "paidTotal");
+        addColumn(columns, "contactName", "联系人", "text", "business", true, "contactName");
+        addColumn(columns, "contactPhone", "联系电话", "text", "business", false, "contactPhone");
+        addColumn(columns, "signDate", "签署日期", "date", "business", true, "signDate");
+        addColumn(columns, "entrustDate", "委托时间", "date", "business", false, "entrustDate");
+        addColumn(columns, "auditDate", "审核日期", "date", "business", false, "auditDate");
+        addColumn(columns, "returnDate", "返回日期", "date", "business", false, "returnDate");
+        addColumn(columns, "finishDate", "完成日期", "date", "business", false, "finishDate");
+        addColumn(columns, "archiveDate", "归档日期", "date", "business", false, "archiveDate");
+        addColumn(columns, "archivePath", "归档路径", "text", "business", false, "archivePath");
+        addColumn(columns, "contractPeriod", "合同期限", "text", "business", false, "contractPeriod");
+        addColumn(columns, "paymentTerms", "付款条款", "text", "business", false, "paymentTerms");
+        addColumn(columns, "receivedAmount", "已到账金额", "money", "business", false, "receivedAmount");
+        addColumn(columns, "status", "状态", "dict", "business", true, "status");
+        addColumn(columns, "isSettled", "是否结算", "text", "business", false, "isSettled");
+        addColumn(columns, "remark", "备注", "text", "business", false, "remark");
+
+        // ---- 物理表新增列自动发现（不在固定清单中的列 → 业务组末尾，默认隐藏） ----
+        Set<String> known = new HashSet<>(Arrays.asList(
+            "contract_no", "contract_name", "client_unit", "contact_name", "contact_phone",
+            "contract_type", "contract_amount", "sign_date", "entrust_date", "audit_date",
+            "return_date", "finish_date", "archive_date", "archive_path", "contract_period",
+            "payment_terms", "received_amount", "status", "is_settled", "remark",
+            "id", "create_by", "create_time", "update_by", "update_time", "del_flag", "extra_data"));
+        List<Map<String, Object>> tableColumns = contractMapper.selectTableColumns("proj_contract");
+        if (tableColumns != null)
+        {
+            for (Map<String, Object> col : tableColumns)
+            {
+                String columnName = (String) col.get("columnName");
+                if (columnName == null || known.contains(columnName))
+                {
+                    continue;
+                }
+                String key = snakeToCamel(columnName);
+                String label = (String) col.get("columnComment");
+                if (label == null || label.trim().isEmpty())
+                {
+                    label = key;
+                }
+                addColumn(columns, key, label, "text", "business", false, key);
+            }
+        }
+
+        // ---- 系统字段（默认隐藏） ----
+        addColumn(columns, "id", "ID", "number", "system", false, "id");
+        addColumn(columns, "createBy", "创建人", "text", "system", false, "createBy");
+        addColumn(columns, "createTime", "创建时间", "date", "system", true, "createTime");
+        addColumn(columns, "updateBy", "更新人", "text", "system", false, "updateBy");
+        addColumn(columns, "updateTime", "更新时间", "date", "system", false, "updateTime");
+
+        // ---- 动态字段（用户自定义，默认隐藏，值从 extra_data JSONB 读取） ----
+        List<ProjFieldDef> fieldDefs = fieldDefMapper.selectFieldDefByTableName("proj_contract");
+        if (fieldDefs != null)
+        {
+            for (ProjFieldDef fd : fieldDefs)
+            {
+                if (fd == null || "1".equals(fd.getStatus()) || "2".equals(fd.getDelFlag()))
+                {
+                    continue;
+                }
+                addColumn(columns, fd.getFieldKey(), fd.getFieldLabel(), "dynamic", "dynamic", false, fd.getFieldKey());
+            }
+        }
+        return columns;
+    }
+
+    /** 组装单列元数据 */
+    private void addColumn(List<Map<String, Object>> columns, String key, String label,
+                           String type, String group, boolean defaultVisible, String prop)
+    {
+        Map<String, Object> col = new HashMap<>();
+        col.put("key", key);
+        col.put("label", label);
+        col.put("type", type);
+        col.put("group", group);
+        col.put("defaultVisible", defaultVisible);
+        col.put("prop", prop);
+        columns.add(col);
+    }
+
+    /** 数据库列名（snake_case）→ Java 属性名（camelCase） */
+    private String snakeToCamel(String name)
+    {
+        StringBuilder sb = new StringBuilder();
+        boolean up = false;
+        for (char c : name.toCharArray())
+        {
+            if (c == '_')
+            {
+                up = true;
+                continue;
+            }
+            sb.append(up ? Character.toUpperCase(c) : c);
+            up = false;
+        }
+        return sb.toString();
     }
 }

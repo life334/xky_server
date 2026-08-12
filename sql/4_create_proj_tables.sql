@@ -370,6 +370,8 @@ CREATE TABLE proj_material (
     archive_dir         VARCHAR(500)    DEFAULT '',
     status              VARCHAR(20)     DEFAULT '',
     submit_status       VARCHAR(20)     DEFAULT 'pending',
+    guarantor_flag      CHAR(1)         DEFAULT 'N',
+    guarantor_id        BIGINT          DEFAULT NULL,
     extra_data          JSONB           DEFAULT '{}',
     del_flag            CHAR(1)         DEFAULT '0',
     create_by           VARCHAR(64)     DEFAULT '',
@@ -389,12 +391,15 @@ COMMENT ON COLUMN proj_material.result_type IS '成果类型（字典 proj_mater
 COMMENT ON COLUMN proj_material.archive_dir IS '目录';
 COMMENT ON COLUMN proj_material.status IS '资料流转状态（字典 proj_material_status）';
 COMMENT ON COLUMN proj_material.submit_status IS '提交状态（字典 proj_material_submit_status）';
+COMMENT ON COLUMN proj_material.guarantor_flag IS '是否担保（Y需要 N不需要）';
+COMMENT ON COLUMN proj_material.guarantor_id IS '担保人ID（关联sys_user.user_id）';
 COMMENT ON COLUMN proj_material.extra_data IS '动态字段数据（JSONB）';
 COMMENT ON COLUMN proj_material.del_flag IS '删除标志（0正常 2删除）';
 COMMENT ON COLUMN proj_material.remark IS '备注';
 
 CREATE INDEX idx_proj_material_project ON proj_material(project_id);
 CREATE INDEX idx_proj_material_extra ON proj_material USING GIN (extra_data);
+CREATE INDEX idx_proj_material_guarantor ON proj_material(guarantor_id);
 
 -- 资料流转记录表
 DROP TABLE IF EXISTS proj_material_flow;

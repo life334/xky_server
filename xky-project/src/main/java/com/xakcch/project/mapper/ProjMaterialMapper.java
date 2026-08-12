@@ -48,4 +48,12 @@ public interface ProjMaterialMapper
      * @return [{ status: "pending", cnt: 5 }, ...]
      */
     public List<Map<String, Object>> selectMaterialStatusCounts();
+
+    /**
+     * 查询 proj_material 表的物理列元数据（information_schema 动态读取，列显隐功能用）
+     *
+     * @param tableName 表名（proj_material）
+     * @return [{ columnName: "submit_time", columnComment: "提交时间" }, ...]
+     */
+    public List<Map<String, Object>> selectTableColumns(@Param("tableName") String tableName);
 }

@@ -90,4 +90,11 @@ public interface IProjContractService
      * @return 去重值列表
      */
     public List<String> getDistinctValues(String field);
+
+    /**
+     * 合同列表可显隐列元数据（显隐列面板 + 表格动态渲染用）
+     *
+     * @return [{ key, label, type, group, defaultVisible, prop }, ...]
+     */
+    public List<Map<String, Object>> getListColumns();
 }

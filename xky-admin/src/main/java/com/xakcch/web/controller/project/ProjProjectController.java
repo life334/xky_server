@@ -85,6 +85,16 @@ public class ProjProjectController extends BaseController
     }
 
     /**
+     * 查询项目列表可显隐列的元数据（显隐列面板 + 表格动态渲染用）
+     * 物理字段从 information_schema 动态读取，另含 JOIN 字段、系统字段、动态字段
+     */
+    @GetMapping("/columns")
+    public AjaxResult columns()
+    {
+        return success(projectService.getListColumns());
+    }
+
+    /**
      * 根据项目编号获取详细信息
      */
     @GetMapping(value = "/{id}")

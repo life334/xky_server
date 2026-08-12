@@ -43,6 +43,12 @@ public class ProjMaterial extends BaseEntity
     /** 提交状态（字典 proj_material_submit_status） */
     private String submitStatus;
 
+    /** 是否担保（Y需要担保人 N不需要） */
+    private String guarantorFlag;
+
+    /** 担保人ID（关联 sys_user.user_id） */
+    private Long guarantorId;
+
     /** 动态字段数据（JSONB） */
     private String extraData;
 
@@ -166,6 +172,26 @@ public class ProjMaterial extends BaseEntity
         this.submitStatus = submitStatus;
     }
 
+    public String getGuarantorFlag()
+    {
+        return guarantorFlag;
+    }
+
+    public void setGuarantorFlag(String guarantorFlag)
+    {
+        this.guarantorFlag = guarantorFlag;
+    }
+
+    public Long getGuarantorId()
+    {
+        return guarantorId;
+    }
+
+    public void setGuarantorId(Long guarantorId)
+    {
+        this.guarantorId = guarantorId;
+    }
+
     public String getExtraData()
     {
         return extraData;
@@ -247,6 +273,8 @@ public class ProjMaterial extends BaseEntity
             .append("resultType", getResultType())
             .append("archiveDir", getArchiveDir())
             .append("status", getStatus())
+            .append("guarantorFlag", getGuarantorFlag())
+            .append("guarantorId", getGuarantorId())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())
             .append("createBy", getCreateBy())

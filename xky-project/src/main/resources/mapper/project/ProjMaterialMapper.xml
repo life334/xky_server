@@ -14,6 +14,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="archiveDir"        column="archive_dir"       />
         <result property="status"            column="status"            />
         <result property="submitStatus"     column="submit_status"     />
+        <result property="guarantorFlag"    column="guarantor_flag"    />
+        <result property="guarantorId"      column="guarantor_id"      />
         <result property="extraData"         column="extra_data"        />
         <result property="delFlag"           column="del_flag"          />
         <result property="createBy"          column="create_by"         />
@@ -30,6 +32,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <sql id="selectMaterialVo">
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
                m.result_type, m.archive_dir, m.status, m.submit_status,
+               m.guarantor_flag, m.guarantor_id,
                m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark
         from proj_material m
@@ -38,6 +41,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectMaterialList" parameterType="ProjMaterial" resultMap="ProjMaterialResult">
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
                m.result_type, m.archive_dir, m.status, m.submit_status,
+               m.guarantor_flag, m.guarantor_id,
                m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
                p.project_name, p.project_code, p.engineering_project, p.project_location
@@ -92,6 +96,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectMaterialById" parameterType="Long" resultMap="ProjMaterialResult">
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
                m.result_type, m.archive_dir, m.status, m.submit_status,
+               m.guarantor_flag, m.guarantor_id,
                m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
                p.project_name, p.project_code, p.engineering_project, p.project_location
@@ -110,6 +115,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="archiveDir != null and archiveDir != ''">archive_dir,</if>
             <if test="status != null and status != ''">status,</if>
             <if test="submitStatus != null and submitStatus != ''">submit_status,</if>
+            <if test="guarantorFlag != null and guarantorFlag != ''">guarantor_flag,</if>
+            <if test="guarantorId != null">guarantor_id,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
             <if test="remark != null and remark != ''">remark,</if>
             <if test="createBy != null and createBy != ''">create_by,</if>
@@ -123,6 +130,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="archiveDir != null and archiveDir != ''">#{archiveDir},</if>
             <if test="status != null and status != ''">#{status},</if>
             <if test="submitStatus != null and submitStatus != ''">#{submitStatus},</if>
+            <if test="guarantorFlag != null and guarantorFlag != ''">#{guarantorFlag},</if>
+            <if test="guarantorId != null">#{guarantorId},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="remark != null and remark != ''">#{remark},</if>
             <if test="createBy != null and createBy != ''">#{createBy},</if>
@@ -141,6 +150,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="archiveDir != null">archive_dir = #{archiveDir},</if>
             <if test="status != null">status = #{status},</if>
             <if test="submitStatus != null and submitStatus != ''">submit_status = #{submitStatus},</if>
+            <if test="guarantorFlag != null">guarantor_flag = #{guarantorFlag},</if>
+            <if test="guarantorFlag == 'N'.toString()">guarantor_id = null,</if>
+            <if test="guarantorFlag != null and guarantorFlag == 'Y'.toString() and guarantorId != null">guarantor_id = #{guarantorId},</if>
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
@@ -170,6 +182,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           and p.status in ('closed', 'archived')
         group by m.status
         order by m.status
+    </select>
+
+    <!-- 动态读取指定表的物理列元数据（列名 + 中文注释），供列表列显隐功能复用 -->
+    <select id="selectTableColumns" parameterType="string" resultType="java.util.Map">
+        select column_name as "columnName",
+               coalesce(col_description(#{tableName}::regclass, ordinal_position), column_name) as "columnComment"
+        from information_schema.columns
+        where table_name = #{tableName}
+        order by ordinal_position
     </select>
 
 </mapper>

@@ -116,4 +116,12 @@ public interface ProjProjectMapper
      * @return 去重字符串列表
      */
     public List<String> selectDistinctValues(@Param("field") String field);
+
+    /**
+     * 查询指定表的物理列元数据（information_schema 动态读取，列显隐功能用）
+     *
+     * @param tableName 表名（如 proj_project / proj_contract / proj_material）
+     * @return [{ columnName: "project_code", columnComment: "工程编号" }, ...]
+     */
+    public List<Map<String, Object>> selectTableColumns(@Param("tableName") String tableName);
 }

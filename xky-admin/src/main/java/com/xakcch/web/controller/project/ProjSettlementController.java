@@ -51,6 +51,56 @@ public class ProjSettlementController extends BaseController
     private static final SimpleDateFormat DATE_FMT = new SimpleDateFormat("yyyy-MM-dd");
 
     /**
+     * 查询费用结算列表可显隐列的元数据（显隐列面板 + 表格动态渲染用）
+     * 树形表格由 Controller 组装三级节点（项目级/人员级/叶子级），此处返回固定列清单
+     */
+    @GetMapping("/columns")
+    public AjaxResult columns()
+    {
+        List<Map<String, Object>> columns = new ArrayList<>();
+        // 项目级 + 人员级 + 叶子级通用字段（默认可见性 = 当前页面展示列）
+        addColumn(columns, "projectCode", "工程编号", "text", true, "projectCode");
+        addColumn(columns, "projectName", "项目名称", "text", false, "projectName");
+        addColumn(columns, "clientUnit", "委托单位", "text", true, "clientUnit");
+        addColumn(columns, "projectLocation", "工程地点", "text", true, "projectLocation");
+        addColumn(columns, "engineeringProject", "工程项目", "text", false, "engineeringProject");
+        addColumn(columns, "leaderNames", "负责人", "text", false, "leaderNames");
+        addColumn(columns, "userName", "人员", "text", false, "userName");
+        addColumn(columns, "categoryName", "项目类别", "text", false, "categoryName");
+        addColumn(columns, "workload", "工作量", "number", true, "workload");
+        addColumn(columns, "internalPrice", "内部单价", "money", false, "internalPrice");
+        addColumn(columns, "externalPrice", "外部单价", "money", false, "externalPrice");
+        addColumn(columns, "internalOutput", "内部产值", "money", true, "internalOutput");
+        addColumn(columns, "externalOutput", "外部产值", "money", true, "externalOutput");
+        addColumn(columns, "output", "总产值", "money", false, "output");
+        addColumn(columns, "prepayAmount", "预付款", "money", true, "prepayAmount");
+        addColumn(columns, "prepayDate", "预付款时间", "date", true, "prepayDate");
+        addColumn(columns, "payUnit", "付款单位", "text", true, "payUnit");
+        addColumn(columns, "payMethod", "付款方式", "text", true, "payMethod");
+        addColumn(columns, "tailAmount", "尾款", "money", true, "tailAmount");
+        addColumn(columns, "tailDate", "尾款时间", "date", true, "tailDate");
+        addColumn(columns, "invoiceStatus", "开票状态", "text", true, "invoiceStatus");
+        addColumn(columns, "invoiceNo", "发票号码", "text", true, "invoiceNo");
+        addColumn(columns, "invoiceAmount", "开票金额", "money", true, "invoiceAmount");
+        addColumn(columns, "payRemark", "备注", "text", true, "payRemark");
+        return success(columns);
+    }
+
+    /** 组装单列元数据 */
+    private void addColumn(List<Map<String, Object>> columns, String key, String label,
+                           String type, boolean defaultVisible, String prop)
+    {
+        Map<String, Object> col = new HashMap<>();
+        col.put("key", key);
+        col.put("label", label);
+        col.put("type", type);
+        col.put("group", "business");
+        col.put("defaultVisible", defaultVisible);
+        col.put("prop", prop);
+        columns.add(col);
+    }
+
+    /**
      * 查询费用结算树形列表
      * @param projectStatus 项目状态过滤，多个逗号分隔；默认"已办结,已归档"，传"all"显示全部
      */

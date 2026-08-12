@@ -114,4 +114,12 @@ public interface ProjContractMapper
      * @return 付款明细列表，包含 contractId / paymentId / amount / payTime / payUnit / paymentType / projectId / projectName
      */
     public List<Map<String, Object>> selectPaidListByContractIds(List<Long> contractIds);
+
+    /**
+     * 查询 proj_contract 表的物理列元数据（information_schema 动态读取，列显隐功能用）
+     *
+     * @param tableName 表名（proj_contract）
+     * @return [{ columnName: "contract_no", columnComment: "合同编号" }, ...]
+     */
+    public List<Map<String, Object>> selectTableColumns(@Param("tableName") String tableName);
 }
