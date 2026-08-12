@@ -209,6 +209,8 @@ public class ProjSettlementController extends BaseController
         result.put("receivedAmount", receivedAmount);
         result.put("pendingAmount", pendingAmount);
         result.put("settlementStatus", settlementStatus);
+        // 付款明细（预付款/尾款各一条，供详情页产值结算tab展示）
+        result.put("payments", payments);
         return success(result);
     }
 

@@ -140,8 +140,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
         {
             leaderMapper.insertProjectLeaders(project.getId(), leaderIds, project.getCreateBy());
             // 为每个负责人自动创建任务
-            createTasksForLeaders(project.getId(), project.getProjectName(),
-                    Arrays.asList(leaderIds), project.getCreateBy());
+            createTasksForLeaders(project, Arrays.asList(leaderIds), project.getCreateBy());
         }
 
         // 保存首笔付款（如有）
@@ -174,7 +173,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
         }
 
         // 增量同步任务
-        syncTasksOnLeaderChange(project.getId(), project.getProjectName(), newLeaderList, project.getUpdateBy());
+        syncTasksOnLeaderChange(project, newLeaderList, project.getUpdateBy());
 
         // 保存首笔付款（如有）
         saveFirstPayment(project);
@@ -440,8 +439,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
             if (leaderIds != null && leaderIds.length > 0)
             {
                 leaderMapper.insertProjectLeaders(project.getId(), leaderIds, operName);
-                createTasksForLeaders(project.getId(), project.getProjectName(),
-                        Arrays.asList(leaderIds), operName);
+                createTasksForLeaders(project, Arrays.asList(leaderIds), operName);
             }
             count++;
         }
@@ -488,22 +486,30 @@ public class ProjProjectServiceImpl implements IProjProjectService
     }
 
     /**
-     * 为负责人批量创建任务（新增项目时使用）
+     * 为负责人批量创建任务（新增项目/新增负责人时使用）
+     * 安排日期、工期要求默认带出项目值（可在任务管理中单独调整）
      *
-     * @param projectId   项目ID
-     * @param projectName 项目名称（用作默认任务名称）
-     * @param leaderIds   负责人ID列表
-     * @param operName    操作人
+     * @param project   项目对象（含 ID/名称/安排日期/工期要求）
+     * @param leaderIds 负责人ID列表
+     * @param operName  操作人
      */
-    private void createTasksForLeaders(Long projectId, String projectName, List<Long> leaderIds, String operName)
+    private void createTasksForLeaders(ProjProject project, List<Long> leaderIds, String operName)
     {
-        String taskName = (projectName != null && !projectName.isEmpty()) ? projectName : "项目任务";
+        String taskName = (project.getProjectName() != null && !project.getProjectName().isEmpty())
+                ? project.getProjectName() : "项目任务";
         for (Long userId : leaderIds)
         {
             ProjTask task = new ProjTask();
-            task.setProjectId(projectId);
+            task.setProjectId(project.getId());
             task.setUserId(userId);
             task.setTaskName(taskName);
+            // 安排日期带出项目安排日期
+            task.setAssignDate(project.getAssignDate());
+            // 工期要求带出项目工期要求（Integer 天数 → 拼接 " 天"）
+            if (project.getDurationRequire() != null)
+            {
+                task.setDurationRequire(project.getDurationRequire() + " 天");
+            }
             task.setStatus("pending");
             task.setCreateBy(operName);
             taskMapper.insertTask(task);
@@ -595,8 +601,9 @@ public class ProjProjectServiceImpl implements IProjProjectService
      * @param newLeaderIds  新的负责人ID列表
      * @param operName      操作人
      */
-    private void syncTasksOnLeaderChange(Long projectId, String projectName, List<Long> newLeaderIds, String operName)
+    private void syncTasksOnLeaderChange(ProjProject project, List<Long> newLeaderIds, String operName)
     {
+        Long projectId = project.getId();
         // 查询当前项目已有任务的执行人
         List<Long> rawExisting = taskMapper.selectTaskUserIdsByProjectId(projectId);
         final List<Long> existingUserIds = (rawExisting != null) ? rawExisting : new ArrayList<>();
@@ -607,7 +614,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
                 .collect(Collectors.toList());
         if (!toAdd.isEmpty())
         {
-            createTasksForLeaders(projectId, projectName, toAdd, operName);
+            createTasksForLeaders(project, toAdd, operName);
         }
 
         // 移除的负责人 → 逻辑删除任务
