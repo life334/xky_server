@@ -1,5 +1,6 @@
 package com.xakcch.project.service.impl;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.xakcch.common.exception.ServiceException;
 import com.xakcch.common.utils.SecurityUtils;
+import com.xakcch.common.utils.WorkdayUtils;
 import com.xakcch.project.domain.ProjCategory;
 import com.xakcch.project.domain.ProjMaterial;
 import com.xakcch.project.domain.ProjPayment;
@@ -24,6 +26,7 @@ import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.mapper.ProjTaskMapper;
 import com.xakcch.project.service.IProjProjectService;
 import com.xakcch.system.mapper.SysUserMapper;
+import com.xakcch.system.service.ISysWorkdayCalendarService;
 import com.xakcch.common.core.domain.entity.SysUser;
 
 /**
@@ -63,6 +66,9 @@ public class ProjProjectServiceImpl implements IProjProjectService
 
     @Autowired
     private ProjPaymentMapper paymentMapper;
+
+    @Autowired
+    private ISysWorkdayCalendarService workdayCalendarService;
 
     /**
      * 查询项目详情
@@ -117,6 +123,8 @@ public class ProjProjectServiceImpl implements IProjProjectService
         {
             project.setStatus("ongoing");
         }
+        // 总时长自动计算（安排日期 → 今天，仅工作日；未办结时保存即重算）
+        recalcTotalDuration(project);
         int rows = projectMapper.insertProject(project);
 
         // 插入负责人关联
@@ -145,6 +153,8 @@ public class ProjProjectServiceImpl implements IProjProjectService
     @Transactional(rollbackFor = Exception.class)
     public int updateProject(ProjProject project)
     {
+        // 总时长自动计算（安排日期 → 今天，仅工作日；已办结/已归档保持冻结值）
+        recalcTotalDuration(project);
         int rows = projectMapper.updateProject(project);
 
         // 先删后插，更新负责人关联
@@ -207,6 +217,8 @@ public class ProjProjectServiceImpl implements IProjProjectService
         {
             throw new ServiceException("该项目已办结，不能重复操作");
         }
+        // 办结快照：冻结总时长（安排日期 → 今天，仅工作日），此后不再变化
+        snapshotTotalDuration(project);
         int rows = projectMapper.completeProject(id);
         // 自动创建资料记录（默认待领取、待提交）
         ProjMaterial material = new ProjMaterial();
@@ -243,7 +255,59 @@ public class ProjProjectServiceImpl implements IProjProjectService
         {
             throw new ServiceException("状态不允许从[" + currentStatus + "]变更为[" + targetStatus + "]");
         }
+        // 流转到已办结：冻结总时长快照
+        if ("closed".equals(targetStatus))
+        {
+            snapshotTotalDuration(project);
+        }
         return projectMapper.updateProjectStatus(id, targetStatus);
+    }
+
+    /**
+     * 保存前重算项目总时长（安排日期 → 今天，仅工作日，含头含尾）
+     * <p>
+     * 规则：<br>
+     * 1. 未办结（ongoing）→ 每次保存按当天实时重算；<br>
+     * 2. 已办结（closed）/ 已归档（archived）→ 总时长已冻结，保持原值不变；<br>
+     * 3. 安排日期为空 → 总时长置空。
+     *
+     * @param project 待保存的项目对象（会就地修改 totalDuration）
+     */
+    private void recalcTotalDuration(ProjProject project)
+    {
+        if ("closed".equals(project.getStatus()) || "archived".equals(project.getStatus()))
+        {
+            return; // 已冻结，不动
+        }
+        if (project.getAssignDate() == null)
+        {
+            project.setTotalDuration(null);
+            return;
+        }
+        LocalDate assign = WorkdayUtils.toLocalDate(project.getAssignDate());
+        LocalDate today = LocalDate.now();
+        Map<LocalDate, String> calendarMap = workdayCalendarService.getCalendarMap(assign, today);
+        project.setTotalDuration(WorkdayUtils.countWorkdays(assign, today, calendarMap));
+    }
+
+    /**
+     * 办结时冻结总时长快照（安排日期 → 今天，仅工作日）
+     * 直接写库，此后项目编辑/重算均不再改动该值
+     *
+     * @param project 已加载的项目对象（含 assignDate）
+     */
+    private void snapshotTotalDuration(ProjProject project)
+    {
+        if (project == null || project.getAssignDate() == null)
+        {
+            // 无安排日期则总时长保持为空，不写
+            return;
+        }
+        LocalDate assign = WorkdayUtils.toLocalDate(project.getAssignDate());
+        LocalDate today = LocalDate.now();
+        Map<LocalDate, String> calendarMap = workdayCalendarService.getCalendarMap(assign, today);
+        int duration = WorkdayUtils.countWorkdays(assign, today, calendarMap);
+        projectMapper.updateProjectTotalDuration(project.getId(), duration);
     }
 
     /**
@@ -307,6 +371,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
                     project.setRemark(project.getImportRemark());
                 }
                 resolveCategoryAndLeaders(project);
+                recalcTotalDuration(project);
                 projectMapper.insertProject(project);                  // 1. 插入项目
                 Long[] leaderIds = project.getLeaderIds();
                 if (leaderIds != null && leaderIds.length > 0)
@@ -359,6 +424,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
             project.setStatus("ongoing");
             project.setCreateBy(operName);
             resolveCategoryAndLeaders(project);
+            recalcTotalDuration(project);
             projectMapper.insertProject(project);
             // 插入负责人关联 + 自动创建任务
             Long[] leaderIds = project.getLeaderIds();

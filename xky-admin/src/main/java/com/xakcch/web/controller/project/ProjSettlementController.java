@@ -106,6 +106,63 @@ public class ProjSettlementController extends BaseController
     }
 
     /**
+     * 查询项目产值结算总览（聚合接口：产值 + 收款 + 结算状态，供项目详情页产值结算tab使用）
+     */
+    @GetMapping("/overview/{projectId}")
+    public AjaxResult overview(@PathVariable Long projectId)
+    {
+        ProjProject project = projectService.selectProjectById(projectId);
+        if (project == null)
+        {
+            return error("项目不存在");
+        }
+        List<ProjWorkload> workloads = workloadMapper.selectWorkloadsByProjectId(projectId);
+        List<ProjPayment> payments = paymentMapper.selectPaymentsByProjectId(projectId);
+
+        // 产值汇总（内部 + 外部）
+        BigDecimal internalOutput = BigDecimal.ZERO;
+        BigDecimal externalOutput = BigDecimal.ZERO;
+        for (ProjWorkload w : workloads)
+        {
+            if (w.getInternalOutput() != null) internalOutput = internalOutput.add(w.getInternalOutput());
+            if (w.getExternalOutput() != null) externalOutput = externalOutput.add(w.getExternalOutput());
+        }
+        BigDecimal totalOutput = internalOutput.add(externalOutput);
+
+        // 已收款汇总
+        BigDecimal receivedAmount = BigDecimal.ZERO;
+        for (ProjPayment pm : payments)
+        {
+            if (pm.getAmount() != null) receivedAmount = receivedAmount.add(pm.getAmount());
+        }
+        BigDecimal pendingAmount = totalOutput.subtract(receivedAmount);
+
+        // 结算状态：overdue=超额收款 / settled=已结清 / pending=未结清
+        String settlementStatus;
+        if (pendingAmount.compareTo(BigDecimal.ZERO) < 0)
+        {
+            settlementStatus = "overdue";
+        }
+        else if (pendingAmount.compareTo(BigDecimal.ZERO) == 0 && totalOutput.compareTo(BigDecimal.ZERO) > 0)
+        {
+            settlementStatus = "settled";
+        }
+        else
+        {
+            settlementStatus = "pending";
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("internalOutput", internalOutput);
+        result.put("externalOutput", externalOutput);
+        result.put("totalOutput", totalOutput);
+        result.put("receivedAmount", receivedAmount);
+        result.put("pendingAmount", pendingAmount);
+        result.put("settlementStatus", settlementStatus);
+        return success(result);
+    }
+
+    /**
      * 查询项目结算详情（含工作量明细 + 付款记录，供编辑弹窗使用）
      */
     @GetMapping("/{projectId}")

@@ -86,6 +86,15 @@ public interface ProjProjectMapper
     public int updateProjectStatus(@Param("id") Long id, @Param("status") String status);
 
     /**
+     * 办结快照：仅更新项目总时长（冻结值，之后不再参与自动重算）
+     *
+     * @param id 项目ID
+     * @param totalDuration 冻结的总时长（工作日天数）
+     * @return 结果
+     */
+    public int updateProjectTotalDuration(@Param("id") Long id, @Param("totalDuration") Integer totalDuration);
+
+    /**
      * 按合同ID查询关联项目（含类别名+合同单价，用于合同结算树形展示）
      *
      * @param contractId 合同ID

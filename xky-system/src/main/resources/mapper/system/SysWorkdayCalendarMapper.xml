@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.system.mapper.SysWorkdayCalendarMapper">
+
+    <resultMap type="com.xakcch.system.domain.SysWorkdayCalendar" id="SysWorkdayCalendarResult">
+        <id     property="day"       column="day"        />
+        <result property="dayType"   column="day_type"   />
+        <result property="remark"    column="remark"     />
+        <result property="createBy"  column="create_by"  />
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy"  column="update_by"  />
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <sql id="selectWorkdayCalendarVo">
+        SELECT day, day_type, remark, create_by, create_time, update_by, update_time
+        FROM proj_workday_calendar
+    </sql>
+
+    <!-- 按日期区间查询（startDate/endDate 可空） -->
+    <select id="selectByDateRange" resultMap="SysWorkdayCalendarResult">
+        <include refid="selectWorkdayCalendarVo"/>
+        <where>
+            <if test="startDate != null and startDate != ''">
+                AND day &gt;= #{startDate}::date
+            </if>
+            <if test="endDate != null and endDate != ''">
+                AND day &lt;= #{endDate}::date
+            </if>
+        </where>
+        ORDER BY day
+    </select>
+
+    <!-- 按日期区间统计各日类型数量 -->
+    <select id="countByDateRange" resultType="java.util.Map">
+        SELECT day_type AS "dayType", COUNT(*) AS "cnt"
+        FROM proj_workday_calendar
+        <where>
+            <if test="startDate != null and startDate != ''">
+                AND day &gt;= #{startDate}::date
+            </if>
+            <if test="endDate != null and endDate != ''">
+                AND day &lt;= #{endDate}::date
+            </if>
+        </where>
+        GROUP BY day_type
+    </select>
+
+    <!-- 新增单条（day 冲突时覆盖，幂等） -->
+    <insert id="insertOrUpdate" parameterType="com.xakcch.system.domain.SysWorkdayCalendar">
+        INSERT INTO proj_workday_calendar (day, day_type, remark, create_by, create_time, update_by, update_time)
+        VALUES (#{day}, #{dayType}, #{remark}, #{createBy}, now(), #{updateBy}, now())
+        ON CONFLICT (day) DO UPDATE SET
+            day_type  = EXCLUDED.day_type,
+            remark    = EXCLUDED.remark,
+            update_by = EXCLUDED.update_by,
+            update_time = now()
+    </insert>
+
+    <!-- 按日期修改 -->
+    <update id="updateByDay" parameterType="com.xakcch.system.domain.SysWorkdayCalendar">
+        UPDATE proj_workday_calendar
+        SET day_type = #{dayType}, remark = #{remark}, update_by = #{updateBy}, update_time = now()
+        WHERE day = #{day}::date
+    </update>
+
+    <!-- 按日期删除 -->
+    <delete id="deleteByDay">
+        DELETE FROM proj_workday_calendar WHERE day = #{day}::date
+    </delete>
+
+    <!-- 生成某年周末基线（幂等：跳过已有记录，不覆盖节假日/调休；不写备注，避免撑宽日历单元格） -->
+    <insert id="insertWeekendBaseline">
+        INSERT INTO proj_workday_calendar (day, day_type, remark, create_by, create_time)
+        SELECT d::date, 'weekend', NULL, #{createBy}, now()
+        FROM generate_series(#{startDate}::date, #{endDate}::date, '1 day') AS d
+        WHERE EXTRACT(ISODOW FROM d) IN (6, 7)
+        ON CONFLICT (day) DO NOTHING
+    </insert>
+
+    <!-- 批量录入日期区间（跳过已有日期） -->
+    <insert id="batchInsertRange">
+        INSERT INTO proj_workday_calendar (day, day_type, remark, create_by, create_time)
+        SELECT d::date, #{dayType}, #{remark}, #{createBy}, now()
+        FROM generate_series(#{startDate}::date, #{endDate}::date, '1 day') AS d
+        ON CONFLICT (day) DO NOTHING
+    </insert>
+
+    <!-- 批量覆盖日期区间（已有日期更新 dayType/remark） -->
+    <insert id="batchUpsertRange">
+        INSERT INTO proj_workday_calendar (day, day_type, remark, create_by, create_time)
+        SELECT d::date, #{dayType}, #{remark}, #{createBy}, now()
+        FROM generate_series(#{startDate}::date, #{endDate}::date, '1 day') AS d
+        ON CONFLICT (day) DO UPDATE SET
+            day_type  = EXCLUDED.day_type,
+            remark    = EXCLUDED.remark,
+            update_by = EXCLUDED.create_by,
+            update_time = now()
+    </insert>
+
+    <!-- 按日期区间批量删除（dayType 为空时删除该区间全部记录） -->
+    <delete id="deleteByDateRange">
+        DELETE FROM proj_workday_calendar
+        WHERE day &gt;= #{startDate}::date
+          AND day &lt;= #{endDate}::date
+        <if test="dayType != null and dayType != ''">
+            AND day_type = #{dayType}
+        </if>
+    </delete>
+
+</mapper>

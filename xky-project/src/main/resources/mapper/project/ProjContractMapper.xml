@@ -82,10 +82,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             AND status = #{status}
         </if>
         <if test="keyword != null and keyword != ''">
-            AND (contract_no like concat('%', #{keyword}, '%')
-                 or contract_name like concat('%', #{keyword}, '%')
-                 or client_unit like concat('%', #{keyword}, '%')
-                 or contact_name like concat('%', #{keyword}, '%'))
+            AND (contract_no ilike concat('%', #{keyword}, '%')
+                 or contract_name ilike concat('%', #{keyword}, '%')
+                 or client_unit ilike concat('%', #{keyword}, '%')
+                 or contact_name ilike concat('%', #{keyword}, '%'))
         </if>
         <if test="signDateBegin != null">
             AND sign_date &gt;= #{signDateBegin}

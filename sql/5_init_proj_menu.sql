@@ -29,6 +29,7 @@ INSERT INTO sys_menu VALUES (502, '项目类别', 4, 6, 'category', 'project/cat
 INSERT INTO sys_menu VALUES (504, '合同列表', 5, 1, 'list', 'project/contract/index', '', 'ContractList', 1, 0, 'C', '0', '0', 'project:contract:list', 'list', 'admin', now(), '', NULL, '合同列表页面');
 -- INSERT INTO sys_menu VALUES (505, '合同单价', 5, 2, 'price', 'project/contract/price/index', '', 'ContractPrice', 1, 0, 'C', '0', '0', 'project:contract:price:list', 'money', 'admin', now(), '', NULL, '合同单价配置');
 INSERT INTO sys_menu VALUES (509, '合同结算', 5, 3, 'contractSettlement', 'project/contractSettlement/index', '', 'ContractSettlement', 1, 0, 'C', '0', '0', 'project:contractSettlement:list', 'money', 'admin', now(), '', NULL, '合同结算菜单');
+INSERT INTO sys_menu VALUES (511, '工作日历', 1, 10, 'workday', 'system/workday/index', '', 'Workday', 1, 0, 'C', '0', '0', 'system:workday:list', 'date', 'admin', now(), '', NULL, '工作日历菜单（节假日/调休维护）');
 
 -- 项目类别按钮
 INSERT INTO sys_menu VALUES (1061, '类别查询', 502, 1, '', '', '', '', 1, 0, 'F', '0', '0', 'project:category:query', '#', 'admin', now(), '', NULL, '');
@@ -108,3 +109,10 @@ INSERT INTO sys_menu VALUES (1110, '动态字段导出', 510, 5, '', '', '', '',
 INSERT INTO sys_menu VALUES (1113, '收款总览查询', 503, 7, '', '', '', '', 1, 0, 'F', '0', '0', 'project:payment:query', '#', 'admin', now(), '', NULL, '');
 INSERT INTO sys_menu VALUES (1114, '收款总览导出', 503, 8, '', '', '', '', 1, 0, 'F', '0', '0', 'project:payment:export', '#', 'admin', now(), '', NULL, '');
 
+-- 工作日历按钮
+INSERT INTO sys_menu VALUES (1115, '工作日历查询', 511, 1, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:query', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1116, '工作日历新增', 511, 2, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:add', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1117, '工作日历修改', 511, 3, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:edit', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1118, '工作日历删除', 511, 4, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:remove', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1119, '工作日历生成', 511, 5, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:generate', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1200, '工作日历批量录入', 511, 6, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:batch', '#', 'admin', now(), '', NULL, '');

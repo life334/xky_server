@@ -21,6 +21,8 @@ import com.xakcch.common.core.controller.BaseController;
 import com.xakcch.common.core.domain.AjaxResult;
 import com.xakcch.common.core.page.TableDataInfo;
 import com.xakcch.common.enums.BusinessType;
+import com.xakcch.common.exception.ServiceException;
+import com.xakcch.common.utils.SecurityUtils;
 import com.xakcch.common.utils.poi.ExcelUtil;
 import com.xakcch.project.domain.ProjProject;
 import com.xakcch.project.service.IProjProjectService;
@@ -115,6 +117,7 @@ public class ProjProjectController extends BaseController
     @PutMapping
     public AjaxResult edit(@Validated @RequestBody ProjProject project)
     {
+        checkClosedProject(project.getId(), "修改");
         if (!projectService.checkProjectCodeUnique(project))
         {
             return error("修改项目'" + project.getProjectName() + "'失败，工程编号已存在");
@@ -131,6 +134,7 @@ public class ProjProjectController extends BaseController
     @DeleteMapping("/{ids}")
     public AjaxResult remove(@PathVariable Long[] ids)
     {
+        checkClosedProjects(ids, "删除");
         return toAjax(projectService.deleteProjectByIds(ids));
     }
 
@@ -153,6 +157,7 @@ public class ProjProjectController extends BaseController
     @PutMapping("/changeStatus/{id}/{status}")
     public AjaxResult changeStatus(@PathVariable Long id, @PathVariable String status)
     {
+        checkClosedProject(id, "变更状态");
         return toAjax(projectService.changeProjectStatus(id, status));
     }
 
@@ -190,5 +195,40 @@ public class ProjProjectController extends BaseController
     {
         int count = projectService.batchInsertProject(projectList, getUsername());
         return AjaxResult.success("成功导入 " + count + " 条数据");
+    }
+
+    /**
+     * 校验已办结项目仅超级管理员可操作（修改 / 变更状态）
+     */
+    private void checkClosedProject(Long projectId, String action)
+    {
+        if (projectId == null || SecurityUtils.isAdmin())
+        {
+            return;
+        }
+        ProjProject exist = projectService.selectProjectById(projectId);
+        if (exist != null && "closed".equals(exist.getStatus()))
+        {
+            throw new ServiceException("已办结项目仅超级管理员可" + action);
+        }
+    }
+
+    /**
+     * 校验批量删除中的已办结项目（任一已办结即整体拒绝）
+     */
+    private void checkClosedProjects(Long[] ids, String action)
+    {
+        if (SecurityUtils.isAdmin())
+        {
+            return;
+        }
+        for (Long id : ids)
+        {
+            ProjProject exist = projectService.selectProjectById(id);
+            if (exist != null && "closed".equals(exist.getStatus()))
+            {
+                throw new ServiceException("已办结项目仅超级管理员可" + action + "：'" + exist.getProjectName() + "'");
+            }
+        }
     }
 }

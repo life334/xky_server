@@ -123,7 +123,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="params.endTime != null and params.endTime != ''">
             AND p.create_time &lt;= to_timestamp(#{params.endTime}, 'YYYY-MM-DD HH24:MI:SS')
         </if>
-        order by p.create_time desc
+        order by p.create_time desc, p.id desc
     </select>
 
     <select id="selectProjectById" parameterType="Long" resultMap="ProjProjectResult">
@@ -208,7 +208,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="status != null and status != ''">status = #{status},</if>
             <if test="assignDate != null">assign_date = #{assignDate},</if>
             <if test="durationRequire != null">duration_require = #{durationRequire},</if>
-            <if test="totalDuration != null">total_duration = #{totalDuration},</if>
+            total_duration = #{totalDuration},
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
@@ -234,6 +234,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <update id="updateProjectStatus">
         update proj_project set status = #{status}, update_time = now() where id = #{id}
+    </update>
+
+    <update id="updateProjectTotalDuration">
+        update proj_project set total_duration = #{totalDuration}, update_time = now() where id = #{id}
     </update>
 
     <!-- 按合同ID查询关联项目（含类别名+合同单价） -->

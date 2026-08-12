@@ -65,6 +65,7 @@ public class ProjProject extends BaseEntity
 
     /** 安排日期 */
     @Excel(name = "安排日期", dateFormat = "yyyy-MM-dd")
+    @JsonFormat(pattern = "yyyy-MM-dd")
     private java.util.Date assignDate;
 
     /** 工期要求（天） */
