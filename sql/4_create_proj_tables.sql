@@ -724,3 +724,77 @@ FROM generate_series('2026-01-01'::date, '2026-12-31'::date, '1 day') AS d
 WHERE EXTRACT(ISODOW FROM d) IN (6, 7)
     ON CONFLICT (day) DO NOTHING;
 
+-- -----------------------------------------------
+-- 1. 报表模板表（内置 / 自定义）
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS proj_report_template (
+                                                    id                BIGSERIAL PRIMARY KEY,
+                                                    template_name     VARCHAR(100) NOT NULL,             -- 模板名称
+    template_type     VARCHAR(20)  DEFAULT 'custom',     -- builtin 内置 / custom 自定义
+    subject_table     VARCHAR(50)  DEFAULT 'proj_project', -- 数据主体（proj_project / proj_task / proj_workload / proj_payment / proj_material / proj_contract）
+    source_template_id BIGINT,                            -- 自定义模板的来源内置模板 ID（内置模板为 NULL）
+    template_file     VARCHAR(255),                       -- 内置模板文件（classpath:reportTemplates/xxx.xls 或绝对路径）
+    file_name         VARCHAR(255),                       -- 原始文件名
+    title_row         INT          DEFAULT 1,             -- 标题行号（1-based，0 表示无标题）
+    header_row        INT          DEFAULT 2,             -- 表头行号（1-based）
+    data_start_row    INT          DEFAULT 3,             -- 数据起始行（1-based）
+    has_summary_row   CHAR(1)      DEFAULT 'N',           -- 导出是否追加合计行（Y/N）
+    default_filter    JSONB,                              -- 模板默认筛选条件（JSONB）
+    remark            VARCHAR(500),
+    del_flag          CHAR(1)      DEFAULT '0',           -- 0正常 2删除
+    create_by         VARCHAR(64)  DEFAULT '',
+    create_time       TIMESTAMP    DEFAULT now(),
+    update_by         VARCHAR(64)  DEFAULT '',
+    update_time       TIMESTAMP    DEFAULT now()
+    );
+COMMENT ON TABLE proj_report_template IS '报表导出-模板表';
+
+-- -----------------------------------------------
+-- 2. 模板字段表（内置模板列映射 / 自定义模板勾选字段）
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS proj_report_field (
+                                                 id                BIGSERIAL PRIMARY KEY,
+                                                 template_id       BIGINT NOT NULL,                   -- 所属模板 ID
+                                                 field_key         VARCHAR(100) NOT NULL,             -- 字段键（如 project.client_unit / agg.receivedAmount / dynamic.xxx）
+    field_label       VARCHAR(100),                      -- 列名（表头显示名）
+    field_source      VARCHAR(20)  DEFAULT 'subject',    -- subject 主体 / join 关联带出 / agg 聚合计算 / dynamic 动态字段
+    join_table        VARCHAR(50),                       -- 关联表（join 类型使用）
+    sort_order        INT          DEFAULT 0,            -- 排序
+    width             INT          DEFAULT 120,          -- 列宽（字符数）
+    column_index      INT,                               -- 内置模板中对应列序号（1-based，仅内置模板使用）
+    del_flag          CHAR(1)      DEFAULT '0'
+    );
+CREATE INDEX IF NOT EXISTS idx_report_field_tpl ON proj_report_field(template_id);
+COMMENT ON TABLE proj_report_field IS '报表导出-模板字段表';
+
+-- -----------------------------------------------
+-- 3. 筛选方案表（用户自定义筛选器勾选 + 值）
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS proj_report_filter (
+                                                  id                BIGSERIAL PRIMARY KEY,
+                                                  filter_name       VARCHAR(100) NOT NULL,             -- 方案名称
+    filter_config     JSONB NOT NULL,                    -- {selected:[字段key...], values:{key:value}}
+    create_by         VARCHAR(64)  DEFAULT '',
+    create_time       TIMESTAMP    DEFAULT now(),
+    update_by         VARCHAR(64)  DEFAULT '',
+    update_time       TIMESTAMP    DEFAULT now(),
+    del_flag          CHAR(1)      DEFAULT '0'
+    );
+COMMENT ON TABLE proj_report_filter IS '报表导出-筛选方案表';
+
+-- -----------------------------------------------
+-- 4. 导出历史表（谁/何时/哪个模板/什么筛选/多少行）
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS proj_report_log (
+                                               id                BIGSERIAL PRIMARY KEY,
+                                               template_id       BIGINT,                            -- 使用的模板 ID
+                                               template_name     VARCHAR(100),                      -- 模板名称快照
+    filter_name       VARCHAR(100),                      -- 筛选方案名称快照
+    filter_config     JSONB,                             -- 筛选条件快照
+    row_count         INT          DEFAULT 0,            -- 导出行数
+    export_by         VARCHAR(64)  DEFAULT '',           -- 操作人
+    export_time       TIMESTAMP    DEFAULT now(),        -- 导出时间
+    file_name         VARCHAR(255)                       -- 导出文件名
+    );
+COMMENT ON TABLE proj_report_log IS '报表导出-导出历史表';
+

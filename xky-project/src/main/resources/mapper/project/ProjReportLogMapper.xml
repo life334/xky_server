@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjReportLogMapper">
+
+    <resultMap type="ProjReportLog" id="ProjReportLogResult">
+        <result property="id"           column="id"            />
+        <result property="templateId"   column="template_id"   />
+        <result property="templateName" column="template_name" />
+        <result property="filterName"   column="filter_name"   />
+        <result property="filterConfig" column="filter_config" />
+        <result property="rowCount"     column="row_count"     />
+        <result property="exportBy"     column="export_by"     />
+        <result property="exportTime"   column="export_time"   />
+        <result property="fileName"     column="file_name"     />
+    </resultMap>
+
+    <select id="selectLogList" parameterType="ProjReportLog" resultMap="ProjReportLogResult">
+        select id, template_id, template_name, filter_name, filter_config::text as filter_config,
+               row_count, export_by, export_time, file_name
+        from proj_report_log
+        where 1 = 1
+        <if test="templateName != null and templateName != ''">
+            and template_name like concat('%', #{templateName}, '%')
+        </if>
+        <if test="exportBy != null and exportBy != ''">
+            and export_by like concat('%', #{exportBy}, '%')
+        </if>
+        order by export_time desc
+    </select>
+
+    <select id="selectLogById" parameterType="Long" resultMap="ProjReportLogResult">
+        select id, template_id, template_name, filter_name, filter_config::text as filter_config,
+               row_count, export_by, export_time, file_name
+        from proj_report_log
+        where id = #{id}
+    </select>
+
+    <insert id="insertLog" parameterType="ProjReportLog" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_report_log (
+            template_id, template_name, filter_name, filter_config,
+            row_count, export_by, export_time, file_name
+        ) values (
+            #{templateId}, #{templateName}, #{filterName}, #{filterConfig}::jsonb,
+            #{rowCount}, #{exportBy}, now(), #{fileName}
+        )
+    </insert>
+
+    <delete id="deleteLogById" parameterType="Long">
+        delete from proj_report_log where id = #{id}
+    </delete>
+</mapper>

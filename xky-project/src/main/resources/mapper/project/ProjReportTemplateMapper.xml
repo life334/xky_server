@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjReportTemplateMapper">
+
+    <resultMap type="ProjReportTemplate" id="ProjReportTemplateResult">
+        <result property="id"                column="id"                 />
+        <result property="templateName"      column="template_name"      />
+        <result property="templateType"      column="template_type"      />
+        <result property="subjectTable"      column="subject_table"      />
+        <result property="sourceTemplateId"  column="source_template_id" />
+        <result property="templateFile"      column="template_file"      />
+        <result property="fileName"          column="file_name"          />
+        <result property="titleRow"          column="title_row"          />
+        <result property="headerRow"         column="header_row"         />
+        <result property="dataStartRow"      column="data_start_row"     />
+        <result property="hasSummaryRow"     column="has_summary_row"    />
+        <result property="defaultFilter"     column="default_filter"     />
+        <result property="delFlag"           column="del_flag"           />
+        <result property="createBy"          column="create_by"          />
+        <result property="createTime"        column="create_time"        />
+        <result property="updateBy"          column="update_by"          />
+        <result property="updateTime"        column="update_time"        />
+        <result property="remark"            column="remark"             />
+    </resultMap>
+
+    <sql id="selectTemplateVo">
+        select id, template_name, template_type, subject_table, source_template_id,
+               template_file, file_name, title_row, header_row, data_start_row,
+               has_summary_row, default_filter::text as default_filter, del_flag,
+               create_by, create_time, update_by, update_time, remark
+        from proj_report_template
+    </sql>
+
+    <select id="selectTemplateList" parameterType="ProjReportTemplate" resultMap="ProjReportTemplateResult">
+        <include refid="selectTemplateVo"/>
+        where del_flag = '0'
+        <if test="templateName != null and templateName != ''">
+            and template_name like concat('%', #{templateName}, '%')
+        </if>
+        <if test="templateType != null and templateType != ''">
+            and template_type = #{templateType}
+        </if>
+        <if test="subjectTable != null and subjectTable != ''">
+            and subject_table = #{subjectTable}
+        </if>
+        order by template_type desc, id asc
+    </select>
+
+    <select id="selectTemplateById" parameterType="Long" resultMap="ProjReportTemplateResult">
+        <include refid="selectTemplateVo"/>
+        where id = #{id}
+    </select>
+
+    <insert id="insertTemplate" parameterType="ProjReportTemplate" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_report_template (
+            template_name, template_type, subject_table, source_template_id,
+            template_file, file_name, title_row, header_row, data_start_row,
+            has_summary_row, default_filter, remark, del_flag, create_by, create_time
+        ) values (
+            #{templateName}, #{templateType}, #{subjectTable}, #{sourceTemplateId},
+            #{templateFile}, #{fileName}, #{titleRow}, #{headerRow}, #{dataStartRow},
+            #{hasSummaryRow}, #{defaultFilter}::jsonb, #{remark}, '0', #{createBy}, now()
+        )
+    </insert>
+
+    <update id="updateTemplate" parameterType="ProjReportTemplate">
+        update proj_report_template
+        <set>
+            <if test="templateName != null">template_name = #{templateName},</if>
+            <if test="templateType != null">template_type = #{templateType},</if>
+            <if test="subjectTable != null">subject_table = #{subjectTable},</if>
+            <if test="sourceTemplateId != null">source_template_id = #{sourceTemplateId},</if>
+            <if test="templateFile != null">template_file = #{templateFile},</if>
+            <if test="fileName != null">file_name = #{fileName},</if>
+            <if test="titleRow != null">title_row = #{titleRow},</if>
+            <if test="headerRow != null">header_row = #{headerRow},</if>
+            <if test="dataStartRow != null">data_start_row = #{dataStartRow},</if>
+            <if test="hasSummaryRow != null">has_summary_row = #{hasSummaryRow},</if>
+            <if test="defaultFilter != null">default_filter = #{defaultFilter}::jsonb,</if>
+            <if test="remark != null">remark = #{remark},</if>
+            update_by = #{updateBy}, update_time = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <update id="deleteTemplateById" parameterType="Long">
+        update proj_report_template set del_flag = '2', update_time = now()
+        where id = #{id}
+    </update>
+</mapper>

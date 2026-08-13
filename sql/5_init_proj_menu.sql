@@ -12,6 +12,8 @@ INSERT INTO sys_menu VALUES (5, '合同管理', 0, 1, 'contract', NULL, '', '', 
 INSERT INTO sys_menu VALUES (6, '资料管理', 0, 1, 'material', 'project/material/index', '', 'MaterialList', 1, 0, 'C', '0', '0', 'project:material:list', 'documentation', 'admin', now(), '', NULL, '资料管理菜单');
 INSERT INTO sys_menu VALUES (7, '费用结算', 0, 1, 'settlement', 'project/settlement/index', '', 'Settlement', 1, 0, 'C', '0', '0', 'project:settlement:list', 'money', 'admin', now(), '', NULL, '费用结算菜单');
 -- INSERT INTO sys_menu VALUES (9, '项目管理new', 0, 0, 'dashboardnew', 'project/project/controlTower', '', 'DashboardNew', 1, 0, 'C', '0', '0', '', 'dashboard', 'admin', now(), '', NULL, '首页new');
+INSERT INTO sys_menu VALUES (10, '报表导出', 0, 1, 'report', 'report/index', '', 'Report', 1, 0, 'C', '0', '0', 'report:report:list', 'excel', 'admin', now(), '', NULL, '报表导出菜单');
+
 -- -----------------------------------------------
 -- 3. 项目类别管理菜单 + 按钮权限
 -- -----------------------------------------------
@@ -116,3 +118,11 @@ INSERT INTO sys_menu VALUES (1117, '工作日历修改', 511, 3, '', '', '', '',
 INSERT INTO sys_menu VALUES (1118, '工作日历删除', 511, 4, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:remove', '#', 'admin', now(), '', NULL, '');
 INSERT INTO sys_menu VALUES (1119, '工作日历生成', 511, 5, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:generate', '#', 'admin', now(), '', NULL, '');
 INSERT INTO sys_menu VALUES (1200, '工作日历批量录入', 511, 6, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:batch', '#', 'admin', now(), '', NULL, '');
+
+-- 报表导出按钮
+INSERT INTO sys_menu VALUES (1201, '报表导出', 10, 1, '', '', '', '', 1, 0, 'F', '0', '0', 'report:report:export', '#', 'admin', now(), '', NULL, '导出报表权限');
+INSERT INTO sys_menu VALUES (1202, '模板管理', 10, 2, '', '', '', '', 1, 0, 'F', '0', '0', 'report:report:template', '#', 'admin', now(), '', NULL, '模板增删改权限');
+INSERT INTO sys_menu VALUES (1203, '筛选方案', 10, 3, '', '', '', '', 1, 0, 'F', '0', '0', 'report:report:filter', '#', 'admin', now(), '', NULL, '筛选方案增删改权限');
+INSERT INTO sys_menu VALUES (1204, '导出历史', 10, 4, '', '', '', '', 1, 0, 'F', '0', '0', 'report:report:log', '#', 'admin', now(), '', NULL, '导出历史查看/重导权限');
+
+

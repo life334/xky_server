@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ReportDataMapper">
+
+    <!--
+      项目台账行查询：一行一项目
+      JOIN 合同（p.contract_id） / 付款汇总（子查询） / 负责人（子查询，取第一人）
+      筛选 key 来自前端 filter_config.values，与 ReportFieldPool 字段 key 对应
+    -->
+    <select id="selectProjectRows" resultType="java.util.HashMap">
+        select
+            p.id,
+            p.project_code as "projectCode",
+            p.project_name as "projectName",
+            p.engineering_project as "engineeringProject",
+            p.project_category_id as "projectCategoryId",
+            p.client_unit as "clientUnit",
+            p.contact_name as "contactName",
+            p.contact_phone as "contactPhone",
+            p.project_location as "projectLocation",
+            p.contract_id as "contractId",
+            p.status as "projectStatus",
+            p.extra_data::text as "projectExtraData",
+            p.assign_date as "assignDate",
+            p.duration_require as "durationRequire",
+            p.total_duration as "totalDuration",
+            p.create_time as "createTime",
+            p.remark as "remark",
+            c.contract_no as "contractNo",
+            c.contract_name as "contractName",
+            c.contract_amount as "contractAmount",
+            c.sign_date as "signDate",
+            c.entrust_date as "entrustDate",
+            c.audit_date as "auditDate",
+            c.finish_date as "finishDate",
+            c.archive_date as "archiveDate",
+            c.contract_period as "contractPeriod",
+            c.payment_terms as "paymentTerms",
+            c.is_settled as "isSettled",
+            c.extra_data::text as "contractExtraData",
+            coalesce(pay_sum.total_received, 0) as "receivedAmount",
+            pay_sum.max_pay_time as "lastPayTime",
+            coalesce(pay_sum.total_invoice, 0) as "totalInvoiceAmount",
+            leader.nick_name as "leaderName",
+            cat.name as "categoryName",
+            cat.parent_id as "categoryParentId"
+        from proj_project p
+        left join proj_contract c on c.id = p.contract_id and c.del_flag = '0'
+        left join (
+            select project_id,
+                   sum(amount) as total_received,
+                   max(pay_time) as max_pay_time,
+                   sum(coalesce(invoice_amount, 0)) as total_invoice
+            from proj_payment
+            where del_flag = '0'
+            group by project_id
+        ) pay_sum on pay_sum.project_id = p.id
+        left join (
+            select pl.project_id, min(su.nick_name) as nick_name
+            from proj_leader pl
+            left join sys_user su on su.user_id = pl.user_id
+            group by pl.project_id
+        ) leader on leader.project_id = p.id
+        left join proj_category cat on cat.id = p.project_category_id
+        where p.del_flag = '0'
+        <if test="f.projectCode != null and f.projectCode != ''">
+            and p.project_code like concat('%', #{f.projectCode}, '%')
+        </if>
+        <if test="f.projectName != null and f.projectName != ''">
+            and p.project_name like concat('%', #{f.projectName}, '%')
+        </if>
+        <if test="f.clientUnit != null and f.clientUnit != ''">
+            and p.client_unit like concat('%', #{f.clientUnit}, '%')
+        </if>
+        <if test="f.engineeringProject != null and f.engineeringProject != ''">
+            and p.engineering_project like concat('%', #{f.engineeringProject}, '%')
+        </if>
+        <if test="f.projectLocation != null and f.projectLocation != ''">
+            and p.project_location like concat('%', #{f.projectLocation}, '%')
+        </if>
+        <if test="f.contactName != null and f.contactName != ''">
+            and p.contact_name like concat('%', #{f.contactName}, '%')
+        </if>
+        <if test="f.categoryId != null and f.categoryId != ''">
+            and p.project_category_id = cast(#{f.categoryId} as bigint)
+        </if>
+        <if test="f.contractId != null and f.contractId != ''">
+            and p.contract_id = cast(#{f.contractId} as bigint)
+        </if>
+        <if test="f.projectStatus != null and f.projectStatus != ''">
+            and p.status in
+            <foreach item="s" collection="f.projectStatus.split(',')" open="(" separator="," close=")">
+                #{s}
+            </foreach>
+        </if>
+        <if test="f.assignDateBegin != null and f.assignDateBegin != ''">
+            and p.assign_date &gt;= cast(#{f.assignDateBegin} as date)
+        </if>
+        <if test="f.assignDateEnd != null and f.assignDateEnd != ''">
+            and p.assign_date &lt;= cast(#{f.assignDateEnd} as date)
+        </if>
+        <if test="f.createTimeBegin != null and f.createTimeBegin != ''">
+            and p.create_time &gt;= cast(#{f.createTimeBegin} as timestamp)
+        </if>
+        <if test="f.createTimeEnd != null and f.createTimeEnd != ''">
+            and p.create_time &lt;= cast(#{f.createTimeEnd} as timestamp)
+        </if>
+        <if test="f.signDateBegin != null and f.signDateBegin != ''">
+            and c.sign_date &gt;= cast(#{f.signDateBegin} as date)
+        </if>
+        <if test="f.signDateEnd != null and f.signDateEnd != ''">
+            and c.sign_date &lt;= cast(#{f.signDateEnd} as date)
+        </if>
+        <if test="f.entrustDateBegin != null and f.entrustDateBegin != ''">
+            and c.entrust_date &gt;= cast(#{f.entrustDateBegin} as date)
+        </if>
+        <if test="f.entrustDateEnd != null and f.entrustDateEnd != ''">
+            and c.entrust_date &lt;= cast(#{f.entrustDateEnd} as date)
+        </if>
+        <if test="f.auditDateBegin != null and f.auditDateBegin != ''">
+            and c.audit_date &gt;= cast(#{f.auditDateBegin} as date)
+        </if>
+        <if test="f.auditDateEnd != null and f.auditDateEnd != ''">
+            and c.audit_date &lt;= cast(#{f.auditDateEnd} as date)
+        </if>
+        <if test="f.lastPayTimeBegin != null and f.lastPayTimeBegin != ''">
+            and pay_sum.max_pay_time &gt;= cast(#{f.lastPayTimeBegin} as timestamp)
+        </if>
+        <if test="f.lastPayTimeEnd != null and f.lastPayTimeEnd != ''">
+            and pay_sum.max_pay_time &lt;= cast(#{f.lastPayTimeEnd} as timestamp)
+        </if>
+        <if test="f.contractAmountMin != null and f.contractAmountMin != ''">
+            and c.contract_amount &gt;= cast(#{f.contractAmountMin} as numeric)
+        </if>
+        <if test="f.contractAmountMax != null and f.contractAmountMax != ''">
+            and c.contract_amount &lt;= cast(#{f.contractAmountMax} as numeric)
+        </if>
+        <if test="f.receivedAmountMin != null and f.receivedAmountMin != ''">
+            and pay_sum.total_received &gt;= cast(#{f.receivedAmountMin} as numeric)
+        </if>
+        <if test="f.receivedAmountMax != null and f.receivedAmountMax != ''">
+            and pay_sum.total_received &lt;= cast(#{f.receivedAmountMax} as numeric)
+        </if>
+        <if test="f.pendingAmountMin != null and f.pendingAmountMin != ''">
+            and (c.contract_amount - coalesce(pay_sum.total_received, 0)) &gt;= cast(#{f.pendingAmountMin} as numeric)
+        </if>
+        <if test="f.pendingAmountMax != null and f.pendingAmountMax != ''">
+            and (c.contract_amount - coalesce(pay_sum.total_received, 0)) &lt;= cast(#{f.pendingAmountMax} as numeric)
+        </if>
+        <if test="f.totalInvoiceAmountMin != null and f.totalInvoiceAmountMin != ''">
+            and coalesce(pay_sum.total_invoice, 0) &gt;= cast(#{f.totalInvoiceAmountMin} as numeric)
+        </if>
+        <if test="f.totalInvoiceAmountMax != null and f.totalInvoiceAmountMax != ''">
+            and coalesce(pay_sum.total_invoice, 0) &lt;= cast(#{f.totalInvoiceAmountMax} as numeric)
+        </if>
+        <if test="f.archiveDateBegin != null and f.archiveDateBegin != ''">
+            and c.archive_date &gt;= cast(#{f.archiveDateBegin} as date)
+        </if>
+        <if test="f.archiveDateEnd != null and f.archiveDateEnd != ''">
+            and c.archive_date &lt;= cast(#{f.archiveDateEnd} as date)
+        </if>
+        <if test="f.finishDateBegin != null and f.finishDateBegin != ''">
+            and c.finish_date &gt;= cast(#{f.finishDateBegin} as date)
+        </if>
+        <if test="f.finishDateEnd != null and f.finishDateEnd != ''">
+            and c.finish_date &lt;= cast(#{f.finishDateEnd} as date)
+        </if>
+        <if test="f.invoiceFlag != null and f.invoiceFlag != ''">
+            <choose>
+                <when test="f.invoiceFlag == 'Y'.toString()">
+                    and coalesce(pay_sum.total_invoice, 0) &gt; 0
+                </when>
+                <otherwise>
+                    and coalesce(pay_sum.total_invoice, 0) = 0
+                </otherwise>
+            </choose>
+        </if>
+        <!-- 结算状态：pending 未结清 / settled 已结清 / overdue 超额 -->
+        <if test="f.settlementStatus != null and f.settlementStatus != ''">
+            <choose>
+                <when test="f.settlementStatus == 'settled'.toString()">
+                    and c.contract_amount is not null
+                    and coalesce(pay_sum.total_received, 0) &gt;= c.contract_amount
+                </when>
+                <when test="f.settlementStatus == 'overdue'.toString()">
+                    and c.contract_amount is not null
+                    and coalesce(pay_sum.total_received, 0) &gt; c.contract_amount
+                </when>
+                <otherwise>
+                    and (c.contract_amount is null
+                         or coalesce(pay_sum.total_received, 0) &lt; c.contract_amount)
+                </otherwise>
+            </choose>
+        </if>
+        <!-- 欠款时长（月）：完工至今月数 -->
+        <if test="f.debtMonths != null and f.debtMonths != ''">
+            and c.finish_date is not null
+            and extract(epoch from (now() - c.finish_date)) / 86400 / 30.44 &gt;= cast(#{f.debtMonths} as numeric)
+        </if>
+        <if test="f.contactPhone != null and f.contactPhone != ''">
+            and p.contact_phone like concat('%', #{f.contactPhone}, '%')
+        </if>
+        <if test="f.contractNo != null and f.contractNo != ''">
+            and c.contract_no like concat('%', #{f.contractNo}, '%')
+        </if>
+        <if test="f.contractName != null and f.contractName != ''">
+            and c.contract_name like concat('%', #{f.contractName}, '%')
+        </if>
+        <if test="f.contractPeriod != null and f.contractPeriod != ''">
+            and c.contract_period like concat('%', #{f.contractPeriod}, '%')
+        </if>
+        <if test="f.paymentTerms != null and f.paymentTerms != ''">
+            and c.payment_terms like concat('%', #{f.paymentTerms}, '%')
+        </if>
+        <if test="f.leaderName != null and f.leaderName != ''">
+            and leader.nick_name like concat('%', #{f.leaderName}, '%')
+        </if>
+        <if test="f.isSettled != null and f.isSettled != ''">
+            and c.is_settled = #{f.isSettled}
+        </if>
+        <if test="f.keyword != null and f.keyword != ''">
+            and (p.project_code like concat('%', #{f.keyword}, '%')
+                 or p.project_name like concat('%', #{f.keyword}, '%')
+                 or p.client_unit like concat('%', #{f.keyword}, '%'))
+        </if>
+        order by p.id desc
+    </select>
+
+</mapper>

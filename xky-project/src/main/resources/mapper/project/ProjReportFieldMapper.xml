@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjReportFieldMapper">
+
+    <resultMap type="ProjReportField" id="ProjReportFieldResult">
+        <result property="id"           column="id"           />
+        <result property="templateId"   column="template_id"  />
+        <result property="fieldKey"     column="field_key"    />
+        <result property="fieldLabel"   column="field_label"  />
+        <result property="fieldSource"  column="field_source" />
+        <result property="joinTable"    column="join_table"   />
+        <result property="sortOrder"    column="sort_order"   />
+        <result property="width"        column="width"        />
+        <result property="columnIndex"  column="column_index" />
+        <result property="headerGroup"  column="header_group" />
+        <result property="delFlag"      column="del_flag"     />
+    </resultMap>
+
+    <select id="selectFieldsByTemplateId" parameterType="Long" resultMap="ProjReportFieldResult">
+        select id, template_id, field_key, field_label, field_source, join_table,
+               sort_order, width, column_index, header_group, del_flag
+        from proj_report_field
+        where template_id = #{templateId} and del_flag = '0'
+        order by sort_order asc, id asc
+    </select>
+
+    <insert id="batchInsertFields">
+        insert into proj_report_field (
+            template_id, field_key, field_label, field_source, join_table,
+            sort_order, width, column_index, header_group, del_flag
+        ) values
+        <foreach item="f" collection="fields" separator=",">
+            (#{templateId}, #{f.fieldKey}, #{f.fieldLabel}, #{f.fieldSource}, #{f.joinTable},
+             #{f.sortOrder}, #{f.width}, #{f.columnIndex}, #{f.headerGroup}, '0')
+        </foreach>
+    </insert>
+
+    <update id="deleteFieldsByTemplateId" parameterType="Long">
+        update proj_report_field set del_flag = '2'
+        where template_id = #{templateId}
+    </update>
+</mapper>
