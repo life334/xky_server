@@ -141,24 +141,104 @@ public class ReportExcelExporter
                 currentRow = 1;
             }
 
-            // 表头行
-            Row header = sheet.createRow(currentRow);
-            header.setHeight((short) 300);
-            for (int i = 0; i < colCount; i++)
+            // 表头行（支持多级表头：有 headerGroup 时写分组行+字段名行，无则单行）
+            boolean hasGroup = false;
+            for (ProjReportField hf : fields)
             {
-                ProjReportField f = fields.get(i);
-                Cell c = header.createCell(i);
-                c.setCellValue(f.getFieldLabel() == null ? f.getFieldKey() : f.getFieldLabel());
-                if (headerStyle != null)
+                if (hf.getHeaderGroup() != null && !hf.getHeaderGroup().trim().isEmpty())
                 {
-                    CellStyle hs = wb.createCellStyle();
-                    hs.cloneStyleFrom(headerStyle);
-                    c.setCellStyle(hs);
+                    hasGroup = true;
+                    break;
                 }
-                int w = f.getWidth() == null ? 14 : f.getWidth();
-                sheet.setColumnWidth(i, Math.min(w * 256, 12000));
             }
-            currentRow++;
+            if (hasGroup)
+            {
+                // 二级表头：分组行 + 字段名行
+                Row groupRow = sheet.createRow(currentRow);
+                groupRow.setHeight((short) 300);
+                Row fieldRow = sheet.createRow(currentRow + 1);
+                fieldRow.setHeight((short) 300);
+                int gi = 0;
+                while (gi < colCount)
+                {
+                    ProjReportField f = fields.get(gi);
+                    String group = f.getHeaderGroup();
+                    if (group == null || group.trim().isEmpty())
+                    {
+                        // 无分组：垂直合并两行，字段名写在字段名行
+                        Cell gc = groupRow.createCell(gi);
+                        Cell fc = fieldRow.createCell(gi);
+                        fc.setCellValue(f.getFieldLabel() == null ? f.getFieldKey() : f.getFieldLabel());
+                        if (headerStyle != null)
+                        {
+                            CellStyle gs = wb.createCellStyle();
+                            gs.cloneStyleFrom(headerStyle);
+                            gc.setCellStyle(gs);
+                            CellStyle fs = wb.createCellStyle();
+                            fs.cloneStyleFrom(headerStyle);
+                            fc.setCellStyle(fs);
+                        }
+                        sheet.addMergedRegion(new CellRangeAddress(currentRow, currentRow + 1, gi, gi));
+                        int w = f.getWidth() == null ? 14 : f.getWidth();
+                        sheet.setColumnWidth(gi, Math.min(w * 256, 12000));
+                        gi++;
+                    }
+                    else
+                    {
+                        // 有分组：横向合并同组连续字段
+                        int start = gi;
+                        while (gi < colCount && group.equals(fields.get(gi).getHeaderGroup()))
+                        {
+                            ProjReportField cf = fields.get(gi);
+                            Cell fc = fieldRow.createCell(gi);
+                            fc.setCellValue(cf.getFieldLabel() == null ? cf.getFieldKey() : cf.getFieldLabel());
+                            if (headerStyle != null)
+                            {
+                                CellStyle fs = wb.createCellStyle();
+                                fs.cloneStyleFrom(headerStyle);
+                                fc.setCellStyle(fs);
+                            }
+                            int w = cf.getWidth() == null ? 14 : cf.getWidth();
+                            sheet.setColumnWidth(gi, Math.min(w * 256, 12000));
+                            gi++;
+                        }
+                        Cell gc = groupRow.createCell(start);
+                        gc.setCellValue(group);
+                        if (headerStyle != null)
+                        {
+                            CellStyle gs = wb.createCellStyle();
+                            gs.cloneStyleFrom(headerStyle);
+                            gc.setCellStyle(gs);
+                        }
+                        if (gi - 1 > start)
+                        {
+                            sheet.addMergedRegion(new CellRangeAddress(currentRow, currentRow, start, gi - 1));
+                        }
+                    }
+                }
+                currentRow += 2;
+            }
+            else
+            {
+                // 一级表头：单行
+                Row header = sheet.createRow(currentRow);
+                header.setHeight((short) 300);
+                for (int i = 0; i < colCount; i++)
+                {
+                    ProjReportField f = fields.get(i);
+                    Cell c = header.createCell(i);
+                    c.setCellValue(f.getFieldLabel() == null ? f.getFieldKey() : f.getFieldLabel());
+                    if (headerStyle != null)
+                    {
+                        CellStyle hs = wb.createCellStyle();
+                        hs.cloneStyleFrom(headerStyle);
+                        c.setCellStyle(hs);
+                    }
+                    int w = f.getWidth() == null ? 14 : f.getWidth();
+                    sheet.setColumnWidth(i, Math.min(w * 256, 12000));
+                }
+                currentRow++;
+            }
 
             // 数据行
             for (Map<String, Object> row : rows)

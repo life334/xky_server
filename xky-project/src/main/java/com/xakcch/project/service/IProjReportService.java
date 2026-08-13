@@ -62,6 +62,9 @@ public interface IProjReportService
     /** 导出报表（内置模板原样填充 / 自定义模板动态列） */
     void exportReport(Long templateId, Map<String, Object> filter, HttpServletResponse response);
 
+    /** 按配置直接导出（不保存模板，临时使用） */
+    void exportByConfig(ProjReportTemplate template, Map<String, Object> filter, HttpServletResponse response);
+
     // ==================== 导出历史 ====================
 
     /** 导出历史列表 */

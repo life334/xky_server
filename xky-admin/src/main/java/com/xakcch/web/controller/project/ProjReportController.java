@@ -149,6 +149,19 @@ public class ProjReportController extends BaseController
         reportService.exportReport(templateId, filter, response);
     }
 
+    /** 按配置直接导出（不保存模板，临时使用） */
+    @PreAuthorize("@ss.hasPermi('report:report:export')")
+    @Log(title = "报表导出", businessType = BusinessType.EXPORT)
+    @PostMapping("/exportByConfig")
+    public void exportByConfig(@RequestBody Map<String, Object> body, HttpServletResponse response)
+    {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        ProjReportTemplate template = mapper.convertValue(body.get("template"), ProjReportTemplate.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> filter = (Map<String, Object>) body.get("filter");
+        reportService.exportByConfig(template, filter, response);
+    }
+
     // ==================== 导出历史 ====================
 
     /** 导出历史列表 */

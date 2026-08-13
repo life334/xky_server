@@ -168,6 +168,7 @@ public class ProjReportServiceImpl implements IProjReportService
                 nf.setJoinTable(f.getJoinTable());
                 nf.setSortOrder(f.getSortOrder());
                 nf.setWidth(f.getWidth());
+                nf.setHeaderGroup(f.getHeaderGroup());
                 newFields.add(nf);
             }
             fieldMapper.batchInsertFields(newId, newFields);
@@ -273,6 +274,7 @@ public class ProjReportServiceImpl implements IProjReportService
         result.put("template", template);
         result.put("total", rows.size());
         result.put("rows", displayRows.size() > 50 ? new ArrayList<>(displayRows.subList(0, 50)) : displayRows);
+        fields = enrichHeaderGroupFromSource(template, fields);
         result.put("headerTree", buildHeaderTree(fields));
         return result;
     }
@@ -334,6 +336,62 @@ public class ProjReportServiceImpl implements IProjReportService
         return tree;
     }
 
+    /**
+     * 自定义模板字段缺失多级表头分组（headerGroup）时，按 fieldKey 从来源内置模板继承。
+     * 用于"基于内置模板新增字段"场景下保留原有多级表头结构。
+     */
+    private List<ProjReportField> enrichHeaderGroupFromSource(ProjReportTemplate template, List<ProjReportField> fields)
+    {
+        if (fields == null || fields.isEmpty())
+        {
+            return fields;
+        }
+        boolean needEnrich = false;
+        for (ProjReportField f : fields)
+        {
+            if (f.getHeaderGroup() == null || f.getHeaderGroup().trim().isEmpty())
+            {
+                needEnrich = true;
+                break;
+            }
+        }
+        if (!needEnrich)
+        {
+            return fields;
+        }
+        if (template == null || !"custom".equals(template.getTemplateType())
+                || template.getSourceTemplateId() == null)
+        {
+            return fields;
+        }
+        ProjReportTemplate source = getTemplate(template.getSourceTemplateId());
+        if (source == null || source.getFieldList() == null || source.getFieldList().isEmpty())
+        {
+            return fields;
+        }
+        Map<String, String> keyToGroup = new HashMap<>();
+        for (ProjReportField sf : source.getFieldList())
+        {
+            if (sf.getHeaderGroup() != null && !sf.getHeaderGroup().trim().isEmpty())
+            {
+                keyToGroup.putIfAbsent(sf.getFieldKey(), sf.getHeaderGroup());
+            }
+        }
+        if (keyToGroup.isEmpty())
+        {
+            return fields;
+        }
+        for (ProjReportField f : fields)
+        {
+            if ((f.getHeaderGroup() == null || f.getHeaderGroup().trim().isEmpty())
+                    && keyToGroup.containsKey(f.getFieldKey()))
+            {
+                f.setHeaderGroup(keyToGroup.get(f.getFieldKey()));
+            }
+        }
+        return fields;
+    }
+
     @Override
     public void exportReport(Long templateId, Map<String, Object> filter, HttpServletResponse response)
     {
@@ -344,6 +402,7 @@ public class ProjReportServiceImpl implements IProjReportService
             throw new ServiceException("模板未配置字段，无法导出");
         }
         List<Map<String, Object>> rows = queryRows(filter);
+        fields = enrichHeaderGroupFromSource(template, fields);
 
         ProjReportTemplate sourceTemplate = null;
         if ("custom".equals(template.getTemplateType()) && template.getSourceTemplateId() != null)
@@ -406,6 +465,66 @@ public class ProjReportServiceImpl implements IProjReportService
         catch (Exception e)
         {
             // 日志写入失败不应影响已导出的文件
+            System.out.println("[ReportExport] insertLog failed (ignored): " + e.getMessage());
+        }
+    }
+
+    @Override
+    public void exportByConfig(ProjReportTemplate template, Map<String, Object> filter, HttpServletResponse response)
+    {
+        List<ProjReportField> fields = template.getFieldList();
+        if (fields == null || fields.isEmpty())
+        {
+            throw new ServiceException("未配置字段，无法导出");
+        }
+        List<Map<String, Object>> rows = queryRows(filter);
+        fields = enrichHeaderGroupFromSource(template, fields);
+
+        ProjReportTemplate sourceTemplate = null;
+        if (template.getSourceTemplateId() != null)
+        {
+            sourceTemplate = templateMapper.selectTemplateById(template.getSourceTemplateId());
+        }
+
+        String time = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String tplName = template.getTemplateName() == null || template.getTemplateName().isEmpty()
+                ? "临时导出" : template.getTemplateName();
+        String fileName = tplName + "_" + time + ".xlsx";
+
+        try
+        {
+            response.setContentType("application/vnd.ms-excel");
+            String encoded = URLEncoder.encode(fileName, StandardCharsets.UTF_8.name()).replaceAll("\\+", "%20");
+            response.setHeader("Content-Disposition", "attachment;filename*=UTF-8''" + encoded);
+
+            OutputStream out = response.getOutputStream();
+            ReportExcelExporter.exportCustom(out, template, fields, rows, sourceTemplate);
+            out.flush();
+        }
+        catch (ServiceException e)
+        {
+            throw e;
+        }
+        catch (Exception e)
+        {
+            throw new ServiceException("导出失败：" + e.getMessage());
+        }
+
+        // 记录导出历史（templateId 记来源模板，标识临时导出）
+        ProjReportLog log = new ProjReportLog();
+        log.setTemplateId(template.getSourceTemplateId());
+        log.setTemplateName(tplName + "（临时）");
+        log.setFilterName(filter == null ? null : (String) filter.get("_filterName"));
+        log.setFilterConfig(filterToJson(filter));
+        log.setRowCount(rows.size());
+        log.setExportBy(SecurityUtils.getUsername());
+        log.setFileName(fileName);
+        try
+        {
+            logMapper.insertLog(log);
+        }
+        catch (Exception e)
+        {
             System.out.println("[ReportExport] insertLog failed (ignored): " + e.getMessage());
         }
     }
