@@ -12,6 +12,7 @@ import com.xakcch.common.exception.ServiceException;
 import com.xakcch.common.utils.StringUtils;
 import com.xakcch.project.domain.ProjCategory;
 import com.xakcch.project.mapper.ProjCategoryMapper;
+import com.xakcch.project.mapper.ProjCategoryBillingMapper;
 import com.xakcch.project.service.IProjCategoryService;
 
 /**
@@ -24,6 +25,9 @@ public class ProjCategoryServiceImpl implements IProjCategoryService
 {
     @Autowired
     private ProjCategoryMapper categoryMapper;
+
+    @Autowired
+    private ProjCategoryBillingMapper billingMapper;
 
     /**
      * 查询项目类别详情
@@ -240,6 +244,8 @@ public class ProjCategoryServiceImpl implements IProjCategoryService
         {
             throw new ServiceException("该类别已被项目引用，不允许删除");
         }
+        // 级联逻辑删除该类别的计费方式
+        billingMapper.deleteBillingByCategoryId(id);
         return categoryMapper.deleteCategoryById(id);
     }
 

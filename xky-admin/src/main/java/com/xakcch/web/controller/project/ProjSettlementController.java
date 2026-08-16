@@ -150,8 +150,8 @@ public class ProjSettlementController extends BaseController
             projectNode.put("internalOutput", totalInternalOutput);
             projectNode.put("externalOutput", totalExternalOutput);
             projectNode.put("output", totalOutput);
-            // 结算状态 + 已收/待收差额（与 overview 口径一致，供列表状态列/展开卡/底部核对条直接使用）
-            fillSettlementSummary(projectNode, payments, totalOutput);
+            // 结算状态 + 已收/待收差额（结算总额 = 外部产值合计，与编辑页面口径一致）
+            fillSettlementSummary(projectNode, payments, totalExternalOutput);
             projectNode.put("children", userChildren);
             tree.add(projectNode);
         }
@@ -181,6 +181,8 @@ public class ProjSettlementController extends BaseController
             if (w.getExternalOutput() != null) externalOutput = externalOutput.add(w.getExternalOutput());
         }
         BigDecimal totalOutput = internalOutput.add(externalOutput);
+        // 结算总额 = 外部产值合计（与编辑页面口径一致）
+        BigDecimal settlementAmount = externalOutput;
 
         // 已收款汇总
         BigDecimal receivedAmount = BigDecimal.ZERO;
@@ -188,7 +190,7 @@ public class ProjSettlementController extends BaseController
         {
             if (pm.getAmount() != null) receivedAmount = receivedAmount.add(pm.getAmount());
         }
-        BigDecimal pendingAmount = totalOutput.subtract(receivedAmount);
+        BigDecimal pendingAmount = settlementAmount.subtract(receivedAmount);
 
         // 结算状态：overdue=超额收款 / settled=已结清 / pending=未结清
         String settlementStatus;
@@ -196,7 +198,7 @@ public class ProjSettlementController extends BaseController
         {
             settlementStatus = "overdue";
         }
-        else if (pendingAmount.compareTo(BigDecimal.ZERO) == 0 && totalOutput.compareTo(BigDecimal.ZERO) > 0)
+        else if (pendingAmount.compareTo(BigDecimal.ZERO) == 0 && settlementAmount.compareTo(BigDecimal.ZERO) > 0)
         {
             settlementStatus = "settled";
         }
@@ -209,6 +211,7 @@ public class ProjSettlementController extends BaseController
         result.put("internalOutput", internalOutput);
         result.put("externalOutput", externalOutput);
         result.put("totalOutput", totalOutput);
+        result.put("settlementAmount", settlementAmount);
         result.put("receivedAmount", receivedAmount);
         result.put("pendingAmount", pendingAmount);
         result.put("settlementStatus", settlementStatus);
@@ -289,6 +292,11 @@ public class ProjSettlementController extends BaseController
                 w.setExternalOutput(toBigDecimal(wl.get("externalOutput")));
                 w.setWorkload(toBigDecimal(wl.get("workload")));
                 w.setPriceSource((String) wl.getOrDefault("priceSource", "manual"));
+                w.setBillingType((String) wl.getOrDefault("billingType", ""));
+                w.setBillingCategory((String) wl.getOrDefault("billingCategory", ""));
+                w.setPriceUnit((String) wl.getOrDefault("priceUnit", ""));
+                w.setMinQuantity(toBigDecimal(wl.get("minQuantity")));
+                w.setUnitPrice(toBigDecimal(wl.get("unitPrice")));
                 w.setRemark((String) wl.getOrDefault("remark", ""));
                 w.setCreateBy(username);
                 workloadMapper.upsertWorkload(w);
@@ -349,22 +357,23 @@ public class ProjSettlementController extends BaseController
         }
     }
 
-    /** 填充结算核对摘要：已收 / 待收差额 / 结算状态（settled=已结清 pending=未结清 overdue=超额） */
-    private void fillSettlementSummary(Map<String, Object> node, List<ProjPayment> payments, BigDecimal totalOutput)
+    /** 填充结算核对摘要：已收 / 待收差额 / 结算状态（settled=已结清 pending=未结清 overdue=超额）
+     *  @param settlementAmount 结算总额（= 外部产值合计） */
+    private void fillSettlementSummary(Map<String, Object> node, List<ProjPayment> payments, BigDecimal settlementAmount)
     {
         BigDecimal receivedAmount = BigDecimal.ZERO;
         for (ProjPayment pm : payments)
         {
             if (pm.getAmount() != null) receivedAmount = receivedAmount.add(pm.getAmount());
         }
-        BigDecimal pendingAmount = totalOutput.subtract(receivedAmount);
+        BigDecimal pendingAmount = settlementAmount.subtract(receivedAmount);
 
         String settlementStatus;
         if (pendingAmount.compareTo(BigDecimal.ZERO) < 0)
         {
             settlementStatus = "overdue";
         }
-        else if (pendingAmount.compareTo(BigDecimal.ZERO) == 0 && totalOutput.compareTo(BigDecimal.ZERO) > 0)
+        else if (pendingAmount.compareTo(BigDecimal.ZERO) == 0 && settlementAmount.compareTo(BigDecimal.ZERO) > 0)
         {
             settlementStatus = "settled";
         }

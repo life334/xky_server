@@ -71,7 +71,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where c.name = #{name} and c.del_flag = '0' and c.level = 2 limit 1
     </select>
 
-    <insert id="insertCategory" parameterType="ProjCategory">
+    <insert id="insertCategory" parameterType="ProjCategory" useGeneratedKeys="true" keyProperty="id">
         insert into proj_category(
             <if test="parentId != null">parent_id,</if>
             <if test="name != null and name != ''">name,</if>

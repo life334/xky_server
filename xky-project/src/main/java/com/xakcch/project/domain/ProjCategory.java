@@ -49,6 +49,9 @@ public class ProjCategory extends BaseEntity
     /** 子类别列表（非持久化，树结构用） */
     private List<ProjCategory> children = new ArrayList<ProjCategory>();
 
+    /** 计费方式列表（非持久化，编辑保存时随类别一并提交） */
+    private List<ProjCategoryBilling> billingList;
+
     public Long getId()
     {
         return id;
@@ -157,6 +160,16 @@ public class ProjCategory extends BaseEntity
     public void setChildren(List<ProjCategory> children)
     {
         this.children = children;
+    }
+
+    public List<ProjCategoryBilling> getBillingList()
+    {
+        return billingList;
+    }
+
+    public void setBillingList(List<ProjCategoryBilling> billingList)
+    {
+        this.billingList = billingList;
     }
 
     @Override

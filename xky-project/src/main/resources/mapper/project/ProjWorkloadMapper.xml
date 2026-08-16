@@ -17,6 +17,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="externalOutput"    column="external_output"   />
         <result property="workload"         column="workload"          />
         <result property="priceSource"       column="price_source"      />
+        <result property="billingType"       column="billing_type"      />
+        <result property="billingCategory"   column="billing_category"  />
+        <result property="priceUnit"         column="price_unit"        />
+        <result property="minQuantity"       column="min_quantity"      />
+        <result property="unitPrice"         column="unit_price"        />
         <result property="extraData"         column="extra_data"        />
         <result property="delFlag"           column="del_flag"          />
         <result property="createBy"          column="create_by"         />
@@ -35,7 +40,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_price, w.external_price,
                w.internal_output, w.external_output,
                w.workload,
-               w.price_source, w.extra_data::text as extra_data, w.del_flag,
+               w.price_source,
+               w.billing_type, w.billing_category, w.price_unit, w.min_quantity, w.unit_price,
+               w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark
         from proj_workload w
     </sql>
@@ -46,7 +53,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_price, w.external_price,
                w.internal_output, w.external_output,
                w.workload,
-               w.price_source, w.extra_data::text as extra_data, w.del_flag,
+               w.price_source,
+               w.billing_type, w.billing_category, w.price_unit, w.min_quantity, w.unit_price,
+               w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
                u.nick_name,
@@ -77,7 +86,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_price, w.external_price,
                w.internal_output, w.external_output,
                w.workload,
-               w.price_source, w.extra_data::text as extra_data, w.del_flag,
+               w.price_source,
+               w.billing_type, w.billing_category, w.price_unit, w.min_quantity, w.unit_price,
+               w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
                u.nick_name,
@@ -102,6 +113,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="externalOutput != null">external_output,</if>
             <if test="workload != null">workload,</if>
             <if test="priceSource != null and priceSource != ''">price_source,</if>
+            <if test="billingType != null and billingType != ''">billing_type,</if>
+            <if test="billingCategory != null and billingCategory != ''">billing_category,</if>
+            <if test="priceUnit != null">price_unit,</if>
+            <if test="minQuantity != null">min_quantity,</if>
+            <if test="unitPrice != null">unit_price,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
             <if test="remark != null and remark != ''">remark,</if>
             <if test="createBy != null and createBy != ''">create_by,</if>
@@ -118,6 +134,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="externalOutput != null">#{externalOutput},</if>
             <if test="workload != null">#{workload},</if>
             <if test="priceSource != null and priceSource != ''">#{priceSource},</if>
+            <if test="billingType != null and billingType != ''">#{billingType},</if>
+            <if test="billingCategory != null and billingCategory != ''">#{billingCategory},</if>
+            <if test="priceUnit != null">#{priceUnit},</if>
+            <if test="minQuantity != null">#{minQuantity},</if>
+            <if test="unitPrice != null">#{unitPrice},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="remark != null and remark != ''">#{remark},</if>
             <if test="createBy != null and createBy != ''">#{createBy},</if>
@@ -139,6 +160,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="externalOutput != null">external_output = #{externalOutput},</if>
             <if test="workload != null">workload = #{workload},</if>
             <if test="priceSource != null and priceSource != ''">price_source = #{priceSource},</if>
+            <if test="billingType != null and billingType != ''">billing_type = #{billingType},</if>
+            <if test="billingCategory != null and billingCategory != ''">billing_category = #{billingCategory},</if>
+            <if test="priceUnit != null">price_unit = #{priceUnit},</if>
+            <if test="minQuantity != null">min_quantity = #{minQuantity},</if>
+            <if test="unitPrice != null">unit_price = #{unitPrice},</if>
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
@@ -160,7 +186,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_price, w.external_price,
                w.internal_output, w.external_output,
                w.workload,
-               w.price_source, w.extra_data::text as extra_data, w.del_flag,
+               w.price_source,
+               w.billing_type, w.billing_category, w.price_unit, w.min_quantity, w.unit_price,
+               w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
                u.nick_name,
@@ -180,7 +208,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             internal_price, external_price,
             internal_output, external_output,
             workload,
-            price_source, extra_data, remark,
+            price_source,
+            billing_type, billing_category, price_unit, min_quantity, unit_price,
+            extra_data, remark,
             create_by, create_time
         )values(
             #{projectId}, #{userId}, #{categoryId},
@@ -189,12 +219,21 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             #{internalOutput}, #{externalOutput},
             #{workload},
             #{priceSource},
+            <choose>
+                <when test="billingType != null and billingType != ''">#{billingType},</when>
+                <otherwise>'',</otherwise>
+            </choose>
+            <choose>
+                <when test="billingCategory != null and billingCategory != ''">#{billingCategory},</when>
+                <otherwise>'',</otherwise>
+            </choose>
+            #{priceUnit}, #{minQuantity}, #{unitPrice},
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="extraData == null or extraData == ''">null,</if>
             #{remark},
             #{createBy}, now()
         )
-        on conflict (project_id, user_id, category_id) where del_flag = '0'
+        on conflict (project_id, user_id, category_id, billing_type, billing_category) where del_flag = '0'
         do update set
             internal_workload = EXCLUDED.internal_workload,
             external_workload = EXCLUDED.external_workload,
@@ -204,6 +243,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             external_output = EXCLUDED.external_output,
             workload = EXCLUDED.workload,
             price_source = EXCLUDED.price_source,
+            billing_type = EXCLUDED.billing_type,
+            billing_category = EXCLUDED.billing_category,
+            price_unit = EXCLUDED.price_unit,
+            min_quantity = EXCLUDED.min_quantity,
+            unit_price = EXCLUDED.unit_price,
             extra_data = EXCLUDED.extra_data,
             remark = EXCLUDED.remark,
             update_by = EXCLUDED.create_by,

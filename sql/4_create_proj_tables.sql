@@ -273,6 +273,11 @@ CREATE TABLE proj_workload (
     external_output     DECIMAL(12,2)   DEFAULT 0,
     workload            DECIMAL(12,4)   DEFAULT 0,
     price_source        VARCHAR(20)     DEFAULT 'dict',
+    billing_type        VARCHAR(20)     DEFAULT '',
+    billing_category    VARCHAR(100)     DEFAULT '',
+    price_unit          VARCHAR(50)     DEFAULT '',
+    min_quantity        DECIMAL(12,4),
+    unit_price          DECIMAL(12,2),
     extra_data          JSONB           DEFAULT '{}',
     del_flag            CHAR(1)         DEFAULT '0',
     create_by           VARCHAR(64)     DEFAULT '',
@@ -295,6 +300,11 @@ COMMENT ON COLUMN proj_workload.internal_output IS '内部产值（工作量×�
 COMMENT ON COLUMN proj_workload.external_output IS '外部产值（工作量×外部单价，自动计算）';
 COMMENT ON COLUMN proj_workload.workload IS '工作量（统一字段）';
 COMMENT ON COLUMN proj_workload.price_source IS '单价来源（contract=合同价 dict=字典默认价 manual=手动覆盖）';
+COMMENT ON COLUMN proj_workload.billing_type IS '计费类型（internal=内部 external=外部）';
+COMMENT ON COLUMN proj_workload.billing_category IS '计费类别（如：常规、加急）';
+COMMENT ON COLUMN proj_workload.price_unit IS '计价单位（如：平方公里、公里）';
+COMMENT ON COLUMN proj_workload.min_quantity IS '起步量（最低计价数量，不足按起步量计算）';
+COMMENT ON COLUMN proj_workload.unit_price IS '采用的单价（元）';
 COMMENT ON COLUMN proj_workload.extra_data IS '动态字段数据（JSONB）';
 COMMENT ON COLUMN proj_workload.del_flag IS '删除标志（0正常 2删除）';
 COMMENT ON COLUMN proj_workload.remark IS '备注';
@@ -305,7 +315,7 @@ CREATE INDEX idx_proj_workload_category ON proj_workload(category_id);
 CREATE INDEX idx_proj_workload_extra ON proj_workload USING GIN (extra_data);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_workload_unique ON proj_workload (project_id, user_id, category_id) WHERE del_flag = '0';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_unique ON proj_payment (project_id, payment_type) WHERE del_flag = '0';
-
+CREATE UNIQUE INDEX IF NOT EXISTS uk_workload_billing ON proj_workload (project_id, user_id, category_id, billing_type, billing_category) WHERE del_flag = '0';
 
 
 -- ----------------------------
@@ -801,4 +811,38 @@ CREATE TABLE IF NOT EXISTS proj_report_log (
     file_name         VARCHAR(255)                       -- 导出文件名
     );
 COMMENT ON TABLE proj_report_log IS '报表导出-导出历史表';
+
+-- =============================================================
+-- 项目类别计费方式表
+-- 每个小类可配置多条内部/外部计费方式（计费类别、单价、计价单位、起步量）
+-- 执行时间：2026-08
+-- =============================================================
+
+CREATE TABLE proj_category_billing (
+   id               BIGSERIAL PRIMARY KEY,
+   category_id      BIGINT        NOT NULL,                -- 关联 proj_category.id（小类）
+   billing_type     VARCHAR(10)   NOT NULL,                -- 计费类型：internal=内部 external=外部
+   billing_category VARCHAR(100)  NOT NULL,                -- 计费类别（如：常规测绘、加急测绘）
+   unit_price       DECIMAL(12,2) NOT NULL,                -- 单价（元）
+   price_unit       VARCHAR(50)   NOT NULL,                -- 计价单位（如：平方公里、公里、宗）
+   min_quantity     DECIMAL(12,4) DEFAULT 1,               -- 起步量（不足按起步量计算）
+   sort_order       INT           DEFAULT 0,               -- 排序
+   status           CHAR(1)       DEFAULT '0',             -- 状态（0启用 1停用）
+   del_flag         CHAR(1)       DEFAULT '0',             -- 删除标志（0正常 2删除）
+   create_by        VARCHAR(64)   DEFAULT '',
+   create_time      TIMESTAMP,
+   update_by        VARCHAR(64)   DEFAULT '',
+   update_time      TIMESTAMP,
+   CONSTRAINT fk_pcb_category FOREIGN KEY (category_id) REFERENCES proj_category (id)
+);
+
+COMMENT ON TABLE  proj_category_billing             IS '项目类别计费方式表';
+COMMENT ON COLUMN proj_category_billing.category_id      IS '类别ID（小类）';
+COMMENT ON COLUMN proj_category_billing.billing_type     IS '计费类型（internal=内部 external=外部）';
+COMMENT ON COLUMN proj_category_billing.billing_category IS '计费类别（如：常规测绘、加急测绘）';
+COMMENT ON COLUMN proj_category_billing.unit_price       IS '单价（元）';
+COMMENT ON COLUMN proj_category_billing.price_unit       IS '计价单位（如：平方公里、公里、宗）';
+COMMENT ON COLUMN proj_category_billing.min_quantity     IS '起步量（最低计价数量，不足按起步量计算）';
+
+CREATE INDEX idx_pcb_category ON proj_category_billing (category_id);
 

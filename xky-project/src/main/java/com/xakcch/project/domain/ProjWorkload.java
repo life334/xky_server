@@ -50,6 +50,21 @@ public class ProjWorkload extends BaseEntity
     /** 单价来源（contract=合同价 dict=字典默认价 manual=手动覆盖） */
     private String priceSource;
 
+    /** 计费类型（internal=内部 external=外部） */
+    private String billingType;
+
+    /** 计费类别（如：常规、加急） */
+    private String billingCategory;
+
+    /** 计价单位（如：平方公里、公里、宗） */
+    private String priceUnit;
+
+    /** 起步量（最低计价数量，不足按起步量计算） */
+    private BigDecimal minQuantity;
+
+    /** 采用的单价（元） */
+    private BigDecimal unitPrice;
+
     /** 动态字段数据（JSONB） */
     private String extraData;
 
@@ -189,6 +204,56 @@ public class ProjWorkload extends BaseEntity
         this.priceSource = priceSource;
     }
 
+    public String getBillingType()
+    {
+        return billingType;
+    }
+
+    public void setBillingType(String billingType)
+    {
+        this.billingType = billingType;
+    }
+
+    public String getBillingCategory()
+    {
+        return billingCategory;
+    }
+
+    public void setBillingCategory(String billingCategory)
+    {
+        this.billingCategory = billingCategory;
+    }
+
+    public String getPriceUnit()
+    {
+        return priceUnit;
+    }
+
+    public void setPriceUnit(String priceUnit)
+    {
+        this.priceUnit = priceUnit;
+    }
+
+    public BigDecimal getMinQuantity()
+    {
+        return minQuantity;
+    }
+
+    public void setMinQuantity(BigDecimal minQuantity)
+    {
+        this.minQuantity = minQuantity;
+    }
+
+    public BigDecimal getUnitPrice()
+    {
+        return unitPrice;
+    }
+
+    public void setUnitPrice(BigDecimal unitPrice)
+    {
+        this.unitPrice = unitPrice;
+    }
+
     public String getExtraData()
     {
         return extraData;
@@ -254,6 +319,11 @@ public class ProjWorkload extends BaseEntity
             .append("externalOutput", getExternalOutput())
             .append("workload", getWorkload())
             .append("priceSource", getPriceSource())
+            .append("billingType", getBillingType())
+            .append("billingCategory", getBillingCategory())
+            .append("priceUnit", getPriceUnit())
+            .append("minQuantity", getMinQuantity())
+            .append("unitPrice", getUnitPrice())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())
             .append("createBy", getCreateBy())

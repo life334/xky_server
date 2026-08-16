@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjCategoryBillingMapper">
+
+    <resultMap type="ProjCategoryBilling" id="ProjCategoryBillingResult">
+        <id     property="id"               column="id"                />
+        <result property="categoryId"       column="category_id"       />
+        <result property="billingType"      column="billing_type"      />
+        <result property="billingCategory"  column="billing_category"  />
+        <result property="unitPrice"        column="unit_price"        />
+        <result property="priceUnit"        column="price_unit"        />
+        <result property="minQuantity"      column="min_quantity"      />
+        <result property="sortOrder"        column="sort_order"        />
+        <result property="status"           column="status"            />
+        <result property="delFlag"          column="del_flag"          />
+        <result property="createBy"         column="create_by"         />
+        <result property="createTime"       column="create_time"       />
+        <result property="updateBy"         column="update_by"         />
+        <result property="updateTime"       column="update_time"       />
+    </resultMap>
+
+    <select id="selectBillingList" parameterType="ProjCategoryBilling" resultMap="ProjCategoryBillingResult">
+        select b.id, b.category_id, b.billing_type, b.billing_category, b.unit_price,
+               b.price_unit, b.min_quantity, b.sort_order, b.status, b.del_flag,
+               b.create_by, b.create_time, b.update_by, b.update_time
+        from proj_category_billing b
+        where b.del_flag = '0'
+        <if test="categoryId != null">
+            AND b.category_id = #{categoryId}
+        </if>
+        <if test="billingType != null and billingType != ''">
+            AND b.billing_type = #{billingType}
+        </if>
+        <if test="status != null and status != ''">
+            AND b.status = #{status}
+        </if>
+        order by b.category_id, b.sort_order, b.id
+    </select>
+
+    <select id="selectBillingCategoryOptions" resultType="String">
+        select distinct b.billing_category
+        from proj_category_billing b
+        where b.del_flag = '0' and b.status = '0'
+        order by b.billing_category
+    </select>
+
+    <insert id="insertBilling" parameterType="ProjCategoryBilling">
+        insert into proj_category_billing(
+            category_id,
+            billing_type,
+            billing_category,
+            unit_price,
+            price_unit,
+            <if test="minQuantity != null">min_quantity,</if>
+            <if test="sortOrder != null">sort_order,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="createBy != null and createBy != ''">create_by,</if>
+            create_time
+        )values(
+            #{categoryId},
+            #{billingType},
+            #{billingCategory},
+            #{unitPrice},
+            #{priceUnit},
+            <if test="minQuantity != null">#{minQuantity},</if>
+            <if test="sortOrder != null">#{sortOrder},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="createBy != null and createBy != ''">#{createBy},</if>
+            now()
+        )
+    </insert>
+
+    <update id="deleteBillingByCategoryId" parameterType="Long">
+        update proj_category_billing
+        set del_flag = '2', update_time = now()
+        where category_id = #{categoryId} and del_flag = '0'
+    </update>
+
+</mapper>
