@@ -368,6 +368,8 @@ CREATE TABLE proj_material (
     contact_phone       VARCHAR(30)     DEFAULT '',
     result_type         VARCHAR(50)     DEFAULT '',
     archive_dir         VARCHAR(500)    DEFAULT '',
+    archive_flag        CHAR(1)         DEFAULT 'N',
+    archive_time       TIMESTAMP       DEFAULT NULL,
     status              VARCHAR(20)     DEFAULT '',
     submit_status       VARCHAR(20)     DEFAULT 'pending',
     guarantor_flag      CHAR(1)         DEFAULT 'N',
@@ -389,6 +391,8 @@ COMMENT ON COLUMN proj_material.contact_name IS '联系人';
 COMMENT ON COLUMN proj_material.contact_phone IS '联系电话';
 COMMENT ON COLUMN proj_material.result_type IS '成果类型（字典 proj_material_result_type）';
 COMMENT ON COLUMN proj_material.archive_dir IS '目录';
+COMMENT ON COLUMN proj_material.archive_flag IS '是否档案室归档（Y已归档 N未归档）';
+COMMENT ON COLUMN proj_material.archive_time IS '归档时间';
 COMMENT ON COLUMN proj_material.status IS '资料流转状态（字典 proj_material_status）';
 COMMENT ON COLUMN proj_material.submit_status IS '提交状态（字典 proj_material_submit_status）';
 COMMENT ON COLUMN proj_material.guarantor_flag IS '是否担保（Y需要 N不需要）';
@@ -401,9 +405,9 @@ CREATE INDEX idx_proj_material_project ON proj_material(project_id);
 CREATE INDEX idx_proj_material_extra ON proj_material USING GIN (extra_data);
 CREATE INDEX idx_proj_material_guarantor ON proj_material(guarantor_id);
 
--- 资料流转记录表
+-- 资料流转记录表r
 DROP TABLE IF EXISTS proj_material_flow;
-CREATE TABLE proj_material_flow (
+CREATE TABLE proj_material_flow (r
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     material_id BIGINT NOT NULL, flow_type VARCHAR(20) NOT NULL,
     user_id BIGINT, guarantor_id BIGINT,

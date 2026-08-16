@@ -2,6 +2,7 @@ package com.xakcch.project.mapper;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Date;
 import org.apache.ibatis.annotations.Param;
 import com.xakcch.project.domain.ProjMaterial;
 
@@ -56,4 +57,14 @@ public interface ProjMaterialMapper
      * @return [{ columnName: "submit_time", columnComment: "提交时间" }, ...]
      */
     public List<Map<String, Object>> selectTableColumns(@Param("tableName") String tableName);
+
+    /**
+     * 快捷切换归档状态
+     */
+    public int updateArchiveFlag(@Param("id") Long id, @Param("archiveFlag") String archiveFlag, @Param("updateBy") String updateBy);
+
+    /**
+     * 查询项目欠款信息（合同金额 - 已收金额）
+     */
+    public Map<String, Object> selectPaymentInfo(@Param("projectId") Long projectId);
 }

@@ -123,11 +123,10 @@ public class ProjMaterialServiceImpl implements IProjMaterialService
         // 更新资料状态
         materialMapper.updateMaterialStatus(materialId, "received", userName);
 
-        // 写入流转记录（担保人取资料记录当前值）
+        // 写入流转记录（仅记录领取时间，不记录领取人）
         ProjMaterialFlow flow = new ProjMaterialFlow();
         flow.setMaterialId(materialId);
         flow.setFlowType("领取");
-        flow.setUserId(userId);
         flow.setGuarantorId(material.getGuarantorId());
         flow.setOperateTime(new Date());
         flow.setRemark(remark);
@@ -166,6 +165,31 @@ public class ProjMaterialServiceImpl implements IProjMaterialService
         return materialMapper.selectMaterialStatusCounts();
     }
 
+    @Override
+    public Map<String, Object> checkPayment(Long projectId)
+    {
+        Map<String, Object> info = materialMapper.selectPaymentInfo(projectId);
+        if (info == null || info.isEmpty())
+        {
+            info = new HashMap<>();
+            info.put("contractAmount", 0);
+            info.put("receivedAmount", 0);
+            info.put("pendingAmount", 0);
+            info.put("paymentRatio", 0);
+            info.put("hasDebt", false);
+        }
+        return info;
+    }
+
+    @Override
+    public void toggleArchive(Long materialId, String updateBy)
+    {
+        ProjMaterial material = materialMapper.selectMaterialById(materialId);
+        if (material == null) throw new ServiceException("资料不存在");
+        String newFlag = "Y".equals(material.getArchiveFlag()) ? "N" : "Y";
+        materialMapper.updateArchiveFlag(materialId, newFlag, updateBy);
+    }
+
     /**
      * 资料列表可显隐列元数据：
      * 业务字段（含 JOIN 展示字段）→ 系统字段 → 动态字段（proj_field_def）
@@ -187,6 +211,8 @@ public class ProjMaterialServiceImpl implements IProjMaterialService
         addColumn(columns, "resultType", "成果类型", "dict", "business", true, "resultType");
         addColumn(columns, "archiveDir", "存档目录", "text", "business", true, "archiveDir");
         addColumn(columns, "status", "资料状态", "dict", "business", true, "status");
+        addColumn(columns, "receiveTime", "领取时间", "date", "business", true, "receiveTime");
+        addColumn(columns, "archiveFlag", "归档状态", "dict", "business", true, "archiveFlag");
         addColumn(columns, "submitStatus", "提交状态", "dict", "business", false, "submitStatus");
         addColumn(columns, "guarantorFlag", "是否担保", "dict", "business", false, "guarantorFlag");
         addColumn(columns, "guarantorId", "担保人", "user", "business", false, "guarantorId");
@@ -197,6 +223,7 @@ public class ProjMaterialServiceImpl implements IProjMaterialService
             "id", "project_id", "submit_time", "contact_name", "contact_phone",
             "result_type", "archive_dir", "status", "submit_status", "remark",
             "guarantor_flag", "guarantor_id",
+            "archive_flag", "archive_time",
             "extra_data", "del_flag", "create_by", "create_time", "update_by", "update_time"));
         List<Map<String, Object>> tableColumns = materialMapper.selectTableColumns("proj_material");
         if (tableColumns != null)

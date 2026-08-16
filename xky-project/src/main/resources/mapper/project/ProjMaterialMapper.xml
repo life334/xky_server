@@ -16,6 +16,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="submitStatus"     column="submit_status"     />
         <result property="guarantorFlag"    column="guarantor_flag"    />
         <result property="guarantorId"      column="guarantor_id"      />
+        <result property="archiveFlag"      column="archive_flag"      />
+        <result property="archiveTime"      column="archive_time"      />
         <result property="extraData"         column="extra_data"        />
         <result property="delFlag"           column="del_flag"          />
         <result property="createBy"          column="create_by"         />
@@ -27,6 +29,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="projectCode"       column="project_code"      />
         <result property="engineeringProject" column="engineering_project"/>
         <result property="projectLocation"   column="project_location"  />
+        <result property="receiveTime"       column="receive_time"      />
     </resultMap>
 
     <sql id="selectMaterialVo">
@@ -42,9 +45,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
                m.result_type, m.archive_dir, m.status, m.submit_status,
                m.guarantor_flag, m.guarantor_id,
+               m.archive_flag, m.archive_time,
                m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
-               p.project_name, p.project_code, p.engineering_project, p.project_location
+               p.project_name, p.project_code, p.engineering_project, p.project_location,
+               (select f.operate_time from proj_material_flow f
+                where f.material_id = m.id and f.flow_type = '领取' and f.del_flag = '0'
+                order by f.operate_time desc limit 1) as receive_time
         from proj_material m
         left join proj_project p on p.id = m.project_id
         where m.del_flag = '0'
@@ -97,6 +104,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
                m.result_type, m.archive_dir, m.status, m.submit_status,
                m.guarantor_flag, m.guarantor_id,
+               m.archive_flag, m.archive_time,
                m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
                p.project_name, p.project_code, p.engineering_project, p.project_location
@@ -117,6 +125,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="submitStatus != null and submitStatus != ''">submit_status,</if>
             <if test="guarantorFlag != null and guarantorFlag != ''">guarantor_flag,</if>
             <if test="guarantorId != null">guarantor_id,</if>
+            <if test="archiveFlag != null and archiveFlag != ''">archive_flag,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
             <if test="remark != null and remark != ''">remark,</if>
             <if test="createBy != null and createBy != ''">create_by,</if>
@@ -132,6 +141,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="submitStatus != null and submitStatus != ''">#{submitStatus},</if>
             <if test="guarantorFlag != null and guarantorFlag != ''">#{guarantorFlag},</if>
             <if test="guarantorId != null">#{guarantorId},</if>
+            <if test="archiveFlag != null and archiveFlag != ''">#{archiveFlag},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="remark != null and remark != ''">#{remark},</if>
             <if test="createBy != null and createBy != ''">#{createBy},</if>
@@ -153,6 +163,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="guarantorFlag != null">guarantor_flag = #{guarantorFlag},</if>
             <if test="guarantorFlag == 'N'.toString()">guarantor_id = null,</if>
             <if test="guarantorFlag != null and guarantorFlag == 'Y'.toString() and guarantorId != null">guarantor_id = #{guarantorId},</if>
+            <if test="archiveFlag != null and archiveFlag != ''">archive_flag = #{archiveFlag},</if>
+            <if test="archiveFlag != null and archiveFlag == 'Y'.toString()">archive_time = now(),</if>
+            <if test="archiveFlag != null and archiveFlag == 'N'.toString()">archive_time = null,</if>
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
@@ -191,6 +204,40 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         from information_schema.columns
         where table_name = #{tableName}
         order by ordinal_position
+    </select>
+
+    <!-- 快捷切换归档状态 -->
+    <update id="updateArchiveFlag">
+        update proj_material
+        set archive_flag = #{archiveFlag},
+            <choose>
+                <when test="archiveFlag == 'Y'.toString()">archive_time = now(),</when>
+                <otherwise>archive_time = null,</otherwise>
+            </choose>
+            update_time = now(),
+            update_by = #{updateBy}
+        where id = #{id}
+    </update>
+
+    <!-- 查询项目欠款信息（合同金额 - 已收金额） -->
+    <select id="selectPaymentInfo" parameterType="Long" resultType="java.util.Map">
+        select coalesce(c.contract_amount, 0) as "contractAmount",
+               coalesce(pa.received, 0) as "receivedAmount",
+               coalesce(c.contract_amount, 0) - coalesce(pa.received, 0) as "pendingAmount",
+               case
+                   when c.contract_amount is null or c.contract_amount = 0 then 0
+                   else round(coalesce(pa.received, 0) * 100.0 / c.contract_amount, 1)
+               end as "paymentRatio",
+               case when coalesce(c.contract_amount, 0) - coalesce(pa.received, 0) > 0 then true else false end as "hasDebt"
+        from proj_project p
+        left join proj_contract c on c.id = p.contract_id and c.del_flag = '0'
+        left join (
+            select project_id, sum(amount) as received
+            from proj_payment
+            where del_flag = '0'
+            group by project_id
+        ) pa on pa.project_id = p.id
+        where p.id = #{projectId}
     </select>
 
 </mapper>

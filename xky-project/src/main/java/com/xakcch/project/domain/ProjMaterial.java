@@ -52,6 +52,13 @@ public class ProjMaterial extends BaseEntity
     /** 动态字段数据（JSONB） */
     private String extraData;
 
+    /** 是否档案室归档（Y已归档 N未归档） */
+    private String archiveFlag;
+
+    /** 归档时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date archiveTime;
+
     /** 删除标志（0正常 2删除） */
     private String delFlag;
 
@@ -68,6 +75,10 @@ public class ProjMaterial extends BaseEntity
 
     /** 项目名称（JOIN proj_project） */
     private String projectName;
+
+    /** 领取时间（从 proj_material_flow 最近一条领取记录取） */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date receiveTime;
 
     // ===== 以下为 transient 查询参数（不入库） =====
 
@@ -202,6 +213,26 @@ public class ProjMaterial extends BaseEntity
         this.extraData = extraData;
     }
 
+    public String getArchiveFlag()
+    {
+        return archiveFlag;
+    }
+
+    public void setArchiveFlag(String archiveFlag)
+    {
+        this.archiveFlag = archiveFlag;
+    }
+
+    public Date getArchiveTime()
+    {
+        return archiveTime;
+    }
+
+    public void setArchiveTime(Date archiveTime)
+    {
+        this.archiveTime = archiveTime;
+    }
+
     public String getDelFlag()
     {
         return delFlag;
@@ -252,6 +283,16 @@ public class ProjMaterial extends BaseEntity
         this.projectName = projectName;
     }
 
+    public Date getReceiveTime()
+    {
+        return receiveTime;
+    }
+
+    public void setReceiveTime(Date receiveTime)
+    {
+        this.receiveTime = receiveTime;
+    }
+
     public String getKeyword() { return keyword; }
     public void setKeyword(String keyword) { this.keyword = keyword; }
     public Date getSubmitTimeBegin() { return submitTimeBegin; }
@@ -275,6 +316,8 @@ public class ProjMaterial extends BaseEntity
             .append("status", getStatus())
             .append("guarantorFlag", getGuarantorFlag())
             .append("guarantorId", getGuarantorId())
+            .append("archiveFlag", getArchiveFlag())
+            .append("archiveTime", getArchiveTime())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())
             .append("createBy", getCreateBy())

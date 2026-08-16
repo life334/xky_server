@@ -46,6 +46,16 @@ public interface IProjMaterialService
     public List<Map<String, Object>> getStatusCounts();
 
     /**
+     * 查询项目欠款信息（合同金额、已收金额、未收金额、收款比例、是否有欠款）
+     */
+    public Map<String, Object> checkPayment(Long projectId);
+
+    /**
+     * 快捷切换归档状态
+     */
+    public void toggleArchive(Long materialId, String updateBy);
+
+    /**
      * 资料列表可显隐列元数据（显隐列面板 + 表格动态渲染用）
      *
      * @return [{ key, label, type, group, defaultVisible, prop }, ...]

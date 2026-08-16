@@ -62,6 +62,7 @@ public class ReportFieldPool
         addField("totalDuration", "总时长(天)", "subject", "项目信息", "number", false, null);
         addField("createTime", "创建时间", "subject", "项目信息", "date", true, null);
         addField("remark", "备注", "subject", "项目信息", "string", true, null);
+        addField("deptName", "所属部门", "agg", "项目信息", "string", false, null);
 
         addField("contractNo", "合同编号", "join", "合同信息", "string", true, null);
         addField("contractName", "合同名称", "join", "合同信息", "string", true, null);
@@ -237,6 +238,12 @@ public class ReportFieldPool
         {
             String v = str(row.get(key));
             return v == null ? null : PROJECT_STATUS.getOrDefault(v, v);
+        }
+
+        // 固定值字段
+        if ("deptName".equals(key))
+        {
+            return "地下空间工程中心";
         }
 
         // 直接取行值

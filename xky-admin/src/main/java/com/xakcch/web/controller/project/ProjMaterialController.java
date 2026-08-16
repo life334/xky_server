@@ -172,6 +172,27 @@ public class ProjMaterialController extends BaseController
     }
 
     /**
+     * 查询项目欠款信息（领取前检查）
+     */
+    @GetMapping("/payment-check/{projectId}")
+    public AjaxResult paymentCheck(@PathVariable Long projectId)
+    {
+        return success(materialService.checkPayment(projectId));
+    }
+
+    /**
+     * 快捷切换归档状态
+     */
+    @PreAuthorize("@ss.hasPermi('project:material:edit')")
+    @Log(title = "资料归档", businessType = BusinessType.UPDATE)
+    @PutMapping("/toggle-archive/{id}")
+    public AjaxResult toggleArchive(@PathVariable Long id)
+    {
+        materialService.toggleArchive(id, getUsername());
+        return success();
+    }
+
+    /**
      * 查询流转记录
      */
     @GetMapping("/flow/{id}")
