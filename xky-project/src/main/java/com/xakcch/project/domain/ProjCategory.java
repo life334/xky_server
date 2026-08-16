@@ -43,6 +43,9 @@ public class ProjCategory extends BaseEntity
     /** 删除标志（0正常 2删除） */
     private String delFlag;
 
+    /** 关联规则：0=不关联，1=可选关联，2=必须关联 */
+    private Integer linkRule;
+
     /** 父类别名称（非持久化，列表展示用） */
     private String parentName;
 
@@ -142,6 +145,16 @@ public class ProjCategory extends BaseEntity
         this.delFlag = delFlag;
     }
 
+    public Integer getLinkRule()
+    {
+        return linkRule;
+    }
+
+    public void setLinkRule(Integer linkRule)
+    {
+        this.linkRule = linkRule;
+    }
+
     public String getParentName()
     {
         return parentName;
@@ -184,6 +197,7 @@ public class ProjCategory extends BaseEntity
             .append("sortOrder", getSortOrder())
             .append("status", getStatus())
             .append("delFlag", getDelFlag())
+            .append("linkRule", getLinkRule())
             .append("createBy", getCreateBy())
             .append("createTime", getCreateTime())
             .append("updateBy", getUpdateBy())

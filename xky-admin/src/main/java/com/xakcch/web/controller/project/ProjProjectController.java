@@ -75,6 +75,16 @@ public class ProjProjectController extends BaseController
     }
 
     /**
+     * 查询关联定线候选项目（验线项目选择后，加载同大类下定线项目的工程编号）
+     */
+    @GetMapping("/relatedCandidates")
+    public AjaxResult relatedCandidates(@RequestParam String engineeringProject)
+    {
+        List<ProjProject> list = projectService.getRelatedCandidates(engineeringProject);
+        return success(list);
+    }
+
+    /**
      * 统计各状态下的项目数量（状态胶囊导航用）
      */
     @GetMapping("/statusCounts")

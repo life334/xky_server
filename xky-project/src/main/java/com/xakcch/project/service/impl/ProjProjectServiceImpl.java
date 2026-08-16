@@ -725,6 +725,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
         addColumn(columns, "durationRequire", "工期要求", "duration", "business", true, "durationRequire");
         addColumn(columns, "totalDuration", "总时长", "total", "business", true, "totalDuration");
         addColumn(columns, "projectName", "项目名称", "text", "business", false, "projectName");
+        addColumn(columns, "relatedProjectCode", "关联工程编号", "text", "business", true, "relatedProjectCode");
         addColumn(columns, "remark", "备注", "text", "business", false, "remark");
 
         // ---- 物理表新增列自动发现（不在固定清单中的列 → 业务组末尾，默认隐藏） ----
@@ -732,7 +733,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
             "project_code", "client_unit", "contact_name", "contact_phone", "engineering_project",
             "project_location", "status", "assign_date", "duration_require", "total_duration",
             "project_name", "remark", "id", "create_by", "create_time", "update_by", "update_time",
-            "del_flag", "extra_data", "project_category_id", "contract_id"));
+            "del_flag", "extra_data", "project_category_id", "contract_id", "related_project_id"));
         List<Map<String, Object>> tableColumns = projectMapper.selectTableColumns("proj_project");
         if (tableColumns != null)
         {
@@ -806,5 +807,11 @@ public class ProjProjectServiceImpl implements IProjProjectService
             up = false;
         }
         return sb.toString();
+    }
+
+    @Override
+    public List<ProjProject> getRelatedCandidates(String engineeringProject)
+    {
+        return projectMapper.selectRelatedCandidates(engineeringProject);
     }
 }

@@ -63,6 +63,9 @@ public class ProjProject extends BaseEntity
     /** 删除标志（0正常 2删除） */
     private String delFlag;
 
+    /** 关联定线项目ID（验线项目关联对应的定线项目） */
+    private Long relatedProjectId;
+
     /** 安排日期 */
     @Excel(name = "安排日期", dateFormat = "yyyy-MM-dd")
     @JsonFormat(pattern = "yyyy-MM-dd")
@@ -83,6 +86,9 @@ public class ProjProject extends BaseEntity
 
     /** 合同名称（JOIN proj_contract） */
     private String contractName;
+
+    /** 关联定线项目工程编号（JOIN proj_project，仅展示用） */
+    private String relatedProjectCode;
 
     /** 负责人姓名列表（逗号分隔，JOIN proj_leader + sys_user） */
     @Excel(name = "项目负责人")
@@ -268,6 +274,26 @@ public class ProjProject extends BaseEntity
         this.delFlag = delFlag;
     }
 
+    public Long getRelatedProjectId()
+    {
+        return relatedProjectId;
+    }
+
+    public void setRelatedProjectId(Long relatedProjectId)
+    {
+        this.relatedProjectId = relatedProjectId;
+    }
+
+    public String getRelatedProjectCode()
+    {
+        return relatedProjectCode;
+    }
+
+    public void setRelatedProjectCode(String relatedProjectCode)
+    {
+        this.relatedProjectCode = relatedProjectCode;
+    }
+
     public String getCategoryName()
     {
         return categoryName;
@@ -443,6 +469,7 @@ public class ProjProject extends BaseEntity
             .append("status", getStatus())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())
+            .append("relatedProjectId", getRelatedProjectId())
             .append("createBy", getCreateBy())
             .append("createTime", getCreateTime())
             .append("updateBy", getUpdateBy())

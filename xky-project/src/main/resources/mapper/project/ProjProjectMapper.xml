@@ -18,6 +18,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="status"              column="status"               />
         <result property="extraData"           column="extra_data"           />
         <result property="delFlag"             column="del_flag"             />
+        <result property="relatedProjectId"    column="related_project_id"   />
         <result property="createBy"            column="create_by"            />
         <result property="createTime"          column="create_time"          />
         <result property="updateBy"            column="update_by"            />
@@ -26,6 +27,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <!-- 非持久化字段 -->
         <result property="categoryName"        column="category_name"        />
         <result property="contractName"        column="contract_name"        />
+        <result property="relatedProjectCode"  column="related_project_code" />
         <result property="leaderNames"         column="leader_names"         />
         <!-- 任务聚合字段 -->
         <result property="assignDate"          column="assign_date"          />
@@ -38,7 +40,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
                p.project_location, p.contract_id, p.status,
                p.assign_date, p.duration_require, p.total_duration,
-               p.extra_data::text as extra_data, p.del_flag,
+               p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
                p.create_by, p.create_time, p.update_by, p.update_time, p.remark
         from proj_project p
     </sql>
@@ -48,14 +50,16 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
                p.project_location, p.contract_id, p.status,
                p.assign_date, p.duration_require, p.total_duration,
-               p.extra_data::text as extra_data, p.del_flag,
+               p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
                p.create_by, p.create_time, p.update_by, p.update_time, p.remark,
                c.name as category_name,
                ct.contract_name,
+               rp.project_code as related_project_code,
                coalesce(ln.leader_names, '') as leader_names
         from proj_project p
         left join proj_category c on c.id = p.project_category_id
         left join proj_contract ct on ct.id = p.contract_id
+        left join proj_project rp on rp.id = p.related_project_id
         left join lateral (
             select string_agg(u.nick_name, ', ' order by l.id) as leader_names
             from proj_leader l
@@ -131,14 +135,16 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
                p.project_location, p.contract_id, p.status,
                p.assign_date, p.duration_require, p.total_duration,
-               p.extra_data::text as extra_data, p.del_flag,
+               p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
                p.create_by, p.create_time, p.update_by, p.update_time, p.remark,
                c.name as category_name,
                ct.contract_name,
+               rp.project_code as related_project_code,
                coalesce(ln.leader_names, '') as leader_names
         from proj_project p
         left join proj_category c on c.id = p.project_category_id
         left join proj_contract ct on ct.id = p.contract_id
+        left join proj_project rp on rp.id = p.related_project_id
         left join lateral (
             select string_agg(u.nick_name, ', ' order by l.id) as leader_names
             from proj_leader l
@@ -169,6 +175,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="durationRequire != null">duration_require,</if>
             <if test="totalDuration != null">total_duration,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
+            <if test="relatedProjectId != null">related_project_id,</if>
             <if test="remark != null and remark != ''">remark,</if>
             <if test="createBy != null and createBy != ''">create_by,</if>
             create_time
@@ -187,6 +194,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="durationRequire != null">#{durationRequire},</if>
             <if test="totalDuration != null">#{totalDuration},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
+            <if test="relatedProjectId != null">#{relatedProjectId},</if>
             <if test="remark != null and remark != ''">#{remark},</if>
             <if test="createBy != null and createBy != ''">#{createBy},</if>
             now()
@@ -210,6 +218,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="durationRequire != null">duration_require = #{durationRequire},</if>
             total_duration = #{totalDuration},
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
+            related_project_id = #{relatedProjectId},
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
             update_time = now()
@@ -309,6 +318,42 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         from information_schema.columns
         where table_name = #{tableName}
         order by ordinal_position
+    </select>
+
+    <!-- 查询关联定线候选项目（根据验线小类名找同大类下的定线项目） -->
+    <select id="selectRelatedCandidates" parameterType="String" resultMap="ProjProjectResult">
+        select p.id, p.project_code, p.project_name
+        from proj_project p
+        where p.del_flag = '0'
+          and (
+            p.engineering_project in (
+              select c2.name from proj_category c2
+              where c2.del_flag = '0'
+                and c2.level = 2
+                and c2.name like '%定线%'
+                and c2.parent_id = (
+                  select c.parent_id from proj_category c
+                  where c.name = #{engineeringProject}
+                    and c.del_flag = '0'
+                    and c.level = 2
+                  limit 1
+                )
+            )
+            or p.project_category_id in (
+              select c2.id from proj_category c2
+              where c2.del_flag = '0'
+                and c2.level = 2
+                and c2.name like '%定线%'
+                and c2.parent_id = (
+                  select c.parent_id from proj_category c
+                  where c.name = #{engineeringProject}
+                    and c.del_flag = '0'
+                    and c.level = 2
+                  limit 1
+                )
+            )
+          )
+        order by p.create_time desc
     </select>
 
 </mapper>

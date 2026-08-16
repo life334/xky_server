@@ -151,6 +151,8 @@ CREATE TABLE proj_project (
     duration_require        INTEGER         DEFAULT NULL,
     total_duration          INTEGER         DEFAULT NULL,
     extra_data              JSONB           DEFAULT '{}',
+    related_project_id      BIGINT          DEFAULT NULL,
+    link_rule               INTEGER         DEFAULT 0,
     del_flag                CHAR(1)         DEFAULT '0',
     create_by               VARCHAR(64)     DEFAULT '',
     create_time             TIMESTAMP,
@@ -172,6 +174,8 @@ COMMENT ON COLUMN proj_project.project_location IS '工程地点';
 COMMENT ON COLUMN proj_project.contract_id IS '合同ID，关联 proj_contract.id';
 COMMENT ON COLUMN proj_project.status IS '项目状态';
 COMMENT ON COLUMN proj_project.extra_data IS '动态字段数据（JSONB）';
+COMMENT ON COLUMN proj_project.related_project_id IS '关联定线项目ID（验线项目关联对应的定线项目）';
+COMMENT ON COLUMN proj_category.link_rule IS '关联规则：0=不关联，1=可选关联，2=必须关联';
 COMMENT ON COLUMN proj_project.assign_date IS '安排日期（项目级）';
 COMMENT ON COLUMN proj_project.duration_require IS '工期要求（天）';
 COMMENT ON COLUMN proj_project.total_duration IS '总时长（天）';

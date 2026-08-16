@@ -124,4 +124,12 @@ public interface ProjProjectMapper
      * @return [{ columnName: "project_code", columnComment: "工程编号" }, ...]
      */
     public List<Map<String, Object>> selectTableColumns(@Param("tableName") String tableName);
+
+    /**
+     * 查询关联定线候选项目（根据验线小类名找同大类下的定线项目）
+     *
+     * @param engineeringProject 验线小类名称（如"管线验线"）
+     * @return 候选项目列表（id, projectCode, projectName）
+     */
+    public List<ProjProject> selectRelatedCandidates(@Param("engineeringProject") String engineeringProject);
 }
