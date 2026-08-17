@@ -78,6 +78,8 @@ public class ProjSettlementController extends BaseController
         addColumn(columns, "payMethod", "付款方式", "text", true, "payMethod");
         addColumn(columns, "tailAmount", "尾款", "money", true, "tailAmount");
         addColumn(columns, "tailDate", "尾款时间", "date", true, "tailDate");
+        addColumn(columns, "refundAmount", "退款金额", "money", true, "refundAmount");
+        addColumn(columns, "refundDate", "退款时间", "date", true, "refundDate");
         addColumn(columns, "invoiceStatus", "开票状态", "text", true, "invoiceStatus");
         addColumn(columns, "invoiceNo", "发票号码", "text", true, "invoiceNo");
         addColumn(columns, "invoiceAmount", "开票金额", "money", true, "invoiceAmount");
@@ -179,11 +181,23 @@ public class ProjSettlementController extends BaseController
         }
         // 结算总额 = 外部产值合计（与编辑页面口径一致）
         BigDecimal settlementAmount = externalOutput;
-        // 已收款汇总
+        // 已收款汇总（退款按负数计入：已收 = 预付款 + 尾款 - 退款合计）
         BigDecimal receivedAmount = BigDecimal.ZERO;
+        BigDecimal refundAmount = BigDecimal.ZERO;
+        List<ProjPayment> refunds = new ArrayList<>();
         for (ProjPayment pm : payments)
         {
-            if (pm.getAmount() != null) receivedAmount = receivedAmount.add(pm.getAmount());
+            if (pm.getAmount() == null) continue;
+            if ("refund".equals(pm.getPaymentType()))
+            {
+                refundAmount = refundAmount.add(pm.getAmount());
+                receivedAmount = receivedAmount.subtract(pm.getAmount());
+                refunds.add(pm);
+            }
+            else
+            {
+                receivedAmount = receivedAmount.add(pm.getAmount());
+            }
         }
         BigDecimal pendingAmount = settlementAmount.subtract(receivedAmount);
 
@@ -207,10 +221,13 @@ public class ProjSettlementController extends BaseController
         result.put("externalOutput", externalOutput);
         result.put("settlementAmount", settlementAmount);
         result.put("receivedAmount", receivedAmount);
+        result.put("refundAmount", refundAmount);
         result.put("pendingAmount", pendingAmount);
         result.put("settlementStatus", settlementStatus);
         // 付款明细（预付款/尾款各一条，供详情页产值结算tab展示）
         result.put("payments", payments);
+        // 退款明细（多笔，供详情页展示）
+        result.put("refunds", refunds);
         return success(result);
     }
 
@@ -240,6 +257,12 @@ public class ProjSettlementController extends BaseController
         result.put("project", project);
         result.put("workloads", workloads);
         result.put("payments", payments);
+        // 退款记录（payment_type='refund' 多笔，编辑弹窗退款小节数据源）
+        List<ProjPayment> refunds = payments.stream()
+            .filter(pm -> "refund".equals(pm.getPaymentType()))
+            .sorted(Comparator.comparing(ProjPayment::getPayTime, Comparator.nullsLast(Comparator.naturalOrder())))
+            .collect(Collectors.toList());
+        result.put("refunds", refunds);
         result.put("contractPrices", contractPrices);
         result.put("leaderIds", leaderMapper.selectLeaderIdsByProjectId(projectId));
         return success(result);
@@ -266,6 +289,9 @@ public class ProjSettlementController extends BaseController
         // 1. Save payments（预付款 + 尾款）
         savePaymentIfPresent((Map<String, Object>) params.get("prepay"), projectId, "advance", username, remark);
         savePaymentIfPresent((Map<String, Object>) params.get("tail"), projectId, "final", username, remark);
+
+        // 1.1 Save refunds（退款多笔，整组替换：先逻辑删旧退款行，再逐笔插入）
+        saveRefunds(params.get("refunds"), projectId, username);
 
         // 2. Save workloads
         @SuppressWarnings("unchecked")
@@ -322,10 +348,20 @@ public class ProjSettlementController extends BaseController
     {
         ProjPayment prepay = null;
         ProjPayment tail = null;
+        BigDecimal refundAmount = BigDecimal.ZERO;
+        Date lastRefundTime = null;
         for (ProjPayment pm : payments)
         {
             if ("advance".equals(pm.getPaymentType())) prepay = pm;
             else if ("final".equals(pm.getPaymentType())) tail = pm;
+            else if ("refund".equals(pm.getPaymentType()))
+            {
+                if (pm.getAmount() != null) refundAmount = refundAmount.add(pm.getAmount());
+                if (pm.getPayTime() != null && (lastRefundTime == null || pm.getPayTime().after(lastRefundTime)))
+                {
+                    lastRefundTime = pm.getPayTime();
+                }
+            }
         }
         if (prepay != null)
         {
@@ -340,6 +376,9 @@ public class ProjSettlementController extends BaseController
             node.put("tailAmount", tail.getAmount());
             node.put("tailDate", tail.getPayTime() != null ? DATE_FMT.format(tail.getPayTime()) : "");
         }
+        // 退款信息（多笔合计金额 + 最近一次时间；明细在编辑弹窗/展开行查看）
+        node.put("refundAmount", refundAmount);
+        node.put("refundDate", lastRefundTime != null ? DATE_FMT.format(lastRefundTime) : "");
         // 发票信息（预付款优先，无预付款取尾款）
         ProjPayment invoiceSource = prepay != null ? prepay : tail;
         if (invoiceSource != null)
@@ -352,13 +391,22 @@ public class ProjSettlementController extends BaseController
     }
 
     /** 填充结算核对摘要：已收 / 待收差额 / 结算状态（settled=已结清 pending=未结清 overdue=超额）
+     *  已收 = 预付款 + 尾款 - 退款合计（refund 类型按负数计入）
      *  @param settlementAmount 结算总额（= 外部产值合计） */
     private void fillSettlementSummary(Map<String, Object> node, List<ProjPayment> payments, BigDecimal settlementAmount)
     {
         BigDecimal receivedAmount = BigDecimal.ZERO;
         for (ProjPayment pm : payments)
         {
-            if (pm.getAmount() != null) receivedAmount = receivedAmount.add(pm.getAmount());
+            if (pm.getAmount() == null) continue;
+            if ("refund".equals(pm.getPaymentType()))
+            {
+                receivedAmount = receivedAmount.subtract(pm.getAmount());
+            }
+            else
+            {
+                receivedAmount = receivedAmount.add(pm.getAmount());
+            }
         }
         BigDecimal pendingAmount = settlementAmount.subtract(receivedAmount);
 
@@ -451,6 +499,35 @@ public class ProjSettlementController extends BaseController
         pm.setRemark(remark);
         pm.setCreateBy(username);
         paymentMapper.upsertPayment(pm);
+    }
+
+    /** 保存退款记录（多笔，整组替换：先逻辑删该项目旧退款行，再逐笔插入 payment_type='refund'）
+     *  退款金额/时间/方式/原因 分别映射 amount / pay_time / pay_method / remark */
+    private void saveRefunds(Object refundsObj, Long projectId, String username)
+    {
+        // 无论是否传入，先整组删除旧退款行（传空数组=清空退款）
+        paymentMapper.deleteRefundsByProjectId(projectId, username);
+
+        if (!(refundsObj instanceof List)) return;
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> refunds = (List<Map<String, Object>>) refundsObj;
+        for (Map<String, Object> rf : refunds)
+        {
+            if (rf == null) continue;
+            BigDecimal amount = toBigDecimal(rf.get("amount"));
+            Date payTime = toDate(rf.get("payTime"));
+            // 空值防御：金额和时间都为空的行不插入
+            if (amount == null && payTime == null) continue;
+            ProjPayment pm = new ProjPayment();
+            pm.setProjectId(projectId);
+            pm.setPaymentType("refund");
+            pm.setAmount(amount);
+            pm.setPayTime(payTime);
+            pm.setPayMethod((String) rf.get("payMethod"));
+            pm.setRemark((String) rf.getOrDefault("remark", ""));
+            pm.setCreateBy(username);
+            paymentMapper.insertPayment(pm);
+        }
     }
 
     // ===== Type conversion helpers =====

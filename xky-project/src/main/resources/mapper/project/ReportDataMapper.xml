@@ -46,6 +46,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             c.is_settled as "isSettled",
             c.extra_data::text as "contractExtraData",
             coalesce(pay_sum.total_received, 0) as "receivedAmount",
+            coalesce(pay_sum.refund_amount, 0) as "refundAmount",
             pay_sum.max_pay_time as "lastPayTime",
             coalesce(pay_sum.total_invoice, 0) as "totalInvoiceAmount",
             coalesce(w_sum.external_output, 0) as "projectSettleAmount",
@@ -66,7 +67,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         left join proj_report_submit_log sl2 on sl2.project_code = rp.project_code and sl2.del_flag = '0'
         left join (
             select project_id,
-                   sum(amount) as total_received,
+                   sum(case when payment_type = 'refund' then -coalesce(amount, 0) else coalesce(amount, 0) end) as total_received,
+                   sum(case when payment_type = 'refund' then coalesce(amount, 0) else 0 end) as refund_amount,
                    max(pay_time) as max_pay_time,
                    sum(coalesce(invoice_amount, 0)) as total_invoice
             from proj_payment
@@ -173,6 +175,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
         <if test="f.receivedAmountMax != null and f.receivedAmountMax != ''">
             and pay_sum.total_received &lt;= cast(#{f.receivedAmountMax} as numeric)
+        </if>
+        <if test="f.refundAmountMin != null and f.refundAmountMin != ''">
+            and coalesce(pay_sum.refund_amount, 0) &gt;= cast(#{f.refundAmountMin} as numeric)
+        </if>
+        <if test="f.refundAmountMax != null and f.refundAmountMax != ''">
+            and coalesce(pay_sum.refund_amount, 0) &lt;= cast(#{f.refundAmountMax} as numeric)
         </if>
         <if test="f.pendingAmountMin != null and f.pendingAmountMin != ''">
             and (c.contract_amount - coalesce(pay_sum.total_received, 0)) &gt;= cast(#{f.pendingAmountMin} as numeric)

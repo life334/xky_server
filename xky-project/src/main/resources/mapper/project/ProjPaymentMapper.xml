@@ -171,7 +171,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             #{remark},
             #{createBy}, now()
         )
-        on conflict (project_id, payment_type) where del_flag = '0'
+        on conflict (project_id, payment_type) where del_flag = '0' and payment_type &lt;&gt; 'refund'
         do update set
             amount = EXCLUDED.amount,
             pay_time = EXCLUDED.pay_time,
@@ -210,7 +210,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         FROM proj_project p
         LEFT JOIN proj_contract c ON c.id = p.contract_id AND c.del_flag = '0'
         LEFT JOIN (
-            SELECT project_id, SUM(amount) AS received
+            SELECT project_id, SUM(CASE WHEN payment_type = 'refund' THEN -COALESCE(amount, 0) ELSE COALESCE(amount, 0) END) AS received
             FROM proj_payment
             WHERE del_flag = '0'
             GROUP BY project_id
@@ -256,7 +256,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             p.status          AS project_status,
             COALESCE(SUM(pay.amount) FILTER(WHERE pay.payment_type = 'advance'), 0)  AS advance_amount,
             COALESCE(SUM(pay.amount) FILTER(WHERE pay.payment_type = 'final'), 0)    AS final_amount,
-            COALESCE(SUM(pay.amount), 0) AS total_received
+            COALESCE(SUM(pay.amount) FILTER(WHERE pay.payment_type = 'refund'), 0)   AS refund_amount,
+            COALESCE(SUM(CASE WHEN pay.payment_type = 'refund' THEN -COALESCE(pay.amount, 0) ELSE COALESCE(pay.amount, 0) END), 0) AS total_received
         FROM proj_project p
         LEFT JOIN proj_payment pay ON pay.project_id = p.id AND pay.del_flag = '0'
         WHERE p.contract_id = #{contractId}
@@ -265,13 +266,19 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         ORDER BY p.create_time
     </select>
 
-    <!-- 按合同聚合收款总额 -->
+    <!-- 按合同聚合收款总额（退款按负数计入） -->
     <select id="selectReceivedAmountByContractId" parameterType="Long" resultType="java.math.BigDecimal">
-        SELECT COALESCE(SUM(pay.amount), 0)
+        SELECT COALESCE(SUM(CASE WHEN pay.payment_type = 'refund' THEN -COALESCE(pay.amount, 0) ELSE COALESCE(pay.amount, 0) END), 0)
         FROM proj_payment pay
         JOIN proj_project p ON p.id = pay.project_id AND p.del_flag = '0'
         WHERE p.contract_id = #{contractId}
           AND pay.del_flag = '0'
     </select>
+
+    <!-- 整组逻辑删除某项目的退款记录（保存退款=先删后插整组替换） -->
+    <update id="deleteRefundsByProjectId">
+        update proj_payment set del_flag = '2', update_by = #{updateBy}, update_time = now()
+        where project_id = #{projectId} and payment_type = 'refund' and del_flag = '0'
+    </update>
 
 </mapper>

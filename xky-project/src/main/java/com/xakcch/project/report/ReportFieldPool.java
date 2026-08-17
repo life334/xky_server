@@ -80,6 +80,7 @@ public class ReportFieldPool
                 toOptions(new String[][]{{"0", "未结算"}, {"1", "已结算"}}));
 
         addField("receivedAmount", "已收金额", "agg", "收款信息", "number", true, null);
+        addField("refundAmount", "退款金额", "agg", "收款信息", "number", true, null);
         addField("lastPayTime", "最近到账时间", "agg", "收款信息", "date", true, null);
         addField("pendingAmount", "合同未收金额", "agg", "收款信息", "number", true, null);
         addField("totalInvoiceAmount", "开票金额合计", "agg", "收款信息", "number", true, null);

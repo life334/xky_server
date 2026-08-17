@@ -198,6 +198,8 @@ insert into sys_dict_data values(21, 3, '纸质+电子', 'paper_digital',  'proj
 insert into sys_dict_data values(30, 1, '预付款',   'advance',   'proj_payment_type', '', 'info',   'Y', '0', 'admin', now(), '', null, '预付款');
 insert into sys_dict_data values(31, 2, '进度款',   'progress',  'proj_payment_type', '', 'primary','N', '0', 'admin', now(), '', null, '进度款');
 insert into sys_dict_data values(32, 3, '尾款',    'final',     'proj_payment_type', '', 'success','N', '0', 'admin', now(), '', null, '尾款');
+insert into sys_dict_data values(48, 4, '退款',    'refund',     'proj_payment_type', '', 'danger','N', '0', 'admin', now(), '', null, '退款');
+
 
 -- 付款到账状态列表
 insert into sys_dict_data values(33, 1, '待收款',   'pending',   'proj_payment_received_status', '', 'warning',  'Y', '0', 'admin', now(), '', null, '待收款');
@@ -213,11 +215,8 @@ insert into sys_dict_data values(38, 1, '待提交',   'pending',   'proj_materi
 insert into sys_dict_data values(39, 2, '已提交',   'submitted', 'proj_material_submit_status',  '', 'success',  'N', '0', 'admin', now(), '', null, '已提交');
 
 -- 合同类型列表
-insert into sys_dict_data values(40, 1, '勘察合同',   'survey',        'proj_contract_type', '', '',       'Y', '0', 'admin', now(), '', null, '勘察合同');
-insert into sys_dict_data values(41, 2, '测绘合同',   'mapping',       'proj_contract_type', '', '',       'N', '0', 'admin', now(), '', null, '测绘合同');
-insert into sys_dict_data values(42, 3, '设计合同',   'design',        'proj_contract_type', '', '',       'N', '0', 'admin', now(), '', null, '设计合同');
-insert into sys_dict_data values(43, 4, '施工合同',   'construction',  'proj_contract_type', '', '',       'N', '0', 'admin', now(), '', null, '施工合同');
-insert into sys_dict_data values(44, 5, '其他合同',   'other',         'proj_contract_type', '', '',       'N', '0', 'admin', now(), '', null, '其他合同');
+insert into sys_dict_data values(40, 1, '单价合同',   'unit',        'proj_contract_type', '', '',       'Y', '0', 'admin', now(), '', null, '单价合同');
+insert into sys_dict_data values(41, 2, '总价合同',   'total',       'proj_contract_type', '', '',       'N', '0', 'admin', now(), '', null, '总价合同');
 
 -- 合同附件分类列表
 insert into sys_dict_data values(45, 1, '合同正本',   'contract',        'proj_attachment_category', '', '',       'N', '0', 'admin', now(), '', null, '合同正本');

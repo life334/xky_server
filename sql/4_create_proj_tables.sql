@@ -320,7 +320,7 @@ CREATE INDEX idx_proj_workload_user ON proj_workload(user_id);
 CREATE INDEX idx_proj_workload_category ON proj_workload(category_id);
 CREATE INDEX idx_proj_workload_extra ON proj_workload USING GIN (extra_data);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_workload_unique ON proj_workload (project_id, user_id, category_id) WHERE del_flag = '0';
-CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_unique ON proj_payment (project_id, payment_type) WHERE del_flag = '0';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_unique ON proj_payment (project_id, payment_type) WHERE del_flag = '0' AND payment_type <> 'refund';
 CREATE UNIQUE INDEX IF NOT EXISTS uk_workload_billing ON proj_workload (project_id, user_id, category_id, billing_type, billing_category) WHERE del_flag = '0';
 
 
@@ -353,7 +353,7 @@ CREATE TABLE proj_payment (
 
 COMMENT ON TABLE proj_payment IS '付款记录表';
 COMMENT ON COLUMN proj_payment.project_id IS '项目ID，关联 proj_project.id';
-COMMENT ON COLUMN proj_payment.payment_type IS '付款类型（预付款/尾款/进度款）';
+COMMENT ON COLUMN proj_payment.payment_type IS '付款类型（预付款/尾款/进度款/退款）';
 COMMENT ON COLUMN proj_payment.amount IS '金额';
 COMMENT ON COLUMN proj_payment.pay_time IS '付款时间';
 COMMENT ON COLUMN proj_payment.pay_unit IS '付款单位';

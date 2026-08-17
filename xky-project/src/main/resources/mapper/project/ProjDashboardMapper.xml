@@ -30,7 +30,7 @@
     <!-- ==================== 财务KPI ==================== -->
 
     <select id="sumPeriodPayment" resultType="map">
-        SELECT COALESCE(SUM(amount), 0) AS amount
+        SELECT COALESCE(SUM(CASE WHEN payment_type = 'refund' THEN -COALESCE(amount, 0) ELSE COALESCE(amount, 0) END), 0) AS amount
         FROM proj_payment
         WHERE del_flag = '0'
           AND received_status = 'received'
@@ -39,7 +39,7 @@
     </select>
 
     <select id="sumAnnualPayment" resultType="map">
-        SELECT COALESCE(SUM(amount), 0) AS amount
+        SELECT COALESCE(SUM(CASE WHEN payment_type = 'refund' THEN -COALESCE(amount, 0) ELSE COALESCE(amount, 0) END), 0) AS amount
         FROM proj_payment
         WHERE del_flag = '0'
           AND received_status = 'received'
@@ -112,7 +112,7 @@
         ) w ON w.mo = m
         LEFT JOIN (
             SELECT date_trunc('month', pay_time) AS mo,
-                   SUM(COALESCE(amount, 0)) AS total_payment
+                   SUM(CASE WHEN payment_type = 'refund' THEN -COALESCE(amount, 0) ELSE COALESCE(amount, 0) END) AS total_payment
             FROM proj_payment WHERE del_flag = '0' AND received_status = 'received'
             GROUP BY date_trunc('month', pay_time)
         ) p ON p.mo = m

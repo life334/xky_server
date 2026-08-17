@@ -83,4 +83,14 @@ public interface ProjPaymentMapper
      * @return 各项目到账明细列表
      */
     public List<Map<String, Object>> selectReceivedDetailByContractId(Long contractId);
+
+    /**
+     * 整组逻辑删除某项目的退款记录（payment_type='refund'，保存退款=先删后插）
+     *
+     * @param projectId 项目ID
+     * @param updateBy 操作人
+     * @return 影响行数
+     */
+    public int deleteRefundsByProjectId(@org.apache.ibatis.annotations.Param("projectId") Long projectId,
+                                        @org.apache.ibatis.annotations.Param("updateBy") String updateBy);
 }

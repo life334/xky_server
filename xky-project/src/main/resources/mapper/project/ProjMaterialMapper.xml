@@ -232,7 +232,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         from proj_project p
         left join proj_contract c on c.id = p.contract_id and c.del_flag = '0'
         left join (
-            select project_id, sum(amount) as received
+            select project_id, sum(case when payment_type = 'refund' then -coalesce(amount, 0) else coalesce(amount, 0) end) as received
             from proj_payment
             where del_flag = '0'
             group by project_id

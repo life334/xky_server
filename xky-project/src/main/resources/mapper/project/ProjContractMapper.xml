@@ -52,7 +52,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                (select count(1) from proj_payment pay
                   inner join proj_project pj on pj.id = pay.project_id and pj.del_flag = '0'
                   where pj.contract_id = t.id and pay.del_flag = '0') as paid_count,
-               (select coalesce(sum(pay.amount), 0) from proj_payment pay
+               (select coalesce(sum(case when pay.payment_type = 'refund' then -coalesce(pay.amount, 0) else coalesce(pay.amount, 0) end), 0) from proj_payment pay
                   inner join proj_project pj on pj.id = pay.project_id and pj.del_flag = '0'
                   where pj.contract_id = t.id and pay.del_flag = '0') as paid_total
         from (
