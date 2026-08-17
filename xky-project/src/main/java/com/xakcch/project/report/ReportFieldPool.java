@@ -89,9 +89,10 @@ public class ReportFieldPool
         addField("settlementStatus", "合同结算状态", "agg", "收款信息", "select", true, SETTLE_STATUS);
         addField("debtMonths", "欠款时长(月)", "agg", "收款信息", "number", true, null);
 
-        // 内置模板计算列：需预留 = 到账金额 × 2/3；需补为模板占位列（暂恒为空）
+        // 内置模板「验线（2/3）」计算列：到账金额 × 2/3，赋值随模板对调（见 resolveValue）
+        //   模板1 zdyw：需预留=到账×2/3，需补=空；模板6 byx：需预留=空，需补=到账×2/3
         addField("reservedAmount", "需预留", "agg", "收款信息", "number", false, null);
-        addField("needSupplement", "需补", "agg", "收款信息", "string", false, null);
+        addField("needSupplement", "需补", "agg", "收款信息", "number", false, null);
         // 管线验线占位字段（内置模板「只定未验及补之前扣除项目」专用）：
         // 验线尚未开展，系统编号/上报时间在报表中固定为空，resolveValue 恒返回 null
         addField("verifySystemNo", "系统编号(验线占位)", "agg", "管线验线", "string", false, null);
@@ -304,9 +305,17 @@ public class ReportFieldPool
             }
             return BigDecimal.valueOf(days / 30.44).setScale(1, BigDecimal.ROUND_HALF_UP);
         }
-        // 需预留 = 到账金额 × 2/3（内置模板「验线（2/3）」计算列）
+        // 「验线（2/3）」计算列：到账金额 × 2/3（保留两位，四舍五入）
+        // 赋值随模板不同对调：
+        //   - 模板1「只定未验及补之前扣除项目」(zdyw)：需预留 = 到账×2/3，需补 = 空
+        //   - 模板6「补验线」(byx)：需预留 = 空，需补 = 到账×2/3
+        boolean isByx = field.getTemplateId() != null && field.getTemplateId() == 6L;
         if ("reservedAmount".equals(key))
         {
+            if (isByx)
+            {
+                return null;
+            }
             BigDecimal received = num(row.get("receivedAmount"));
             if (received == null)
             {
@@ -315,10 +324,19 @@ public class ReportFieldPool
             return received.multiply(new BigDecimal("2"))
                     .divide(new BigDecimal("3"), 2, BigDecimal.ROUND_HALF_UP);
         }
-        // 需补：模板占位列，暂恒为空
         if ("needSupplement".equals(key))
         {
-            return null;
+            if (!isByx)
+            {
+                return null;
+            }
+            BigDecimal received = num(row.get("receivedAmount"));
+            if (received == null)
+            {
+                return null;
+            }
+            return received.multiply(new BigDecimal("2"))
+                    .divide(new BigDecimal("3"), 2, BigDecimal.ROUND_HALF_UP);
         }
         // 管线验线占位列：验线未开展，系统编号/上报时间在报表中固定为空
         if ("verifySystemNo".equals(key) || "verifyReportTime".equals(key))

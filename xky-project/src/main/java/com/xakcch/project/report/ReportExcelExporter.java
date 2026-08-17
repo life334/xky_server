@@ -495,6 +495,18 @@ public class ReportExcelExporter
         {
             return "string";
         }
+        // 「验线（2/3）」两列随模板对调赋值，合计行需跟随有值的一列：
+        //   模板6 补验线：需补=到账×2/3（求和），需预留=空（不求和）
+        //   其它模板(如模板1 zdyw)：需预留=到账×2/3（求和），需补=空（不求和）
+        boolean isByx = f.getTemplateId() != null && f.getTemplateId() == 6L;
+        if ("reservedAmount".equals(key))
+        {
+            return isByx ? "string" : "number";
+        }
+        if ("needSupplement".equals(key))
+        {
+            return isByx ? "number" : "string";
+        }
         if (key.contains("Amount") || key.contains("amount")
                 || "durationRequire".equals(key) || "totalDuration".equals(key)
                 || "debtMonths".equals(key))
