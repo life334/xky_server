@@ -29,7 +29,7 @@ public class ProjProject extends BaseEntity
     private String projectName;
 
     /** 工程项目（自由文本，用户自行填写） */
-    @Excel(name = "委托任务")
+    @Excel(name = "工程项目")
     private String engineeringProject;
 
     /** 项目类别ID（小类），关联 proj_category.id */
@@ -40,15 +40,15 @@ public class ProjProject extends BaseEntity
     private String clientUnit;
 
     /** 联系人 */
-    @Excel(name = "委托联系人")
+    @Excel(name = "联系人")
     private String contactName;
 
     /** 联系电话 */
-    @Excel(name = "联系人电话")
+    @Excel(name = "联系电话")
     private String contactPhone;
 
     /** 工程地点 */
-    @Excel(name = "委托地点")
+    @Excel(name = "工程地点")
     private String projectLocation;
 
     /** 合同ID，关联 proj_contract.id */
@@ -78,6 +78,10 @@ public class ProjProject extends BaseEntity
     /** 总时长（天） */
     @Excel(name = "总时长")
     private Integer totalDuration;
+
+    /** 办结时间（状态流转为 closed 时写入，报表/补验线用） */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private java.util.Date closeTime;
 
     // ===== 以下为非持久化字段，列表/详情展示用 =====
 
@@ -364,6 +368,16 @@ public class ProjProject extends BaseEntity
         this.totalDuration = totalDuration;
     }
 
+    public java.util.Date getCloseTime()
+    {
+        return closeTime;
+    }
+
+    public void setCloseTime(java.util.Date closeTime)
+    {
+        this.closeTime = closeTime;
+    }
+
     public String getImportRemark()
     {
         return importRemark;
@@ -479,6 +493,7 @@ public class ProjProject extends BaseEntity
             .append("assignDate", getAssignDate())
             .append("durationRequire", getDurationRequire())
             .append("totalDuration", getTotalDuration())
+            .append("closeTime", getCloseTime())
             .append("importTaskAssignDate", getImportTaskAssignDate())
             .append("importTaskFinishDate", getImportTaskFinishDate())
             .append("importTaskDuration", getImportTaskDuration())

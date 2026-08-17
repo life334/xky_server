@@ -48,19 +48,21 @@ public class ReportFieldPool
         addField("rowNo", "序号", "agg", "项目信息", "number", false, null);
         addField("projectCode", "工程编号", "subject", "项目信息", "string", true, null);
         addField("projectName", "项目名称", "subject", "项目信息", "string", true, null);
-        addField("engineeringProject", "委托任务", "subject", "项目信息", "string", true, null);
+        addField("engineeringProject", "工程项目", "subject", "项目信息", "string", true, null);
         addField("clientUnit", "委托单位", "subject", "项目信息", "string", true, null);
-        addField("contactName", "委托联系人", "subject", "项目信息", "string", true, null);
-        addField("contactPhone", "联系人电话", "subject", "项目信息", "string", true, null);
-        addField("projectLocation", "委托地点", "subject", "项目信息", "string", true, null);
+        addField("contactName", "联系人", "subject", "项目信息", "string", true, null);
+        addField("contactPhone", "联系电话", "subject", "项目信息", "string", true, null);
+        addField("projectLocation", "工程地点", "subject", "项目信息", "string", true, null);
         addField("projectCategoryId", "项目类别", "subject", "项目信息", "select", true, null);
         addField("categoryName", "项目类别名称", "join", "项目信息", "string", false, null);
         addField("projectStatus", "项目状态", "subject", "项目信息", "select", true, PROJECT_STATUS);
-        addField("leaderName", "项目负责人", "join", "项目信息", "string", true, null);
+        addField("leaderName", "负责人", "join", "项目信息", "string", true, null);
         addField("assignDate", "安排日期", "subject", "项目信息", "date", true, null);
         addField("durationRequire", "工期要求(天)", "subject", "项目信息", "number", false, null);
         addField("totalDuration", "总时长(天)", "subject", "项目信息", "number", false, null);
         addField("createTime", "创建时间", "subject", "项目信息", "date", true, null);
+        // 办结时间：状态流转 closed 时写入；支持筛选（指定时间段内办结的项目）
+        addField("closeTime", "办结时间", "subject", "项目信息", "date", true, null);
         addField("remark", "备注", "subject", "项目信息", "string", true, null);
         addField("deptName", "所属部门", "agg", "项目信息", "string", false, null);
 
@@ -79,12 +81,38 @@ public class ReportFieldPool
 
         addField("receivedAmount", "已收金额", "agg", "收款信息", "number", true, null);
         addField("lastPayTime", "最近到账时间", "agg", "收款信息", "date", true, null);
-        addField("pendingAmount", "未收金额", "agg", "收款信息", "number", true, null);
+        addField("pendingAmount", "合同未收金额", "agg", "收款信息", "number", true, null);
         addField("totalInvoiceAmount", "开票金额合计", "agg", "收款信息", "number", true, null);
         addField("invoiceFlag", "是否开票", "agg", "收款信息", "select", true,
                 toOptions(new String[][]{{"Y", "已开票"}, {"N", "未开票"}}));
-        addField("settlementStatus", "结算状态", "agg", "收款信息", "select", true, SETTLE_STATUS);
+        addField("settlementStatus", "合同结算状态", "agg", "收款信息", "select", true, SETTLE_STATUS);
         addField("debtMonths", "欠款时长(月)", "agg", "收款信息", "number", true, null);
+
+        // 内置模板计算列：需预留 = 到账金额 × 2/3；需补为模板占位列（暂恒为空）
+        addField("reservedAmount", "需预留", "agg", "收款信息", "number", false, null);
+        addField("needSupplement", "需补", "agg", "收款信息", "string", false, null);
+        // 管线验线占位字段（内置模板「只定未验及补之前扣除项目」专用）：
+        // 验线尚未开展，系统编号/上报时间在报表中固定为空，resolveValue 恒返回 null
+        addField("verifySystemNo", "系统编号(验线占位)", "agg", "管线验线", "string", false, null);
+        addField("verifyReportTime", "上报时间(验线占位)", "agg", "管线验线", "date", false, null);
+        // 管线定线上报领导时间（年-月）：内置模板「只定未验及补之前扣除项目」col4 专用，
+        // 已上报取 proj_report_submit_log 锁定时间（yyyy-MM）；未上报固定显示当前年月
+        addField("submitTimeYm", "上报时间", "subject", "管线定线", "date", false, null);
+        // 兼容旧自定义模板：基于创建时间的上报时间占位
+        addField("createTimeYm", "上报时间(年-月)", "agg", "管线定线", "date", false, null);
+        // 补验线报表（byx_report）专用字段：关联工程编号 / 关联工程上报领导时间
+        // （办结时间 closeTime 已移至「项目信息」组并开放筛选）
+        addField("relatedProjectCode", "关联工程编号", "subject", "管线定线", "string", false, null);
+        addField("relatedLastSubmitTime", "关联工程上报时间", "subject", "管线定线", "date", false, null);
+
+        // 项目维度结算字段：结算金额 = 外部产值合计；内部产值仅内部参考，不与外部产值相加
+        addField("projectSettleAmount", "项目结算金额", "agg", "项目结算", "number", true, null);
+        addField("projectInternalOutput", "项目内部产值", "agg", "项目结算", "number", true, null);
+        addField("projectReceivedAmount", "项目已收金额", "agg", "项目结算", "number", true, null);
+        addField("projectPendingAmount", "项目未收金额", "agg", "项目结算", "number", true, null);
+        addField("projectArrearsAmount", "项目欠款金额", "agg", "项目结算", "number", true, null);
+        addField("projectOverpaidAmount", "项目挂账金额", "agg", "项目结算", "number", true, null);
+        addField("projectSettleStatus", "项目结算状态", "agg", "项目结算", "select", true, SETTLE_STATUS);
     }
 
     private static void addField(String key, String label, String source, String group,
@@ -218,6 +246,49 @@ public class ReportFieldPool
             BigDecimal invoice = num(row.get("totalInvoiceAmount"));
             return invoice != null && invoice.compareTo(BigDecimal.ZERO) > 0 ? "已开票" : "未开票";
         }
+        // 项目结算金额（= 外部产值合计，SQL 已聚合）与项目内部产值直接取行值
+        if ("projectSettleAmount".equals(key))
+        {
+            return row.get("projectSettleAmount");
+        }
+        if ("projectInternalOutput".equals(key))
+        {
+            return row.get("projectInternalOutput");
+        }
+        if ("projectReceivedAmount".equals(key))
+        {
+            return row.get("receivedAmount");
+        }
+        if ("projectPendingAmount".equals(key))
+        {
+            BigDecimal settle = num(row.get("projectSettleAmount"));
+            BigDecimal received = num(row.get("receivedAmount"));
+            if (settle == null)
+            {
+                return null;
+            }
+            return settle.subtract(received == null ? BigDecimal.ZERO : received);
+        }
+        // 项目欠款金额 / 项目挂账金额：SQL 已按业务口径算好（挂账仅限已结算且有外部产值的项目）
+        if ("projectArrearsAmount".equals(key))
+        {
+            return row.get("projectArrearsAmount");
+        }
+        if ("projectOverpaidAmount".equals(key))
+        {
+            return row.get("projectOverpaidAmount");
+        }
+        if ("projectSettleStatus".equals(key))
+        {
+            BigDecimal settle = num(row.get("projectSettleAmount"));
+            BigDecimal received = num(row.get("receivedAmount"));
+            if (settle == null || settle.compareTo(BigDecimal.ZERO) == 0)
+            {
+                return "未结清";
+            }
+            int cmp = received == null ? -1 : received.compareTo(settle);
+            return cmp > 0 ? "超额" : (cmp == 0 ? "已结清" : "未结清");
+        }
         if ("debtMonths".equals(key))
         {
             Date finish = date(row.get("finishDate"));
@@ -231,6 +302,57 @@ public class ReportFieldPool
                 days = 0;
             }
             return BigDecimal.valueOf(days / 30.44).setScale(1, BigDecimal.ROUND_HALF_UP);
+        }
+        // 需预留 = 到账金额 × 2/3（内置模板「验线（2/3）」计算列）
+        if ("reservedAmount".equals(key))
+        {
+            BigDecimal received = num(row.get("receivedAmount"));
+            if (received == null)
+            {
+                return null;
+            }
+            return received.multiply(new BigDecimal("2"))
+                    .divide(new BigDecimal("3"), 2, BigDecimal.ROUND_HALF_UP);
+        }
+        // 需补：模板占位列，暂恒为空
+        if ("needSupplement".equals(key))
+        {
+            return null;
+        }
+        // 管线验线占位列：验线未开展，系统编号/上报时间在报表中固定为空
+        if ("verifySystemNo".equals(key) || "verifyReportTime".equals(key))
+        {
+            return null;
+        }
+        // 管线定线上报领导时间（年-月）：已上报取锁定时间；未上报固定显示当前年月
+        // （月度上报节奏：本月导出即上报，上报时间=当前月，故未上报记录预显当前月）
+        if ("submitTimeYm".equals(key))
+        {
+            Date submit = date(row.get("submitTime"));
+            return new java.text.SimpleDateFormat("yyyy-MM").format(submit == null ? new Date() : submit);
+        }
+        // 管线定线上报时间（年-月）：取创建时间格式化为 yyyy-MM（如 2026-08）
+        if ("createTimeYm".equals(key))
+        {
+            Date create = date(row.get("createTime"));
+            return create == null ? null : new java.text.SimpleDateFormat("yyyy-MM").format(create);
+        }
+        // 补验线：关联工程编号直接取行值
+        if ("relatedProjectCode".equals(key))
+        {
+            return row.get("relatedProjectCode");
+        }
+        // 补验线：关联工程上一次上报领导时间（年-月），未上报为空
+        if ("relatedLastSubmitTime".equals(key))
+        {
+            Date submit = date(row.get("relatedLastSubmitTime"));
+            return submit == null ? null : new java.text.SimpleDateFormat("yyyy-MM").format(submit);
+        }
+        // 补验线：办结时间（年-月）
+        if ("closeTime".equals(key))
+        {
+            Date close = date(row.get("closeTime"));
+            return close == null ? null : new java.text.SimpleDateFormat("yyyy-MM").format(close);
         }
 
         // 字典转换

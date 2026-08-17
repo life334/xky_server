@@ -153,6 +153,7 @@ CREATE TABLE proj_project (
     extra_data              JSONB           DEFAULT '{}',
     related_project_id      BIGINT          DEFAULT NULL,
     link_rule               INTEGER         DEFAULT 0,
+    close_time              TIMESTAMP       DEFAULT NULL,
     del_flag                CHAR(1)         DEFAULT '0',
     create_by               VARCHAR(64)     DEFAULT '',
     create_time             TIMESTAMP,
@@ -175,6 +176,7 @@ COMMENT ON COLUMN proj_project.contract_id IS '合同ID，关联 proj_contract.i
 COMMENT ON COLUMN proj_project.status IS '项目状态';
 COMMENT ON COLUMN proj_project.extra_data IS '动态字段数据（JSONB）';
 COMMENT ON COLUMN proj_project.related_project_id IS '关联定线项目ID（验线项目关联对应的定线项目）';
+COMMENT ON COLUMN proj_project.close_time IS '办结时间（状态流转为 closed 时写入，报表/补验线用）';
 COMMENT ON COLUMN proj_category.link_rule IS '关联规则：0=不关联，1=可选关联，2=必须关联';
 COMMENT ON COLUMN proj_project.assign_date IS '安排日期（项目级）';
 COMMENT ON COLUMN proj_project.duration_require IS '工期要求（天）';
@@ -849,4 +851,67 @@ COMMENT ON COLUMN proj_category_billing.price_unit       IS '计价单位（如�
 COMMENT ON COLUMN proj_category_billing.min_quantity     IS '起步量（最低计价数量，不足按起步量计算）';
 
 CREATE INDEX idx_pcb_category ON proj_category_billing (category_id);
+
+-- -----------------------------------------------
+-- 报表上报：批次表 + 记录表（新库轨道；线上库增量见 14 号脚本，幂等可重复执行）
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS proj_report_submit_batch (
+    id            BIGSERIAL PRIMARY KEY,
+    batch_no      VARCHAR(32) NOT NULL,       -- 批次号：SB+yyyyMMdd+3位序号
+    template_id   BIGINT NOT NULL,            -- 上报所用模板（当前=1 zdyw）
+    submit_time   TIMESTAMP NOT NULL,         -- 批次上报时间
+    submit_by     VARCHAR(64) NOT NULL,       -- 操作人
+    project_count INT NOT NULL,               -- 本次上报工程条数
+    filter_desc   VARCHAR(500),               -- 本次筛选范围描述
+    snapshot_file VARCHAR(255),               -- 上报快照文件（服务器路径）
+    remark        VARCHAR(500),               -- 备注
+    create_time   TIMESTAMP DEFAULT now(),
+    del_flag      CHAR(1) DEFAULT '0'
+);
+COMMENT ON TABLE proj_report_submit_batch IS '报表上报批次表（一次导出上报 = 一个批次，记录筛选范围 + 快照路径）';
+
+CREATE TABLE IF NOT EXISTS proj_report_submit_log (
+    id            BIGSERIAL PRIMARY KEY,
+    project_code  VARCHAR(64) NOT NULL,       -- 工程编号（zdyw 报表系统编号）
+    project_name  VARCHAR(255),               -- 冗余，便于展示
+    unit_name     VARCHAR(255),               -- 单位名称（冗余）
+    submit_time   TIMESTAMP NOT NULL,         -- 真实上报领导时间（now()）
+    submit_by     VARCHAR(64) NOT NULL,       -- 操作人
+    batch_id      BIGINT,                     -- 所属批次
+    create_time   TIMESTAMP DEFAULT now(),
+    del_flag      CHAR(1) DEFAULT '0'
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_submit_log_code ON proj_report_submit_log(project_code);
+CREATE INDEX IF NOT EXISTS idx_submit_log_time ON proj_report_submit_log(submit_time);
+COMMENT ON TABLE proj_report_submit_log IS '报表上报记录表（每条工程编号一行，project_code 唯一索引锁定上报时间——上报后不可再更新）';
+
+-- 上报批次表（一次导出上报 = 一个批次，记录筛选范围 + 快照路径）
+CREATE TABLE IF NOT EXISTS proj_report_submit_batch (
+    id            BIGSERIAL PRIMARY KEY,
+    batch_no      VARCHAR(32) NOT NULL,       -- 批次号：SB+yyyyMMdd+3位序号
+    template_id   BIGINT NOT NULL,            -- 上报所用模板（当前=1 zdyw）
+    submit_time   TIMESTAMP NOT NULL,         -- 批次上报时间
+    submit_by     VARCHAR(64) NOT NULL,       -- 操作人
+    project_count INT NOT NULL,               -- 本次上报工程条数
+    filter_desc   VARCHAR(500),               -- 本次筛选范围描述
+    snapshot_file VARCHAR(255),               -- 上报快照文件（服务器路径）
+    remark        VARCHAR(500),               -- 备注
+    create_time   TIMESTAMP DEFAULT now(),
+    del_flag      CHAR(1) DEFAULT '0'
+    );
+
+-- 3. 上报记录表（每条工程编号一行，UNIQUE 锁定上报时间——上报后不可再更新）
+CREATE TABLE IF NOT EXISTS proj_report_submit_log (
+    id            BIGSERIAL PRIMARY KEY,
+    project_code  VARCHAR(64) NOT NULL,       -- 工程编号（zdyw 报表系统编号）
+    project_name  VARCHAR(255),               -- 冗余，便于展示
+    unit_name     VARCHAR(255),               -- 单位名称（冗余）
+    submit_time   TIMESTAMP NOT NULL,         -- 真实上报领导时间（now()）
+    submit_by     VARCHAR(64) NOT NULL,       -- 操作人
+    batch_id      BIGINT,                     -- 所属批次
+    create_time   TIMESTAMP DEFAULT now(),
+    del_flag      CHAR(1) DEFAULT '0'
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uk_submit_log_code ON proj_report_submit_log(project_code);
+CREATE INDEX IF NOT EXISTS idx_submit_log_time ON proj_report_submit_log(submit_time);
 

@@ -27,7 +27,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             p.duration_require as "durationRequire",
             p.total_duration as "totalDuration",
             p.create_time as "createTime",
+            p.close_time as "closeTime",
             p.remark as "remark",
+            p.related_project_id as "relatedProjectId",
+            rp.project_code as "relatedProjectCode",
+            sl.submit_time as "submitTime",
+            sl2.submit_time as "relatedLastSubmitTime",
             c.contract_no as "contractNo",
             c.contract_name as "contractName",
             c.contract_amount as "contractAmount",
@@ -43,11 +48,22 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             coalesce(pay_sum.total_received, 0) as "receivedAmount",
             pay_sum.max_pay_time as "lastPayTime",
             coalesce(pay_sum.total_invoice, 0) as "totalInvoiceAmount",
+            coalesce(w_sum.external_output, 0) as "projectSettleAmount",
+            coalesce(w_sum.internal_output, 0) as "projectInternalOutput",
+            greatest(coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0), 0) as "projectArrearsAmount",
+            case when coalesce(w_sum.external_output, 0) &gt; 0
+                 then greatest(coalesce(pay_sum.total_received, 0) - coalesce(w_sum.external_output, 0), 0)
+                 else 0 end as "projectOverpaidAmount",
             leader.nick_name as "leaderName",
             cat.name as "categoryName",
             cat.parent_id as "categoryParentId"
         from proj_project p
         left join proj_contract c on c.id = p.contract_id and c.del_flag = '0'
+        <!-- 关联定线工程（补验线报表：管线定线列取关联工程编号/其上报时间） -->
+        left join proj_project rp on rp.id = p.related_project_id and rp.del_flag = '0'
+        <!-- 上报领导记录（唯一约束 project_code，记录级锁定上报时间） -->
+        left join proj_report_submit_log sl on sl.project_code = p.project_code and sl.del_flag = '0'
+        left join proj_report_submit_log sl2 on sl2.project_code = rp.project_code and sl2.del_flag = '0'
         left join (
             select project_id,
                    sum(amount) as total_received,
@@ -63,6 +79,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             left join sys_user su on su.user_id = pl.user_id
             group by pl.project_id
         ) leader on leader.project_id = p.id
+        left join (
+            select project_id,
+                   sum(coalesce(external_output, 0)) as external_output,
+                   sum(coalesce(internal_output, 0)) as internal_output
+            from proj_workload
+            where del_flag = '0'
+            group by project_id
+        ) w_sum on w_sum.project_id = p.id
         left join proj_category cat on cat.id = p.project_category_id
         where p.del_flag = '0'
         <if test="f.projectCode != null and f.projectCode != ''">
@@ -75,7 +99,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             and p.client_unit like concat('%', #{f.clientUnit}, '%')
         </if>
         <if test="f.engineeringProject != null and f.engineeringProject != ''">
-            and p.engineering_project like concat('%', #{f.engineeringProject}, '%')
+            and p.engineering_project = #{f.engineeringProject}
         </if>
         <if test="f.projectLocation != null and f.projectLocation != ''">
             and p.project_location like concat('%', #{f.projectLocation}, '%')
@@ -106,6 +130,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
         <if test="f.createTimeEnd != null and f.createTimeEnd != ''">
             and p.create_time &lt;= cast(#{f.createTimeEnd} as timestamp)
+        </if>
+        <if test="f.closeTimeBegin != null and f.closeTimeBegin != ''">
+            and p.close_time &gt;= cast(#{f.closeTimeBegin} as timestamp)
+        </if>
+        <!-- 结束日取整天（close_time 含时分秒，cast 为 timestamp 只到 00:00 会漏当天记录） -->
+        <if test="f.closeTimeEnd != null and f.closeTimeEnd != ''">
+            and p.close_time &lt; cast(#{f.closeTimeEnd} as date) + interval '1 day'
         </if>
         <if test="f.signDateBegin != null and f.signDateBegin != ''">
             and c.sign_date &gt;= cast(#{f.signDateBegin} as date)
@@ -148,6 +179,54 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
         <if test="f.pendingAmountMax != null and f.pendingAmountMax != ''">
             and (c.contract_amount - coalesce(pay_sum.total_received, 0)) &lt;= cast(#{f.pendingAmountMax} as numeric)
+        </if>
+        <!-- 项目未收金额 = 项目结算金额（外部产值合计） - 已收金额 -->
+        <if test="f.projectSettleAmountMin != null and f.projectSettleAmountMin != ''">
+            and coalesce(w_sum.external_output, 0) &gt;= cast(#{f.projectSettleAmountMin} as numeric)
+        </if>
+        <if test="f.projectSettleAmountMax != null and f.projectSettleAmountMax != ''">
+            and coalesce(w_sum.external_output, 0) &lt;= cast(#{f.projectSettleAmountMax} as numeric)
+        </if>
+        <if test="f.projectPendingAmountMin != null and f.projectPendingAmountMin != ''">
+            and (coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0)) &gt;= cast(#{f.projectPendingAmountMin} as numeric)
+        </if>
+        <if test="f.projectPendingAmountMax != null and f.projectPendingAmountMax != ''">
+            and (coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0)) &lt;= cast(#{f.projectPendingAmountMax} as numeric)
+        </if>
+        <!-- 项目欠款金额 = max(项目结算金额 - 已收, 0)；=0 即无欠款（含挂账项目，理解1） -->
+        <if test="f.projectArrearsAmountMin != null and f.projectArrearsAmountMin != ''">
+            and greatest(coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0), 0) &gt;= cast(#{f.projectArrearsAmountMin} as numeric)
+        </if>
+        <if test="f.projectArrearsAmountMax != null and f.projectArrearsAmountMax != ''">
+            and greatest(coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0), 0) &lt;= cast(#{f.projectArrearsAmountMax} as numeric)
+        </if>
+        <!-- 项目挂账金额：仅已结算（外部产值 > 0）才计算 max(已收 - 结算, 0)；无产值项目不算挂账 -->
+        <if test="f.projectOverpaidAmountMin != null and f.projectOverpaidAmountMin != ''">
+            and case when coalesce(w_sum.external_output, 0) &gt; 0
+                     then greatest(coalesce(pay_sum.total_received, 0) - coalesce(w_sum.external_output, 0), 0)
+                     else 0 end &gt;= cast(#{f.projectOverpaidAmountMin} as numeric)
+        </if>
+        <if test="f.projectOverpaidAmountMax != null and f.projectOverpaidAmountMax != ''">
+            and case when coalesce(w_sum.external_output, 0) &gt; 0
+                     then greatest(coalesce(pay_sum.total_received, 0) - coalesce(w_sum.external_output, 0), 0)
+                     else 0 end &lt;= cast(#{f.projectOverpaidAmountMax} as numeric)
+        </if>
+        <!-- 项目结算状态（基于项目结算金额 = 外部产值合计）：pending 未结清 / settled 已结清 / overdue 超额 -->
+        <if test="f.projectSettleStatus != null and f.projectSettleStatus != ''">
+            <choose>
+                <when test="f.projectSettleStatus == 'settled'.toString()">
+                    and coalesce(w_sum.external_output, 0) &gt; 0
+                    and coalesce(pay_sum.total_received, 0) &gt;= coalesce(w_sum.external_output, 0)
+                </when>
+                <when test="f.projectSettleStatus == 'overdue'.toString()">
+                    and coalesce(w_sum.external_output, 0) &gt; 0
+                    and coalesce(pay_sum.total_received, 0) &gt; coalesce(w_sum.external_output, 0)
+                </when>
+                <otherwise>
+                    and (coalesce(w_sum.external_output, 0) = 0
+                         or coalesce(pay_sum.total_received, 0) &lt; coalesce(w_sum.external_output, 0))
+                </otherwise>
+            </choose>
         </if>
         <if test="f.totalInvoiceAmountMin != null and f.totalInvoiceAmountMin != ''">
             and coalesce(pay_sum.total_invoice, 0) &gt;= cast(#{f.totalInvoiceAmountMin} as numeric)

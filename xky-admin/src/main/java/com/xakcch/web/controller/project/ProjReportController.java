@@ -9,15 +9,20 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import com.xakcch.common.annotation.Log;
 import com.xakcch.common.core.controller.BaseController;
 import com.xakcch.common.core.domain.AjaxResult;
+import com.xakcch.common.core.page.TableDataInfo;
 import com.xakcch.common.enums.BusinessType;
+import com.xakcch.common.utils.StringUtils;
 import com.xakcch.project.domain.ProjReportFilter;
 import com.xakcch.project.domain.ProjReportLog;
+import com.xakcch.project.domain.ProjReportSubmitBatch;
+import com.xakcch.project.domain.ProjReportSubmitLog;
 import com.xakcch.project.domain.ProjReportTemplate;
 import com.xakcch.project.service.IProjReportService;
 
@@ -88,6 +93,16 @@ public class ProjReportController extends BaseController
         return AjaxResult.success(reportService.copyTemplate(id, name));
     }
 
+    /** 保存模板默认筛选条件（default_filter JSONB） */
+    @PreAuthorize("@ss.hasPermi('report:report:filter')")
+    @Log(title = "报表模板", businessType = BusinessType.UPDATE)
+    @PutMapping("/template/{id}/defaultFilter")
+    public AjaxResult saveTemplateDefaultFilter(@PathVariable Long id, @RequestBody Map<String, String> body)
+    {
+        String defaultFilter = body == null ? null : body.get("defaultFilter");
+        return AjaxResult.success(reportService.saveTemplateDefaultFilter(id, defaultFilter));
+    }
+
     // ==================== 筛选方案 ====================
 
     /** 筛选方案列表 */
@@ -124,6 +139,19 @@ public class ProjReportController extends BaseController
         return AjaxResult.success(reportService.deleteFilter(id));
     }
 
+    /** 重命名筛选方案（仅创建者可重命名） */
+    @PreAuthorize("@ss.hasPermi('report:report:filter')")
+    @PutMapping("/filter/{id}/rename")
+    public AjaxResult renameFilter(@PathVariable Long id, @RequestBody Map<String, String> body)
+    {
+        String filterName = body == null ? null : body.get("filterName");
+        if (StringUtils.isEmpty(filterName))
+        {
+            return AjaxResult.error("方案名称不能为空");
+        }
+        return AjaxResult.success(reportService.renameFilter(id, filterName.trim()));
+    }
+
     // ==================== 导出 ====================
 
     /** 导出前预览：命中行数 + 前 50 行 */
@@ -137,7 +165,7 @@ public class ProjReportController extends BaseController
         return AjaxResult.success(reportService.preview(templateId, filter));
     }
 
-    /** 导出报表（文件流） */
+    /** 导出报表（文件流；projectCodes 非空时仅导出勾选工程编号） */
     @PreAuthorize("@ss.hasPermi('report:report:export')")
     @Log(title = "报表导出", businessType = BusinessType.EXPORT)
     @PostMapping("/export")
@@ -146,7 +174,9 @@ public class ProjReportController extends BaseController
         Long templateId = Long.valueOf(String.valueOf(body.get("templateId")));
         @SuppressWarnings("unchecked")
         Map<String, Object> filter = (Map<String, Object>) body.get("filter");
-        reportService.exportReport(templateId, filter, response);
+        @SuppressWarnings("unchecked")
+        List<String> projectCodes = (List<String>) body.get("projectCodes");
+        reportService.exportReport(templateId, filter, projectCodes, response);
     }
 
     /** 按配置直接导出（不保存模板，临时使用） */
@@ -186,5 +216,86 @@ public class ProjReportController extends BaseController
     public AjaxResult deleteLog(@PathVariable Long id)
     {
         return AjaxResult.success(reportService.deleteLog(id));
+    }
+
+    // ==================== 上报领导 ====================
+
+    /** 导出并上报领导：勾选工程编号 + 备注 → 快照留档 + 记录级上报时间（已上报锁定跳过） */
+    @PreAuthorize("@ss.hasPermi('report:report:export')")
+    @Log(title = "报表上报", businessType = BusinessType.EXPORT)
+    @PostMapping("/submit")
+    public AjaxResult submit(@RequestBody Map<String, Object> body)
+    {
+        Long templateId = Long.valueOf(String.valueOf(body.get("templateId")));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> filter = (Map<String, Object>) body.get("filter");
+        @SuppressWarnings("unchecked")
+        List<String> projectCodes = (List<String>) body.get("projectCodes");
+        String remark = body.get("remark") == null ? null : body.get("remark").toString();
+        return AjaxResult.success(reportService.submitReport(templateId, filter, projectCodes, remark));
+    }
+
+    /** 上报批次列表 */
+    @PreAuthorize("@ss.hasPermi('report:report:log')")
+    @GetMapping("/submit/batch/list")
+    public TableDataInfo submitBatchList(ProjReportSubmitBatch query)
+    {
+        startPage();
+        List<ProjReportSubmitBatch> list = reportService.listSubmitBatches(query);
+        return getDataTable(list);
+    }
+
+    /** 上报批次详情（含批次内记录） */
+    @PreAuthorize("@ss.hasPermi('report:report:log')")
+    @GetMapping("/submit/batch/{id}")
+    public AjaxResult submitBatchDetail(@PathVariable Long id)
+    {
+        return AjaxResult.success(reportService.getSubmitBatch(id));
+    }
+
+    /** 下载批次快照文件（上报当时的报表文件） */
+    @PreAuthorize("@ss.hasPermi('report:report:log')")
+    @GetMapping("/submit/batch/{id}/snapshot")
+    public void submitBatchSnapshot(@PathVariable Long id, HttpServletResponse response)
+    {
+        reportService.downloadSnapshot(id, response);
+    }
+
+    /** 删除上报批次（仅管理员） */
+    @PreAuthorize("@ss.hasPermi('report:report:log')")
+    @Log(title = "报表上报", businessType = BusinessType.DELETE)
+    @DeleteMapping("/submit/batch/{id}")
+    public AjaxResult deleteSubmitBatch(@PathVariable Long id)
+    {
+        return AjaxResult.success(reportService.deleteSubmitBatch(id));
+    }
+
+    /** 上报记录列表 */
+    @PreAuthorize("@ss.hasPermi('report:report:log')")
+    @GetMapping("/submit/log/list")
+    public TableDataInfo submitLogList(ProjReportSubmitLog query)
+    {
+        startPage();
+        List<ProjReportSubmitLog> list = reportService.listSubmitLogs(query);
+        return getDataTable(list);
+    }
+
+    /** 批量查询工程编号上报状态（预览标记已上报行） */
+    @PreAuthorize("@ss.hasPermi('report:report:list')")
+    @PostMapping("/submit/status")
+    public AjaxResult submitStatus(@RequestBody Map<String, Object> body)
+    {
+        @SuppressWarnings("unchecked")
+        List<String> projectCodes = (List<String>) body.get("projectCodes");
+        return AjaxResult.success(reportService.listSubmittedStatus(projectCodes));
+    }
+
+    /** 删除单条上报记录（仅管理员；删除后该工程编号可重新上报） */
+    @PreAuthorize("@ss.hasPermi('report:report:log')")
+    @Log(title = "报表上报", businessType = BusinessType.DELETE)
+    @DeleteMapping("/submit/log/{id}")
+    public AjaxResult deleteSubmitLog(@PathVariable Long id)
+    {
+        return AjaxResult.success(reportService.deleteSubmitLog(id));
     }
 }

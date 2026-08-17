@@ -238,11 +238,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </delete>
 
     <update id="completeProject" parameterType="Long">
-        update proj_project set status = 'closed', update_time = now() where id = #{id}
+        update proj_project set status = 'closed', close_time = now(), update_time = now() where id = #{id}
     </update>
 
     <update id="updateProjectStatus">
-        update proj_project set status = #{status}, update_time = now() where id = #{id}
+        update proj_project set status = #{status},
+            close_time = case when #{status} = 'closed' then now() else close_time end,
+            update_time = now() where id = #{id}
     </update>
 
     <update id="updateProjectTotalDuration">

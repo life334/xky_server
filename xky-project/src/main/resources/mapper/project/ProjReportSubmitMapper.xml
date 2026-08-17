@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjReportSubmitMapper">
+
+    <resultMap type="ProjReportSubmitBatch" id="BatchResult">
+        <result property="id"           column="id"            />
+        <result property="batchNo"      column="batch_no"      />
+        <result property="templateId"   column="template_id"   />
+        <result property="templateName" column="template_name" />
+        <result property="submitTime"   column="submit_time"   />
+        <result property="submitBy"     column="submit_by"     />
+        <result property="projectCount" column="project_count" />
+        <result property="filterDesc"   column="filter_desc"   />
+        <result property="snapshotFile" column="snapshot_file" />
+        <result property="remark"       column="remark"        />
+        <result property="delFlag"      column="del_flag"      />
+        <result property="createTime"   column="create_time"   />
+    </resultMap>
+
+    <resultMap type="ProjReportSubmitLog" id="LogResult">
+        <result property="id"          column="id"           />
+        <result property="projectCode" column="project_code" />
+        <result property="projectName" column="project_name" />
+        <result property="unitName"    column="unit_name"    />
+        <result property="submitTime"  column="submit_time"  />
+        <result property="submitBy"    column="submit_by"    />
+        <result property="batchId"     column="batch_id"     />
+        <result property="batchNo"     column="batch_no"     />
+        <result property="delFlag"     column="del_flag"     />
+        <result property="createTime"  column="create_time"  />
+    </resultMap>
+
+    <!-- ==================== 批次 ==================== -->
+
+    <select id="selectBatchList" parameterType="ProjReportSubmitBatch" resultMap="BatchResult">
+        select b.id, b.batch_no, b.template_id, t.template_name, b.submit_time,
+               b.submit_by, b.project_count, b.filter_desc, b.snapshot_file, b.remark, b.create_time
+        from proj_report_submit_batch b
+        left join proj_report_template t on t.template_id = b.template_id
+        where b.del_flag = '0'
+        <if test="batchNo != null and batchNo != ''">
+            and b.batch_no like concat('%', #{batchNo}, '%')
+        </if>
+        <if test="submitBy != null and submitBy != ''">
+            and b.submit_by like concat('%', #{submitBy}, '%')
+        </if>
+        <if test="templateName != null and templateName != ''">
+            and t.template_name like concat('%', #{templateName}, '%')
+        </if>
+        order by b.submit_time desc
+    </select>
+
+    <select id="selectBatchById" parameterType="Long" resultMap="BatchResult">
+        select b.id, b.batch_no, b.template_id, t.template_name, b.submit_time,
+               b.submit_by, b.project_count, b.filter_desc, b.snapshot_file, b.remark, b.create_time
+        from proj_report_submit_batch b
+        left join proj_report_template t on t.template_id = b.template_id
+        where b.id = #{id}
+    </select>
+
+    <select id="selectMaxBatchNoByPrefix" parameterType="String" resultType="String">
+        select batch_no from proj_report_submit_batch
+        where batch_no like concat(#{prefix}, '%')
+        order by batch_no desc limit 1
+    </select>
+
+    <insert id="insertBatch" parameterType="ProjReportSubmitBatch" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_report_submit_batch (
+            batch_no, template_id, submit_time, submit_by,
+            project_count, filter_desc, snapshot_file, remark, create_time
+        ) values (
+            #{batchNo}, #{templateId}, now(), #{submitBy},
+            #{projectCount}, #{filterDesc}, #{snapshotFile}, #{remark}, now()
+        )
+    </insert>
+
+    <update id="deleteBatchById" parameterType="Long">
+        update proj_report_submit_batch set del_flag = '2' where id = #{id}
+    </update>
+
+    <update id="deleteLogsByBatchId" parameterType="Long">
+        update proj_report_submit_log set del_flag = '2' where batch_id = #{id}
+    </update>
+
+    <!-- ==================== 记录 ==================== -->
+
+    <select id="selectLogList" parameterType="ProjReportSubmitLog" resultMap="LogResult">
+        select l.id, l.project_code, l.project_name, l.unit_name, l.submit_time,
+               l.submit_by, l.batch_id, b.batch_no, l.create_time
+        from proj_report_submit_log l
+        left join proj_report_submit_batch b on b.id = l.batch_id
+        where l.del_flag = '0'
+        <if test="projectCode != null and projectCode != ''">
+            and l.project_code like concat('%', #{projectCode}, '%')
+        </if>
+        <if test="submitBy != null and submitBy != ''">
+            and l.submit_by like concat('%', #{submitBy}, '%')
+        </if>
+        <if test="batchNo != null and batchNo != ''">
+            and b.batch_no like concat('%', #{batchNo}, '%')
+        </if>
+        order by l.submit_time desc
+    </select>
+
+    <select id="selectLogsByBatchId" parameterType="Long" resultMap="LogResult">
+        select l.id, l.project_code, l.project_name, l.unit_name, l.submit_time,
+               l.submit_by, l.batch_id, b.batch_no, l.create_time
+        from proj_report_submit_log l
+        left join proj_report_submit_batch b on b.id = l.batch_id
+        where l.batch_id = #{batchId} and l.del_flag = '0'
+        order by l.id
+    </select>
+
+    <select id="selectLogByProjectCode" parameterType="String" resultMap="LogResult">
+        select l.id, l.project_code, l.project_name, l.unit_name, l.submit_time,
+               l.submit_by, l.batch_id, b.batch_no, l.create_time
+        from proj_report_submit_log l
+        left join proj_report_submit_batch b on b.id = l.batch_id
+        where l.project_code = #{projectCode} and l.del_flag = '0'
+        limit 1
+    </select>
+
+    <!-- 统计时间区间内的上报记录数（按月上报控制：当月已上报则不允许再报） -->
+    <select id="countLogsBetween" resultType="int">
+        select count(*) from proj_report_submit_log
+        where del_flag = '0'
+          and submit_time &gt;= #{begin}
+          and submit_time &lt; #{end}
+    </select>
+
+    <select id="selectLogsByCodes" resultMap="LogResult">
+        select l.id, l.project_code, l.project_name, l.unit_name, l.submit_time,
+               l.submit_by, l.batch_id, b.batch_no, l.create_time
+        from proj_report_submit_log l
+        left join proj_report_submit_batch b on b.id = l.batch_id
+        where l.del_flag = '0'
+          and l.project_code in
+        <foreach item="code" collection="codes" open="(" separator="," close=")">
+            #{code}
+        </foreach>
+        order by l.submit_time desc
+    </select>
+
+    <!-- UNIQUE(project_code) 冲突时跳过不更新（锁定上报时间，重复上报不覆盖） -->
+    <insert id="insertLogIgnore" parameterType="ProjReportSubmitLog">
+        insert into proj_report_submit_log (
+            project_code, project_name, unit_name, submit_time, submit_by, batch_id, create_time
+        ) values (
+            #{projectCode}, #{projectName}, #{unitName}, now(), #{submitBy}, #{batchId}, now()
+        )
+        on conflict (project_code) do nothing
+    </insert>
+
+    <update id="deleteLogById" parameterType="Long">
+        update proj_report_submit_log set del_flag = '2' where id = #{id}
+    </update>
+
+</mapper>

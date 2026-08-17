@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Map;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.DateUtil;
+import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -37,21 +40,46 @@ import com.xakcch.project.domain.ProjReportTemplate;
 public class ReportExcelExporter
 {
     /**
+     * 需要"按单位名称排序 + 合并单位名称单元格 + 到账时间按单位汇总"的内置模板文件关键字
+     * （模板1「只定未验及补之前扣除项目」zdyw_report.xls）
+     */
+    public static final String UNIT_MERGE_TEMPLATE_KEYWORD = "zdyw_report";
+
+    /**
+     * 仅"按单位名称排序 + 合并单位名称单元格"、到账时间逐条显示的内置模板文件关键字
+     * （模板6「补验线」byx_report.xls：结构同 zdyw，但到账时间不按单位汇总）
+     */
+    public static final String UNIT_MERGE_NO_PAY_SUMMARY_KEYWORD = "byx_report";
+
+    /**
      * 内置模板原样导出
      *
-     * @param out      输出流（响应体）
-     * @param template 模板定义（templateFile 指向 classpath 或绝对路径）
-     * @param fields   模板字段（按 column_index 定位列）
-     * @param rows     数据行
+     * @param out       输出流（响应体）
+     * @param template  模板定义（templateFile 指向 classpath 或绝对路径）
+     * @param fields    模板字段（按 column_index 定位列）
+     * @param rows      数据行
+     * @param yearMonth 导出年月 [年, 月]，用于替换标题中的"20XX年X月"；为 null 则不替换
      */
     public static void exportBuiltin(OutputStream out, ProjReportTemplate template,
-            List<ProjReportField> fields, List<Map<String, Object>> rows) throws Exception
+            List<ProjReportField> fields, List<Map<String, Object>> rows,
+            String[] yearMonth) throws Exception
     {
         Workbook wb = openTemplate(template);
         try
         {
             Sheet sheet = wb.getSheetAt(0);
+            // 标题中的年月实时替换（如"地下空间工程中心2026年7月…" → 筛选年月）
+            replaceTitleYearMonth(wb, template, yearMonth);
             fillDataRows(wb, sheet, template, fields, rows, false);
+            // 单位合并模板：同单位多条记录合并单位名称单元格；到账时间按模板类型
+            // zdyw（只定未验）整组合并写汇总描述，byx（补验线）逐条显示
+            if (isUnitMergeTemplate(template))
+            {
+                applyUnitMerge(sheet, template, fields, rows, isPayTimeSummaryTemplate(template));
+            }
+            // ★ 数据行行高自适应：按各列实际内容长度（结合列宽/合并区域宽度）估算
+            // 所需行数，超长内容换行完整显示；短内容保持模板基础行高不变
+            applyAutoRowHeight(wb, sheet, template, rows);
             // 默认显示第一个 sheet（模板可能有多个 sheet，第 2 个通常为空）
             wb.setActiveSheet(0);
             sheet.setSelected(true);
@@ -321,23 +349,40 @@ public class ReportExcelExporter
         }
 
         // ★ 先保存样式行中各列的样式（后续删除行时 styleRow 引用会失效）
+        // 遍历样式行所有单元格（含无字段定义的列，如"需预留/需补"，保证导出后边框完整）
         Row styleRow = sheet.getRow(dataZeroIdx);
         short savedHeight = (styleRow != null) ? styleRow.getHeight() : 300;
+        // 基准字体：样式行第 1 列（序号列）的字体；数据行全列统一使用该字体，
+        // 避免模板数据行各列字体大小/粗细参差（如 zdyw_report 存在 9/10/12pt 混用）导致导出不一致
+        Font baseFont = null;
+        if (styleRow != null)
+        {
+            Cell c0 = styleRow.getCell(0);
+            if (c0 != null)
+            {
+                baseFont = wb.getFontAt(c0.getCellStyle().getFontIndex());
+            }
+        }
         Map<Integer, CellStyle> savedStyles = new HashMap<>();
         if (styleRow != null)
         {
-            for (ProjReportField f : fields)
+            short lastCell = styleRow.getLastCellNum();
+            for (int ci = 0; ci < lastCell; ci++)
             {
-                Integer ci = f.getColumnIndex();
-                if (ci != null && ci > 0 && !savedStyles.containsKey(ci))
+                Cell sc = styleRow.getCell(ci);
+                if (sc != null)
                 {
-                    Cell sc = styleRow.getCell(ci - 1);
-                    if (sc != null)
+                    CellStyle style = wb.createCellStyle();
+                    style.cloneStyleFrom(sc.getCellStyle());
+                    if (baseFont != null)
                     {
-                        CellStyle style = wb.createCellStyle();
-                        style.cloneStyleFrom(sc.getCellStyle());
-                        savedStyles.put(ci, style);
+                        style.setFont(baseFont);
                     }
+                    // ★ 自动换行：配合导出后的行高自适应（applyAutoRowHeight），
+                    // 超长内容可换行显示完整，短内容不受影响（仍单行显示）
+                    style.setWrapText(true);
+                    // key 统一为 1-based 列号（与 ProjReportField.columnIndex 一致）
+                    savedStyles.put(ci + 1, style);
                 }
             }
         }
@@ -363,7 +408,7 @@ public class ReportExcelExporter
             }
         }
 
-        // ★ 填充数据行：移除旧行 → 创建全新行 → 创建全新 cell → 设样式和值
+        // ★ 填充数据行：移除旧行 → 创建全新行 → 先全列复制样式 → 再按字段写值
         for (int i = 0; i < rows.size(); i++)
         {
             int rowIdx = dataZeroIdx + i;
@@ -375,6 +420,13 @@ public class ReportExcelExporter
             Row row = sheet.createRow(rowIdx);
             row.setHeight(savedHeight);
 
+            // 1) 所有列复制样式（含无字段列，保证边框/底纹完整）
+            for (Map.Entry<Integer, CellStyle> e : savedStyles.entrySet())
+            {
+                Cell cell = row.createCell(e.getKey() - 1);
+                cell.setCellStyle(e.getValue());
+            }
+            // 2) 字段列写值
             for (ProjReportField f : fields)
             {
                 Integer colIdx = f.getColumnIndex();
@@ -382,13 +434,7 @@ public class ReportExcelExporter
                 {
                     continue;
                 }
-                int ci = colIdx - 1;
-                Cell cell = row.createCell(ci);
-                CellStyle style = savedStyles.get(colIdx);
-                if (style != null)
-                {
-                    cell.setCellStyle(style);
-                }
+                Cell cell = row.getCell(colIdx - 1);
                 Object v = ReportFieldPool.resolveValue(f, rows.get(i));
                 setCellValue(wb, cell, v);
             }
@@ -405,6 +451,12 @@ public class ReportExcelExporter
             }
             Row sum = sheet.createRow(sumIdx);
             sum.setHeight(savedHeight);
+            // 全列复制样式
+            for (Map.Entry<Integer, CellStyle> e : savedStyles.entrySet())
+            {
+                Cell cell = sum.createCell(e.getKey() - 1);
+                cell.setCellStyle(e.getValue());
+            }
             for (ProjReportField f : fields)
             {
                 Integer colIdx = f.getColumnIndex();
@@ -413,12 +465,7 @@ public class ReportExcelExporter
                     continue;
                 }
                 int ci = colIdx - 1;
-                Cell cell = sum.createCell(ci);
-                CellStyle style = savedStyles.get(colIdx);
-                if (style != null)
-                {
-                    cell.setCellStyle(style);
-                }
+                Cell cell = sum.getCell(ci);
                 if (ci == 0)
                 {
                     cell.setCellValue("合计");
@@ -491,6 +538,314 @@ public class ReportExcelExporter
         {
             cell.setCellValue(v.toString());
         }
+    }
+
+    /**
+     * 标题年月实时替换：将标题单元格中形如"2026年7月"的文本替换为导出筛选年月。
+     * 模板标题通常为合并单元格，值位于该行第一个有值的单元格。
+     */
+    private static void replaceTitleYearMonth(Workbook wb, ProjReportTemplate template, String[] yearMonth)
+    {
+        if (yearMonth == null || yearMonth.length < 2 || template.getTitleRow() == null
+                || template.getTitleRow() <= 0)
+        {
+            return;
+        }
+        Row titleRow = wb.getSheetAt(0).getRow(template.getTitleRow() - 1);
+        if (titleRow == null)
+        {
+            return;
+        }
+        String year = yearMonth[0];
+        String month = yearMonth[1];
+        for (Cell c : titleRow)
+        {
+            if (c.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING)
+            {
+                String text = c.getStringCellValue();
+                if (text != null && text.matches(".*\\d{4}年\\d{1,2}月.*"))
+                {
+                    c.setCellValue(text.replaceAll("\\d{4}年\\d{1,2}月", year + "年" + month + "月"));
+                }
+            }
+        }
+    }
+
+    /**
+     * 单位合并（内置单位合并模板专用）：
+     * 1. 单位名称列：同单位连续多条记录合并为一个单元格（保留首行值）
+     * 2. 到账时间列（mergePayTimeSummary=true 时）：同单位整组合并，统一写汇总描述
+     *    （如"2026年8月13日到账823元"，由 Service 层计算注入行键 _unitSummary，单条记录同样写汇总）；
+     *    为 false 时到账时间保持逐条显示（补验线报表）
+     */
+    private static void applyUnitMerge(Sheet sheet, ProjReportTemplate template,
+            List<ProjReportField> fields, List<Map<String, Object>> rows, boolean mergePayTimeSummary)
+    {
+        if (rows == null || rows.isEmpty())
+        {
+            return;
+        }
+        // 反查单位名称列 / 到账时间列（按字段 key + column_index）
+        int unitCol = -1;
+        int payTimeCol = -1;
+        for (ProjReportField f : fields)
+        {
+            if (f.getColumnIndex() == null || f.getColumnIndex() <= 0)
+            {
+                continue;
+            }
+            if ("clientUnit".equals(f.getFieldKey()) && unitCol < 0)
+            {
+                unitCol = f.getColumnIndex() - 1;
+            }
+            else if ("lastPayTime".equals(f.getFieldKey()) && payTimeCol < 0)
+            {
+                payTimeCol = f.getColumnIndex() - 1;
+            }
+        }
+        int dataZeroIdx = (template.getDataStartRow() == null ? 3 : template.getDataStartRow()) - 1;
+        if (dataZeroIdx < 0)
+        {
+            dataZeroIdx = 0;
+        }
+
+        int i = 0;
+        while (i < rows.size())
+        {
+            String unit = toStr(rows.get(i).get("clientUnit"));
+            int end = i;
+            while (end + 1 < rows.size() && eq(toStr(rows.get(end + 1).get("clientUnit")), unit))
+            {
+                end++;
+            }
+            int rowStart = dataZeroIdx + i;
+            int rowEnd = dataZeroIdx + end;
+
+            // 到账时间列：整组统一写汇总描述（单条记录同样处理；补验线模板逐条显示跳过）
+            if (payTimeCol >= 0 && mergePayTimeSummary)
+            {
+                String summary = toStr(rows.get(i).get("_unitSummary"));
+                for (int r = rowStart; r <= rowEnd; r++)
+                {
+                    Row rr = sheet.getRow(r);
+                    if (rr != null)
+                    {
+                        Cell c = rr.getCell(payTimeCol);
+                        if (c != null)
+                        {
+                            c.setCellValue(summary == null ? "" : summary);
+                        }
+                    }
+                }
+            }
+            // 单位名称列：多条记录合并为一个单元格（保留首行值，其余行清空）
+            if (unitCol >= 0 && end > i)
+            {
+                if (rowEnd > rowStart)
+                {
+                    sheet.addMergedRegion(new CellRangeAddress(rowStart, rowEnd, unitCol, unitCol));
+                }
+                for (int r = rowStart + 1; r <= rowEnd; r++)
+                {
+                    Row rr = sheet.getRow(r);
+                    if (rr != null)
+                    {
+                        Cell c = rr.getCell(unitCol);
+                        if (c != null)
+                        {
+                            c.setCellValue("");
+                        }
+                    }
+                }
+            }
+            i = end + 1;
+        }
+    }
+
+    /** 是否为单位合并模板（按模板文件关键字识别，与 Service 层保持一致） */
+    private static boolean isUnitMergeTemplate(ProjReportTemplate template)
+    {
+        return template != null && template.getTemplateFile() != null
+                && (template.getTemplateFile().toLowerCase().contains(UNIT_MERGE_TEMPLATE_KEYWORD)
+                    || template.getTemplateFile().toLowerCase().contains(UNIT_MERGE_NO_PAY_SUMMARY_KEYWORD));
+    }
+
+    /** 到账时间是否按单位汇总（zdyw 汇总整组合并；byx 补验线逐条显示） */
+    private static boolean isPayTimeSummaryTemplate(ProjReportTemplate template)
+    {
+        return template != null && template.getTemplateFile() != null
+                && template.getTemplateFile().toLowerCase().contains(UNIT_MERGE_TEMPLATE_KEYWORD);
+    }
+
+    /**
+     * 数据行行高自适应：逐行扫描各列内容，按列宽（含合并区域总宽）与基准字号估算
+     * 所需显示行数，设置 `maxLines × 单行高度` 的行高，保证换行后内容完整可见。
+     * 单行即可放下的内容保持模板基础行高不变。
+     */
+    private static void applyAutoRowHeight(Workbook wb, Sheet sheet, ProjReportTemplate template,
+            List<Map<String, Object>> rows)
+    {
+        if (rows == null || rows.isEmpty())
+        {
+            return;
+        }
+        int dataZeroIdx = (template.getDataStartRow() == null ? 3 : template.getDataStartRow()) - 1;
+        if (dataZeroIdx < 0)
+        {
+            dataZeroIdx = 0;
+        }
+        // 基础行高与基准字号（与 fillDataRows 保持一致：样式行第 1 列字体）
+        Row styleRow = sheet.getRow(dataZeroIdx);
+        short baseHeight = (styleRow != null) ? styleRow.getHeight() : 300;
+        float fontSize = 12f;
+        if (styleRow != null)
+        {
+            Cell c0 = styleRow.getCell(0);
+            if (c0 != null)
+            {
+                fontSize = wb.getFontAt(c0.getCellStyle().getFontIndex()).getFontHeightInPoints();
+            }
+        }
+        // 单行高度：1pt = 20 twip，1.35 行距系数（中文/全角留余量）
+        short lineTwip = (short) Math.round(fontSize * 20 * 1.35);
+        if (lineTwip < 300)
+        {
+            lineTwip = 300;
+        }
+        // 预取合并区域：单元格位于合并区域内时，按区域总列宽估算
+        List<CellRangeAddress> merges = sheet.getMergedRegions();
+
+        for (int i = 0; i < rows.size(); i++)
+        {
+            Row row = sheet.getRow(dataZeroIdx + i);
+            if (row == null)
+            {
+                continue;
+            }
+            int maxLines = 1;
+            short lastCell = row.getLastCellNum();
+            for (int ci = 0; ci < lastCell; ci++)
+            {
+                Cell cell = row.getCell(ci);
+                if (cell == null)
+                {
+                    continue;
+                }
+                String text = cellText(cell);
+                if (text == null || text.isEmpty())
+                {
+                    continue;
+                }
+                // 列宽（字符单位，1/256 字符宽）：合并区域内按区域总宽
+                int widthChars = sheet.getColumnWidth(ci) / 256;
+                for (CellRangeAddress m : merges)
+                {
+                    if (m.isInRange(row.getRowNum(), ci))
+                    {
+                        widthChars = 0;
+                        for (int cc = m.getFirstColumn(); cc <= m.getLastColumn(); cc++)
+                        {
+                            widthChars += sheet.getColumnWidth(cc) / 256;
+                        }
+                        break;
+                    }
+                }
+                // 留出左右边距（约 1 字符），避免按满宽估算导致换行后仍溢出
+                int lines = estimateWrapLines(text, Math.max(widthChars - 1, 2));
+                if (lines > maxLines)
+                {
+                    maxLines = lines;
+                }
+            }
+            if (maxLines > 1)
+            {
+                // 行高上限 4095 twip（Excel 限制约 204pt）
+                row.setHeight((short) Math.min(Math.max(baseHeight, maxLines * lineTwip), 4095));
+            }
+        }
+    }
+
+    /** 单元格显示文本（供行高估算）：字符串取原文，数值去科学计数法，日期按固定 10 字符估 */
+    private static String cellText(Cell cell)
+    {
+        if (cell == null)
+        {
+            return "";
+        }
+        CellType type = cell.getCellType();
+        if (type == CellType.STRING)
+        {
+            return cell.getStringCellValue();
+        }
+        if (type == CellType.NUMERIC)
+        {
+            if (DateUtil.isCellDateFormatted(cell))
+            {
+                return "yyyy-MM-dd"; // 日期格式固定 10 字符
+            }
+            double d = cell.getNumericCellValue();
+            return new BigDecimal(Double.toString(d)).stripTrailingZeros().toPlainString();
+        }
+        if (type == CellType.BOOLEAN)
+        {
+            return Boolean.toString(cell.getBooleanCellValue());
+        }
+        return "";
+    }
+
+    /**
+     * 估算文本在指定列宽（单位：英文字符）下换行所需行数。
+     * 中文/全角字符按 2 个英文字符宽计；显式换行符（\n）强制换行。
+     */
+    private static int estimateWrapLines(String text, int widthChars)
+    {
+        if (text == null || text.isEmpty() || widthChars <= 0)
+        {
+            return 1;
+        }
+        int lines = 0;
+        String[] segs = text.split("\n", -1);
+        for (String seg : segs)
+        {
+            lines += estimateSegmentLines(seg, widthChars);
+        }
+        return Math.max(lines, 1);
+    }
+
+    /** 单段文本（不含显式换行）在指定列宽下的行数 */
+    private static int estimateSegmentLines(String seg, int widthChars)
+    {
+        if (seg.isEmpty())
+        {
+            return 1;
+        }
+        double w = 0;
+        int lines = 1;
+        for (int i = 0; i < seg.length(); i++)
+        {
+            char c = seg.charAt(i);
+            double cw = (c > 0x7F) ? 2.0 : 1.0;
+            if (w + cw > widthChars)
+            {
+                lines++;
+                w = cw;
+            }
+            else
+            {
+                w += cw;
+            }
+        }
+        return lines;
+    }
+
+    private static String toStr(Object o)
+    {
+        return o == null ? null : o.toString();
+    }
+
+    private static boolean eq(String a, String b)
+    {
+        return a == null ? b == null : a.equals(b);
     }
 
     /**

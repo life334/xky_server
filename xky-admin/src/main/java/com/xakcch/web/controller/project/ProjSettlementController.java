@@ -72,7 +72,6 @@ public class ProjSettlementController extends BaseController
         addColumn(columns, "externalPrice", "外部单价", "money", false, "externalPrice");
         addColumn(columns, "internalOutput", "内部产值", "money", true, "internalOutput");
         addColumn(columns, "externalOutput", "外部产值", "money", true, "externalOutput");
-        addColumn(columns, "output", "总产值", "money", false, "output");
         addColumn(columns, "prepayAmount", "预付款", "money", true, "prepayAmount");
         addColumn(columns, "prepayDate", "预付款时间", "date", true, "prepayDate");
         addColumn(columns, "payUnit", "付款单位", "text", true, "payUnit");
@@ -145,11 +144,9 @@ public class ProjSettlementController extends BaseController
                 if (w.getExternalOutput() != null) totalExternalOutput = totalExternalOutput.add(w.getExternalOutput());
             }
 
-            BigDecimal totalOutput = totalInternalOutput.add(totalExternalOutput);
             projectNode.put("workload", totalWorkload);
             projectNode.put("internalOutput", totalInternalOutput);
             projectNode.put("externalOutput", totalExternalOutput);
-            projectNode.put("output", totalOutput);
             // 结算状态 + 已收/待收差额（结算总额 = 外部产值合计，与编辑页面口径一致）
             fillSettlementSummary(projectNode, payments, totalExternalOutput);
             projectNode.put("children", userChildren);
@@ -172,7 +169,7 @@ public class ProjSettlementController extends BaseController
         List<ProjWorkload> workloads = workloadMapper.selectWorkloadsByProjectId(projectId);
         List<ProjPayment> payments = paymentMapper.selectPaymentsByProjectId(projectId);
 
-        // 产值汇总（内部 + 外部）
+        // 产值汇总（内部产值与外部产值各自独立，不相加；结算总额 = 外部产值）
         BigDecimal internalOutput = BigDecimal.ZERO;
         BigDecimal externalOutput = BigDecimal.ZERO;
         for (ProjWorkload w : workloads)
@@ -180,10 +177,8 @@ public class ProjSettlementController extends BaseController
             if (w.getInternalOutput() != null) internalOutput = internalOutput.add(w.getInternalOutput());
             if (w.getExternalOutput() != null) externalOutput = externalOutput.add(w.getExternalOutput());
         }
-        BigDecimal totalOutput = internalOutput.add(externalOutput);
         // 结算总额 = 外部产值合计（与编辑页面口径一致）
         BigDecimal settlementAmount = externalOutput;
-
         // 已收款汇总
         BigDecimal receivedAmount = BigDecimal.ZERO;
         for (ProjPayment pm : payments)
@@ -210,7 +205,6 @@ public class ProjSettlementController extends BaseController
         Map<String, Object> result = new HashMap<>();
         result.put("internalOutput", internalOutput);
         result.put("externalOutput", externalOutput);
-        result.put("totalOutput", totalOutput);
         result.put("settlementAmount", settlementAmount);
         result.put("receivedAmount", receivedAmount);
         result.put("pendingAmount", pendingAmount);
@@ -431,7 +425,6 @@ public class ProjSettlementController extends BaseController
             userNode.put("workload", uWorkload);
             userNode.put("internalOutput", uInternalOutput);
             userNode.put("externalOutput", uExternalOutput);
-            userNode.put("output", uInternalOutput.add(uExternalOutput));
             userNode.put("children", leafChildren);
             result.add(userNode);
         }

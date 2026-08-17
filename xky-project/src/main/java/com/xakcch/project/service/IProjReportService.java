@@ -6,6 +6,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import com.xakcch.project.domain.ProjReportField;
 import com.xakcch.project.domain.ProjReportFilter;
 import com.xakcch.project.domain.ProjReportLog;
+import com.xakcch.project.domain.ProjReportSubmitBatch;
+import com.xakcch.project.domain.ProjReportSubmitLog;
 import com.xakcch.project.domain.ProjReportTemplate;
 
 /**
@@ -35,6 +37,9 @@ public interface IProjReportService
     /** 模板字段清单 */
     List<ProjReportField> listTemplateFields(Long templateId);
 
+    /** 保存模板默认筛选条件（default_filter JSONB） */
+    int saveTemplateDefaultFilter(Long id, String defaultFilter);
+
     // ==================== 筛选方案 ====================
 
     /** 筛选方案列表 */
@@ -49,6 +54,9 @@ public interface IProjReportService
     /** 删除筛选方案 */
     int deleteFilter(Long id);
 
+    /** 重命名筛选方案（仅创建者可重命名，只更新 filter_name 不清空条件） */
+    int renameFilter(Long id, String filterName);
+
     // ==================== 字段池 ====================
 
     /** 字段池（固定字段 + 动态字段，按组） */
@@ -61,6 +69,10 @@ public interface IProjReportService
 
     /** 导出报表（内置模板原样填充 / 自定义模板动态列） */
     void exportReport(Long templateId, Map<String, Object> filter, HttpServletResponse response);
+
+    /** 导出报表（projectCodes 非空时仅导出勾选工程编号；预览勾选过滤用） */
+    void exportReport(Long templateId, Map<String, Object> filter, List<String> projectCodes,
+            HttpServletResponse response);
 
     /** 按配置直接导出（不保存模板，临时使用） */
     void exportByConfig(ProjReportTemplate template, Map<String, Object> filter, HttpServletResponse response);
@@ -75,4 +87,36 @@ public interface IProjReportService
 
     /** 删除导出历史 */
     int deleteLog(Long id);
+
+    // ==================== 上报领导 ====================
+
+    /**
+     * 导出并上报领导：按勾选工程编号生成快照文件 + 记录批次与上报时间
+     * （UNIQUE(project_code) 锁定上报时间，已上报记录跳过不修改）
+     *
+     * @return { batchId, batchNo, newCount, skippedCount, totalCount, snapshotFileName }
+     */
+    Map<String, Object> submitReport(Long templateId, Map<String, Object> filter,
+            List<String> projectCodes, String remark);
+
+    /** 上报批次列表 */
+    List<ProjReportSubmitBatch> listSubmitBatches(ProjReportSubmitBatch query);
+
+    /** 上报批次详情（含批次内记录） */
+    ProjReportSubmitBatch getSubmitBatch(Long id);
+
+    /** 上报记录列表 */
+    List<ProjReportSubmitLog> listSubmitLogs(ProjReportSubmitLog query);
+
+    /** 批量查询工程编号的上报状态（供前端标记已上报行） */
+    List<ProjReportSubmitLog> listSubmittedStatus(List<String> projectCodes);
+
+    /** 下载批次快照文件 */
+    void downloadSnapshot(Long batchId, HttpServletResponse response);
+
+    /** 删除批次（逻辑删，同时逻辑删批次内记录；仅超管） */
+    int deleteSubmitBatch(Long id);
+
+    /** 删除单条上报记录（仅超管；删除后该工程编号可重新上报） */
+    int deleteSubmitLog(Long id);
 }

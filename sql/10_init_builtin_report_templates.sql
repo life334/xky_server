@@ -10,7 +10,7 @@ INSERT INTO proj_report_template (id, template_name, template_type, subject_tabl
     has_summary_row, default_filter, remark, del_flag, create_by, create_time)
 VALUES (1, '只定未验及补之前扣除项目', 'builtin', 'proj_project', NULL,
     'classpath:reportTemplates/zdyw_report.xls',
-    '地下空间工程中心-2026年7月只定未验及补之前扣除项目.xls',
+    '地下空间工程中心-{year}年{month}月只定未验及补之前扣除项目.xls',
     1, 2, 4, 'Y', NULL, '客户模板：管线定验线报表（序号/单位/系统编号/上报时间/归档/到账/备注）',
     '0', 'admin', now());
 
@@ -18,32 +18,26 @@ INSERT INTO proj_report_field (template_id, field_key, field_label, field_source
 (1, 'rowNo', '序号', 'agg', NULL, 1, 8, 1, '0'),
 (1, 'clientUnit', '单位名称', 'subject', NULL, 2, 30, 2, '0'),
 (1, 'projectCode', '系统编号', 'subject', NULL, 3, 14, 3, '0'),
-(1, 'createTime', '上报时间', 'subject', NULL, 4, 12, 4, '0'),
-(1, 'projectCode', '系统编号', 'subject', NULL, 5, 14, 5, '0'),
-(1, 'createTime', '上报时间', 'subject', NULL, 6, 12, 6, '0'),
+(1, 'submitTimeYm', '上报时间', 'subject', NULL, 4, 12, 4, '0'),
+(1, 'verifySystemNo', '系统编号', 'subject', NULL, 5, 14, 5, '0'),
+(1, 'verifyReportTime', '上报时间', 'subject', NULL, 6, 12, 6, '0'),
 (1, 'archiveDate', '归档情况', 'join', 'proj_contract', 7, 12, 7, '0'),
 (1, 'receivedAmount', '到账金额', 'agg', NULL, 8, 12, 8, '0'),
 (1, 'lastPayTime', '到账时间', 'agg', NULL, 9, 14, 9, '0'),
-(1, 'remark', '备注', 'subject', NULL, 10, 20, 12, '0');
+(1, 'reservedAmount', '需预留', 'agg', NULL, 10, 12, 10, '0'),
+(1, 'needSupplement', '需补', 'agg', NULL, 11, 12, 11, '0'),
+(1, 'remark', '备注', 'subject', NULL, 12, 20, 12, '0');
 
 
--- 2. 模板 1「只定未验及补之前扣除项目」：管线定线(列3-4) / 管线验线(列5-6)
+-- 2. 模板 1「只定未验及补之前扣除项目」：管线定线(列3-4) / 管线验线(列5-6) / 验线（2/3）(列10-11)
 UPDATE proj_report_field SET header_group = '管线定线'
 WHERE template_id = 1 AND column_index IN (3, 4) AND del_flag = '0';
 
 UPDATE proj_report_field SET header_group = '管线验线'
 WHERE template_id = 1 AND column_index IN (5, 6) AND del_flag = '0';
 
--- 3. 模板 2「全院应收帐款统计表」：合同情况(列5-8) / 回款情况(列9-10) / 发票开具情况(列11-12)
-UPDATE proj_report_field SET header_group = '合同情况'
-WHERE template_id = 2 AND column_index IN (5, 6, 7, 8) AND del_flag = '0';
-
-UPDATE proj_report_field SET header_group = '回款情况'
-WHERE template_id = 2 AND column_index IN (9, 10) AND del_flag = '0';
-
-UPDATE proj_report_field SET header_group = '发票开具情况'
-WHERE template_id = 2 AND column_index IN (11, 12) AND del_flag = '0';
-
+UPDATE proj_report_field SET header_group = '验线（2/3）'
+WHERE template_id = 1 AND column_index IN (10, 11) AND del_flag = '0';
 
 -- 模板 2：全院应收帐款统计表（yszk_report.xlsx）
 -- 结构：标题行1 / 表头行3-4 / 数据自第5行 / 列19个
@@ -52,7 +46,7 @@ INSERT INTO proj_report_template (id, template_name, template_type, subject_tabl
     has_summary_row, default_filter, remark, del_flag, create_by, create_time)
 VALUES (2, '全院应收帐款统计表', 'builtin', 'proj_project', NULL,
     'classpath:reportTemplates/yszk_report.xlsx',
-    '地下空间工程中心-全院应收帐款统计表.xlsx',
+    '地下空间工程中心-{year}年{month}月全院应收帐款统计表.xlsx',
     1, 3, 5, 'Y', NULL, '客户模板：应收帐款及合同情况统计（合同/回款/发票/责任人/账期/措施）',
     '0', 'admin', now());
 
@@ -65,13 +59,22 @@ INSERT INTO proj_report_field (template_id, field_key, field_label, field_source
 (2, 'signDate', '签订时间', 'join', 'proj_contract', 7, 12, 7, '0'),
 (2, 'finishDate', '完工时间', 'join', 'proj_contract', 8, 12, 8, '0'),
 (2, 'receivedAmount', '已回款', 'agg', NULL, 9, 14, 9, '0'),
-(2, 'pendingAmount', '未收金额', 'agg', NULL, 10, 14, 10, '0'),
+(2, 'pendingAmount', '合同未收金额', 'agg', NULL, 10, 14, 10, '0'),
 (2, 'invoiceFlag', '是否开票', 'agg', NULL, 11, 10, 11, '0'),
 (2, 'totalInvoiceAmount', '开票金额', 'agg', NULL, 12, 14, 12, '0'),
 (2, 'leaderName', '项目责任人', 'join', NULL, 13, 12, 13, '0'),
 (2, 'debtMonths', '应收账期(欠款时长/月)', 'agg', NULL, 14, 14, 14, '0'),
 (2, 'remark', '未到账原因及应对措施', 'subject', NULL, 17, 30, 17, '0');
 
+-- 模板 2「全院应收帐款统计表」：合同情况(列5-8) / 回款情况(列9-10) / 发票开具情况(列11-12)
+UPDATE proj_report_field SET header_group = '合同情况'
+WHERE template_id = 2 AND column_index IN (5, 6, 7, 8) AND del_flag = '0';
+
+UPDATE proj_report_field SET header_group = '回款情况'
+WHERE template_id = 2 AND column_index IN (9, 10) AND del_flag = '0';
+
+UPDATE proj_report_field SET header_group = '发票开具情况'
+WHERE template_id = 2 AND column_index IN (11, 12) AND del_flag = '0';
 -- 模板 3：应收账款与客户对账情况统计表（yhdz_report.xlsx）
 -- 来源文件：地下空间工程中心《应收账款与客户对账情况统计表》（2026.7.31）.xlsx
 -- 结构：标题行1 / 表头行3-4（两级表头）/ 数据自第5行 / 合计行556
@@ -81,7 +84,7 @@ INSERT INTO proj_report_template (id, template_name, template_type, subject_tabl
                                   has_summary_row, default_filter, remark, del_flag, create_by, create_time)
 VALUES (3, '应收账款与客户对账情况统计表', 'builtin', 'proj_project', NULL,
         'classpath:reportTemplates/yhdz_report.xlsx',
-        '地下空间工程中心《应收账款与客户对账情况统计表》.xlsx',
+        '地下空间工程中心《{year}年{month}月应收账款与客户对账情况统计表》.xlsx',
         1, 3, 5, 'Y', NULL, '客户模板：应收账款对账统计（合同/欠款/发票/账期/对账情况）',
         '0', 'admin', now());
 
@@ -119,7 +122,7 @@ INSERT INTO proj_report_template (id, template_name, template_type, subject_tabl
                                   has_summary_row, default_filter, remark, del_flag, create_by, create_time)
 VALUES (4, '市场性任务到账收入确认表', 'builtin', 'proj_project', NULL,
         'classpath:reportTemplates/scsr_report.xls',
-        '市场性任务到账收入确认表.xls',
+        '{year}年{month}月市场性任务到账收入确认表.xls',
         1, 2, 4, 'N', NULL,
         '客户模板：月度市场性任务到账收入确认（基础信息/任务详情/财务信息）',
         '0', 'admin', now());
@@ -162,7 +165,7 @@ INSERT INTO proj_report_template (id, template_name, template_type, subject_tabl
                                   has_summary_row, default_filter, remark, del_flag, create_by, create_time)
 VALUES (5, '验线上报产值统计表', 'builtin', 'proj_project', NULL,
         'classpath:reportTemplates/yscb_report.xlsx',
-        '验线上报产值统计表.xlsx',
+        '{year}年{month}月验线上报产值统计表.xlsx',
         2, 3, 6, 'N', NULL,
         '客户模板：验线上报产值统计（外部收费/结算方式/内部工作量）',
         '0', 'admin', now());
@@ -184,4 +187,39 @@ INSERT INTO proj_report_field (template_id, field_key, field_label, field_source
 -- 多级表头分组
 UPDATE proj_report_field SET header_group = '外部收费'
 WHERE template_id = 5 AND column_index IN (8, 9, 10) AND del_flag = '0';
+
+
+-- 模板 6：补验线报表（byx_report.xls）
+-- 结构：标题行1 / 表头行2-3 / 数据自第4行 / 列12个
+INSERT INTO proj_report_template (id, template_name, template_type, subject_table,
+                                  source_template_id, template_file, file_name, title_row, header_row, data_start_row,
+                                  has_summary_row, default_filter, remark, del_flag, create_by, create_time)
+VALUES (6, '补验线', 'builtin', 'proj_project', NULL,
+        'classpath:reportTemplates/byx_report.xls',
+        '地下空间工程中心-{year}年{month}月补验线.xls',
+        1, 2, 4, 'Y', NULL, '客户模板：补验线报表',
+        '0', 'admin', now());
+
+INSERT INTO proj_report_field (template_id, field_key, field_label, field_source, join_table, sort_order, width, column_index, del_flag) VALUES
+    (6, 'rowNo', '序号', 'agg', NULL, 1, 8, 1, '0'),
+    (6, 'clientUnit', '单位名称', 'subject', NULL, 2, 30, 2, '0'),
+    (6, 'relatedProjectCode', '系统编号', 'subject', NULL, 3, 14, 3, '0'),
+    (6, 'relatedLastSubmitTime', '上报时间', 'subject', NULL, 4, 12, 4, '0'),
+    (6, 'projectCode', '系统编号', 'subject', NULL, 5, 14, 5, '0'),
+    (6, 'closeTime', '上报时间', 'subject', NULL, 6, 12, 6, '0'),
+    (6, 'archiveDate', '归档情况', 'join', 'proj_contract', 7, 12, 7, '0'),
+    (6, 'receivedAmount', '到账金额', 'agg', NULL, 8, 12, 8, '0'),
+    (6, 'lastPayTime', '到账时间', 'agg', NULL, 9, 14, 9, '0'),
+    (6, 'reservedAmount', '需预留', 'agg', NULL, 10, 12, 10, '0'),
+    (6, 'needSupplement', '需补', 'agg', NULL, 11, 12, 11, '0'),
+    (6, 'remark', '备注', 'subject', NULL, 12, 20, 12, '0');
+
+UPDATE proj_report_field SET header_group = '管线定线'
+WHERE template_id = 6 AND column_index IN (3, 4) AND del_flag = '0';
+
+UPDATE proj_report_field SET header_group = '管线验线'
+WHERE template_id = 6 AND column_index IN (5, 6) AND del_flag = '0';
+
+UPDATE proj_report_field SET header_group = '验线（2/3）'
+WHERE template_id = 6 AND column_index IN (10, 11) AND del_flag = '0';
 

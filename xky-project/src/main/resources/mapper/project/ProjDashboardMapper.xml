@@ -47,7 +47,7 @@
     </select>
 
     <select id="sumPeriodOutput" resultType="map">
-        SELECT COALESCE(SUM(internal_output) + SUM(external_output), 0) AS amount
+        SELECT COALESCE(SUM(external_output), 0) AS amount
         FROM proj_workload
         WHERE del_flag = '0'
           AND create_time &gt;= #{beginDate}::date
@@ -55,7 +55,7 @@
     </select>
 
     <select id="sumAnnualOutput" resultType="map">
-        SELECT COALESCE(SUM(internal_output) + SUM(external_output), 0) AS amount
+        SELECT COALESCE(SUM(external_output), 0) AS amount
         FROM proj_workload
         WHERE del_flag = '0'
           AND create_time &gt;= date_trunc('year', CURRENT_DATE)
@@ -106,7 +106,7 @@
         ) m
         LEFT JOIN (
             SELECT date_trunc('month', create_time) AS mo,
-                   SUM(COALESCE(internal_output, 0) + COALESCE(external_output, 0)) AS total_output
+                   SUM(COALESCE(external_output, 0)) AS total_output
             FROM proj_workload WHERE del_flag = '0'
             GROUP BY date_trunc('month', create_time)
         ) w ON w.mo = m
@@ -124,7 +124,7 @@
 
     <select id="categoryOutputDist" resultType="map">
         SELECT COALESCE(c.name, '未分类') AS name,
-               COALESCE(SUM(w.internal_output) + SUM(w.external_output), 0) AS value
+               COALESCE(SUM(w.external_output), 0) AS value
         FROM proj_workload w
         LEFT JOIN proj_category c ON c.id = w.category_id AND c.del_flag = '0'
         WHERE w.del_flag = '0'
@@ -149,7 +149,7 @@
             ) m
             LEFT JOIN (
                 SELECT date_trunc('month', create_time) AS mo,
-                       SUM(COALESCE(internal_output, 0) + COALESCE(external_output, 0)) AS total_output
+                       SUM(COALESCE(external_output, 0)) AS total_output
                 FROM proj_workload WHERE del_flag = '0'
                 GROUP BY date_trunc('month', create_time)
             ) w ON w.mo = m
