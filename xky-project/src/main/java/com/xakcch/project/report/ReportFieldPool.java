@@ -115,6 +115,14 @@ public class ReportFieldPool
         addField("projectArrearsAmount", "项目欠款金额", "agg", "项目结算", "number", true, null);
         addField("projectOverpaidAmount", "项目挂账金额", "agg", "项目结算", "number", true, null);
         addField("projectSettleStatus", "项目结算状态", "agg", "项目结算", "select", true, SETTLE_STATUS);
+
+        // 模板4「市场性任务到账收入确认表」(scsr_report) 专用列：
+        // 入库情况/到账确认 赋空；项目工作量取外部工作量文字描述；质量情况/安全事故记录固定值
+        addField("storageStatus", "入库情况", "subject", "项目信息", "string", false, null);
+        addField("workloadDesc", "项目工作量", "agg", "项目结算", "string", false, null);
+        addField("qualityStatus", "质量情况", "agg", "项目结算", "string", false, null);
+        addField("safetyRecord", "安全事故记录", "agg", "项目结算", "string", false, null);
+        addField("paymentConfirm", "到账确认", "agg", "收款信息", "string", false, null);
     }
 
     private static void addField(String key, String label, String source, String group,
@@ -243,67 +251,78 @@ public class ReportFieldPool
             int cmp = received == null ? -1 : received.compareTo(amount);
             return cmp > 0 ? "超额" : (cmp == 0 ? "已结清" : "未结清");
         }
-        if ("invoiceFlag".equals(key))
+        // 模板4「市场性任务到账收入确认表」列语义定制：
+        //   项目类别列 = 工程项目字段值；到账金额 0 显示空；发票情况仅在到账>0 时显示已/未开票
+        boolean isScsr = field.getTemplateId() != null && (field.getTemplateId() == 4L || field.getTemplateId() == 7L);
+        if ("categoryName".equals(key) && isScsr)
         {
-            BigDecimal invoice = num(row.get("totalInvoiceAmount"));
-            return invoice != null && invoice.compareTo(BigDecimal.ZERO) > 0 ? "已开票" : "未开票";
+            return row.get("engineeringProject");
         }
-        // 项目结算金额（= 外部产值合计，SQL 已聚合）与项目内部产值直接取行值
-        if ("projectSettleAmount".equals(key))
-        {
-            return row.get("projectSettleAmount");
-        }
-        if ("projectInternalOutput".equals(key))
-        {
-            return row.get("projectInternalOutput");
-        }
-        if ("projectReceivedAmount".equals(key))
-        {
-            return row.get("receivedAmount");
-        }
-        if ("projectPendingAmount".equals(key))
-        {
-            BigDecimal settle = num(row.get("projectSettleAmount"));
-            BigDecimal received = num(row.get("receivedAmount"));
-            if (settle == null)
-            {
-                return null;
+        switch (key) {
+            case "receivedAmount" -> {
+                BigDecimal received = num(row.get("receivedAmount"));
+                if (isScsr && (received == null || received.compareTo(BigDecimal.ZERO) == 0)) {
+                    return null;
+                }
+                return received;
             }
-            return settle.subtract(received == null ? BigDecimal.ZERO : received);
-        }
-        // 项目欠款金额 / 项目挂账金额：SQL 已按业务口径算好（挂账仅限已结算且有外部产值的项目）
-        if ("projectArrearsAmount".equals(key))
-        {
-            return row.get("projectArrearsAmount");
-        }
-        if ("projectOverpaidAmount".equals(key))
-        {
-            return row.get("projectOverpaidAmount");
-        }
-        if ("projectSettleStatus".equals(key))
-        {
-            BigDecimal settle = num(row.get("projectSettleAmount"));
-            BigDecimal received = num(row.get("receivedAmount"));
-            if (settle == null || settle.compareTo(BigDecimal.ZERO) == 0)
-            {
-                return "未结清";
+            case "invoiceFlag" -> {
+                BigDecimal invoice = num(row.get("totalInvoiceAmount"));
+                if (isScsr) {
+                    BigDecimal received = num(row.get("receivedAmount"));
+                    if (received == null || received.compareTo(BigDecimal.ZERO) == 0) {
+                        return null;
+                    }
+                }
+                return invoice != null && invoice.compareTo(BigDecimal.ZERO) > 0 ? "已开票" : "未开票";
             }
-            int cmp = received == null ? -1 : received.compareTo(settle);
-            return cmp > 0 ? "超额" : (cmp == 0 ? "已结清" : "未结清");
-        }
-        if ("debtMonths".equals(key))
-        {
-            Date finish = date(row.get("finishDate"));
-            if (finish == null)
-            {
-                return null;
+
+            // 项目结算金额（= 外部产值合计，SQL 已聚合）与项目内部产值直接取行值
+            case "projectSettleAmount" -> {
+                return row.get("projectSettleAmount");
             }
-            long days = (System.currentTimeMillis() - finish.getTime()) / 86400000L;
-            if (days < 0)
-            {
-                days = 0;
+            case "projectInternalOutput" -> {
+                return row.get("projectInternalOutput");
             }
-            return BigDecimal.valueOf(days / 30.44).setScale(1, BigDecimal.ROUND_HALF_UP);
+            case "projectReceivedAmount" -> {
+                return row.get("receivedAmount");
+            }
+            case "projectPendingAmount" -> {
+                BigDecimal settle = num(row.get("projectSettleAmount"));
+                BigDecimal received = num(row.get("receivedAmount"));
+                if (settle == null) {
+                    return null;
+                }
+                return settle.subtract(received == null ? BigDecimal.ZERO : received);
+            }
+
+            // 项目欠款金额 / 项目挂账金额：SQL 已按业务口径算好（挂账仅限已结算且有外部产值的项目）
+            case "projectArrearsAmount" -> {
+                return row.get("projectArrearsAmount");
+            }
+            case "projectOverpaidAmount" -> {
+                return row.get("projectOverpaidAmount");
+            }
+            case "projectSettleStatus" -> {
+                BigDecimal settle = num(row.get("projectSettleAmount"));
+                BigDecimal received = num(row.get("receivedAmount"));
+                if (settle == null || settle.compareTo(BigDecimal.ZERO) == 0) {
+                    return "未结清";
+                }
+                int cmp = received == null ? -1 : received.compareTo(settle);
+                return cmp > 0 ? "超额" : (cmp == 0 ? "已结清" : "未结清");
+            }
+            case "debtMonths" -> {
+                Date finish = date(row.get("finishDate"));
+                if (finish == null) {
+                    return null;
+                }
+                long days = (System.currentTimeMillis() - finish.getTime()) / 86400000L;
+                if (days < 0) {
+                    days = 0;
+                }
+                return BigDecimal.valueOf(days / 30.44).setScale(1, BigDecimal.ROUND_HALF_UP);
+            }
         }
         // 「验线（2/3）」计算列：到账金额 × 2/3（保留两位，四舍五入）
         // 赋值随模板不同对调：
@@ -372,6 +391,26 @@ public class ReportFieldPool
         {
             Date close = date(row.get("closeTime"));
             return close == null ? null : new java.text.SimpleDateFormat("yyyy-MM").format(close);
+        }
+        // 模板4「市场性任务到账收入确认表」专用列：
+        // 入库情况 / 到账确认 —— 系统无对应数据，固定为空
+        if ("storageStatus".equals(key) || "paymentConfirm".equals(key))
+        {
+            return null;
+        }
+        // 项目工作量 —— 外部工作量文字描述（SQL w_desc 子查询聚合为「类别名:工作量+单位」）
+        if ("workloadDesc".equals(key))
+        {
+            return row.get("workloadDesc");
+        }
+        // 质量情况 / 安全事故记录 —— 客户模板固定值
+        if ("qualityStatus".equals(key))
+        {
+            return "良";
+        }
+        if ("safetyRecord".equals(key))
+        {
+            return "无";
         }
 
         // 字典转换

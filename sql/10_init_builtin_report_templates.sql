@@ -110,11 +110,9 @@ WHERE template_id = 3 AND column_index IN (8, 9) AND del_flag = '0';
 
 
 -- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
--- 模板 4：市场性任务到账收入确认表（scsr_report.xls）
--- 来源文件：地下空间工程中心-2026年7月市场性任务到账收入确认表（0626-0729）.xls
--- 注意：该文件有 3 个 Sheet，系统使用第 1 个 Sheet「1定验线上报」
+-- 模板 4：市场性任务到账收入确认表1（scsr_report.xls）
 -- 结构：标题行1 / 表头行2-3（两级表头）/ 数据自第4行
--- 列：A~Q（17列），其中 5 列无对应字段池
+-- 列：A~Q（17列）
 -- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 INSERT INTO proj_report_template (id, template_name, template_type, subject_table,
@@ -127,31 +125,35 @@ VALUES (4, '市场性任务到账收入确认表', 'builtin', 'proj_project', NU
         '客户模板：月度市场性任务到账收入确认（基础信息/任务详情/财务信息）',
         '0', 'admin', now());
 
--- 字段映射
+-- 字段映射（A~Q 全 17 列，sort_order = column_index，预览显示顺序 = Excel 列顺序）
 INSERT INTO proj_report_field (template_id, field_key, field_label, field_source, join_table, sort_order, width, column_index, del_flag) VALUES
-  (4, 'rowNo',           '序号',         'agg',     NULL,            1, 8,  1, '0'),
-  (4, 'categoryName',    '项目类别',     'join',    NULL,            2, 12, 2, '0'),
-  (4, 'clientUnit',      '委托单位',     'subject', NULL,            3, 30, 3, '0'),
-  (4, 'projectCode',     '生产系统编号', 'subject', NULL,            4, 14, 4, '0'),
-  (4, 'projectLocation', '项目地点',     'subject', NULL,            5, 20, 5, '0'),
-  (4, 'archiveDate',     '归档情况',     'join',    'proj_contract', 6, 12, 6, '0'),
-  (4, 'totalDuration',   '项目工期',     'subject', NULL,            7, 12, 9, '0'),
-  (4, 'contractAmount',  '项目金额',     'join',    'proj_contract', 8, 14, 12, '0'),
-  (4, 'receivedAmount',  '到账金额',     'agg',     NULL,            9, 14, 13, '0'),
-  (4, 'lastPayTime',     '到账时间',     'agg',     NULL,            10, 14, 14, '0'),
-  (4, 'invoiceFlag',     '发票情况',     'agg',     NULL,            11, 10, 15, '0'),
-  (4, 'remark',          '备注',         'subject', NULL,            12, 20, 17, '0');
--- 未映射列：G(7)入库情况、H(8)项目工作量、J(10)质量情况、K(11)安全事故记录、P(16)到账确认
+  (4, 'rowNo',           '序号',         'agg',     NULL,            1,  8,  1,  '0'),
+  (4, 'categoryName',    '项目类别',     'join',    NULL,            2,  12, 2,  '0'),
+  (4, 'clientUnit',      '委托单位',     'subject', NULL,            3,  30, 3,  '0'),
+  (4, 'projectCode',     '生产系统编号', 'subject', NULL,            4,  14, 4,  '0'),
+  (4, 'projectLocation', '项目地点',     'subject', NULL,            5,  20, 5,  '0'),
+  (4, 'archiveDate',     '归档情况',     'join',    'proj_contract', 6,  12, 6,  '0'),
+  (4, 'storageStatus',   '入库情况',     'subject', NULL,            7,  12, 7,  '0'),
+  (4, 'workloadDesc',    '项目工作量',   'agg',     NULL,            8,  20, 8,  '0'),
+  (4, 'totalDuration',   '项目工期',     'subject', NULL,            9,  12, 9,  '0'),
+  (4, 'qualityStatus',   '质量情况',     'agg',     NULL,            10, 8,  10, '0'),
+  (4, 'safetyRecord',    '安全事故记录', 'agg',     NULL,            11, 12, 11, '0'),
+  (4, 'contractAmount',  '项目金额',     'join',    'proj_contract', 12, 14, 12, '0'),
+  (4, 'receivedAmount',  '到账金额',     'agg',     NULL,            13, 14, 13, '0'),
+  (4, 'lastPayTime',     '到账时间',     'agg',     NULL,            14, 14, 14, '0'),
+  (4, 'invoiceFlag',     '发票情况',     'agg',     NULL,            15, 10, 15, '0'),
+  (4, 'paymentConfirm',  '到账确认',     'agg',     NULL,            16, 12, 16, '0'),
+  (4, 'remark',          '备注',         'subject', NULL,            17, 20, 17, '0');
 
--- 多级表头分组
+-- 多级表头分组：基础信息(2-7) / 任务详情(8-11) / 财务信息(12-16)
 UPDATE proj_report_field SET header_group = '基础信息'
-WHERE template_id = 4 AND column_index IN (2, 3, 4, 5, 6) AND del_flag = '0';
+WHERE template_id = 4 AND column_index BETWEEN 2 AND 7 AND del_flag = '0';
 
 UPDATE proj_report_field SET header_group = '任务详情'
-WHERE template_id = 4 AND column_index IN (9) AND del_flag = '0';
+WHERE template_id = 4 AND column_index BETWEEN 8 AND 11 AND del_flag = '0';
 
 UPDATE proj_report_field SET header_group = '财务信息'
-WHERE template_id = 4 AND column_index IN (12, 13, 14, 15) AND del_flag = '0';
+WHERE template_id = 4 AND column_index BETWEEN 12 AND 16 AND del_flag = '0';
 
 -- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 -- 模板 5：验线上报产值统计表（yscb_report.xlsx）
@@ -222,4 +224,50 @@ WHERE template_id = 6 AND column_index IN (5, 6) AND del_flag = '0';
 
 UPDATE proj_report_field SET header_group = '验线（2/3）'
 WHERE template_id = 6 AND column_index IN (10, 11) AND del_flag = '0';
+
+-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-- 模板 7：市场性任务到账收入确认表2（dyxk_report.xls）
+-- 结构：标题行1 / 表头行2-3（两级表头）/ 数据自第4行
+-- 列：A~Q（17列）
+-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+INSERT INTO proj_report_template (id, template_name, template_type, subject_table,
+                                  source_template_id, template_file, file_name, title_row, header_row, data_start_row,
+                                  has_summary_row, default_filter, remark, del_flag, create_by, create_time)
+VALUES (7, '月度市场性任务到账收入确认表2已完成（定验线控）', 'builtin', 'proj_project', NULL,
+        'classpath:reportTemplates/dyxk_report.xls',
+        '{year}年{month}月市场性任务到账收入确认表2已完成（定验线控）.xls',
+        1, 2, 4, 'N', NULL,
+        '客户模板：月度市场性任务到账收入确认（基础信息/任务详情/财务信息）',
+        '0', 'admin', now());
+
+-- 字段映射（A~Q 全 17 列，sort_order = column_index，预览显示顺序 = Excel 列顺序）
+INSERT INTO proj_report_field (template_id, field_key, field_label, field_source, join_table, sort_order, width, column_index, del_flag) VALUES
+   (7, 'rowNo',           '序号',         'agg',     NULL,            1,  8,  1,  '0'),
+   (7, 'categoryName',    '项目类别',     'join',    NULL,            2,  12, 2,  '0'),
+   (7, 'clientUnit',      '委托单位',     'subject', NULL,            3,  30, 3,  '0'),
+   (7, 'projectCode',     '生产系统编号', 'subject', NULL,            4,  14, 4,  '0'),
+   (7, 'projectLocation', '项目地点',     'subject', NULL,            5,  20, 5,  '0'),
+   (7, 'archiveDate',     '归档情况',     'join',    'proj_contract', 6,  12, 6,  '0'),
+   (7, 'storageStatus',   '入库情况',     'subject', NULL,            7,  12, 7,  '0'),
+   (7, 'workloadDesc',    '项目工作量',   'agg',     NULL,            8,  20, 8,  '0'),
+   (7, 'totalDuration',   '项目工期',     'subject', NULL,            9,  12, 9,  '0'),
+   (7, 'qualityStatus',   '质量情况',     'agg',     NULL,            10, 8,  10, '0'),
+   (7, 'safetyRecord',    '安全事故记录', 'agg',     NULL,            11, 12, 11, '0'),
+   (7, 'contractAmount',  '项目金额',     'join',    'proj_contract', 12, 14, 12, '0'),
+   (7, 'receivedAmount',  '到账金额',     'agg',     NULL,            13, 14, 13, '0'),
+   (7, 'lastPayTime',     '到账时间',     'agg',     NULL,            14, 14, 14, '0'),
+   (7, 'invoiceFlag',     '发票情况',     'agg',     NULL,            15, 10, 15, '0'),
+   (7, 'paymentConfirm',  '到账确认',     'agg',     NULL,            16, 12, 16, '0'),
+   (7, 'remark',          '备注',         'subject', NULL,            17, 20, 17, '0');
+
+-- 多级表头分组：基础信息(2-7) / 任务详情(8-11) / 财务信息(12-16)
+UPDATE proj_report_field SET header_group = '基础信息'
+WHERE template_id = 7 AND column_index BETWEEN 2 AND 7 AND del_flag = '0';
+
+UPDATE proj_report_field SET header_group = '任务详情'
+WHERE template_id = 7 AND column_index BETWEEN 8 AND 11 AND del_flag = '0';
+
+UPDATE proj_report_field SET header_group = '财务信息'
+WHERE template_id = 7 AND column_index BETWEEN 12 AND 16 AND del_flag = '0';
 

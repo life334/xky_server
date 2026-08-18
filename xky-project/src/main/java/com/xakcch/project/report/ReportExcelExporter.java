@@ -46,8 +46,9 @@ public class ReportExcelExporter
     public static final String UNIT_MERGE_TEMPLATE_KEYWORD = "zdyw_report";
 
     /**
-     * 仅"按单位名称排序 + 合并单位名称单元格"、到账时间逐条显示的内置模板文件关键字
+     * 单位合并但到账时间逐条显示的内置模板文件关键字
      * （模板6「补验线」byx_report.xls：结构同 zdyw，但到账时间不按单位汇总）
+     * 被 Service 层引用：byx 同样需要按单位排序 + 重编序号
      */
     public static final String UNIT_MERGE_NO_PAY_SUMMARY_KEYWORD = "byx_report";
 
@@ -71,12 +72,14 @@ public class ReportExcelExporter
             // 标题中的年月实时替换（如"地下空间工程中心2026年7月…" → 筛选年月）
             replaceTitleYearMonth(wb, template, yearMonth);
             fillDataRows(wb, sheet, template, fields, rows, false);
-            // 单位合并模板：同单位多条记录合并单位名称单元格；到账时间按模板类型
-            // zdyw（只定未验）整组合并写汇总描述，byx（补验线）逐条显示
-            if (isUnitMergeTemplate(template))
+            // 按委托单位合并：所有含 clientUnit 列的内置模板统一生效（同单位多条合并单位名称单元格）
+            // 到账时间按模板类型：zdyw（只定未验）整组合并写汇总描述，byx（补验线）逐条显示
+            int dataZeroIdx = (template.getDataStartRow() == null ? 3 : template.getDataStartRow()) - 1;
+            if (dataZeroIdx < 0)
             {
-                applyUnitMerge(sheet, template, fields, rows, isPayTimeSummaryTemplate(template));
+                dataZeroIdx = 0;
             }
+            applyUnitMerge(sheet, fields, rows, isPayTimeSummaryTemplate(template), dataZeroIdx);
             // ★ 数据行行高自适应：按各列实际内容长度（结合列宽/合并区域宽度）估算
             // 所需行数，超长内容换行完整显示；短内容保持模板基础行高不变
             applyAutoRowHeight(wb, sheet, template, rows);
@@ -268,7 +271,8 @@ public class ReportExcelExporter
                 currentRow++;
             }
 
-            // 数据行
+            // 数据行（记录起始行号供按单位合并定位）
+            int dataStart = currentRow;
             for (Map<String, Object> row : rows)
             {
                 Row r = sheet.createRow(currentRow++);
@@ -287,6 +291,8 @@ public class ReportExcelExporter
                     setCellValue(wb, c, v);
                 }
             }
+            // 按委托单位合并：同单位多条记录合并单位名称单元格（无 clientUnit 列自动跳过）
+            applyUnitMerge(sheet, fields, rows, isPayTimeSummaryTemplate(template), dataStart);
 
             // 合计行
             if ("Y".equals(template.getHasSummaryRow()) && !rows.isEmpty())
@@ -548,7 +554,16 @@ public class ReportExcelExporter
         }
         else
         {
-            cell.setCellValue(v.toString());
+            String s = v.toString();
+            cell.setCellValue(s);
+            // 多行文本（如模板4 项目工作量按类别换行）：克隆原样式并开启自动换行
+            if (s.contains("\n"))
+            {
+                CellStyle wrapStyle = wb.createCellStyle();
+                wrapStyle.cloneStyleFrom(cell.getCellStyle());
+                wrapStyle.setWrapText(true);
+                cell.setCellStyle(wrapStyle);
+            }
         }
     }
 
@@ -590,8 +605,8 @@ public class ReportExcelExporter
      *    （如"2026年8月13日到账823元"，由 Service 层计算注入行键 _unitSummary，单条记录同样写汇总）；
      *    为 false 时到账时间保持逐条显示（补验线报表）
      */
-    private static void applyUnitMerge(Sheet sheet, ProjReportTemplate template,
-            List<ProjReportField> fields, List<Map<String, Object>> rows, boolean mergePayTimeSummary)
+    private static void applyUnitMerge(Sheet sheet, List<ProjReportField> fields,
+            List<Map<String, Object>> rows, boolean mergePayTimeSummary, int dataStartRow)
     {
         if (rows == null || rows.isEmpty())
         {
@@ -615,10 +630,9 @@ public class ReportExcelExporter
                 payTimeCol = f.getColumnIndex() - 1;
             }
         }
-        int dataZeroIdx = (template.getDataStartRow() == null ? 3 : template.getDataStartRow()) - 1;
-        if (dataZeroIdx < 0)
+        if (dataStartRow < 0)
         {
-            dataZeroIdx = 0;
+            dataStartRow = 0;
         }
 
         int i = 0;
@@ -630,8 +644,8 @@ public class ReportExcelExporter
             {
                 end++;
             }
-            int rowStart = dataZeroIdx + i;
-            int rowEnd = dataZeroIdx + end;
+            int rowStart = dataStartRow + i;
+            int rowEnd = dataStartRow + end;
 
             // 到账时间列：整组统一写汇总描述（单条记录同样处理；补验线模板逐条显示跳过）
             if (payTimeCol >= 0 && mergePayTimeSummary)
@@ -650,8 +664,8 @@ public class ReportExcelExporter
                     }
                 }
             }
-            // 单位名称列：多条记录合并为一个单元格（保留首行值，其余行清空）
-            if (unitCol >= 0 && end > i)
+            // 单位名称列：多条记录合并为一个单元格（保留首行值，其余行清空；空单位不合并）
+            if (unitCol >= 0 && end > i && unit != null && !unit.isEmpty())
             {
                 if (rowEnd > rowStart)
                 {
@@ -672,14 +686,6 @@ public class ReportExcelExporter
             }
             i = end + 1;
         }
-    }
-
-    /** 是否为单位合并模板（按模板文件关键字识别，与 Service 层保持一致） */
-    private static boolean isUnitMergeTemplate(ProjReportTemplate template)
-    {
-        return template != null && template.getTemplateFile() != null
-                && (template.getTemplateFile().toLowerCase().contains(UNIT_MERGE_TEMPLATE_KEYWORD)
-                    || template.getTemplateFile().toLowerCase().contains(UNIT_MERGE_NO_PAY_SUMMARY_KEYWORD));
     }
 
     /** 到账时间是否按单位汇总（zdyw 汇总整组合并；byx 补验线逐条显示） */

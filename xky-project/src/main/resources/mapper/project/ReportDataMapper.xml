@@ -25,7 +25,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             p.extra_data::text as "projectExtraData",
             p.assign_date as "assignDate",
             p.duration_require as "durationRequire",
-            p.total_duration as "totalDuration",
+            p.total_duration||'工作日' as "totalDuration",
             p.create_time as "createTime",
             p.close_time as "closeTime",
             p.remark as "remark",
@@ -51,6 +51,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             coalesce(pay_sum.total_invoice, 0) as "totalInvoiceAmount",
             coalesce(w_sum.external_output, 0) as "projectSettleAmount",
             coalesce(w_sum.internal_output, 0) as "projectInternalOutput",
+            w_desc.workload_desc as "workloadDesc",
             greatest(coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0), 0) as "projectArrearsAmount",
             case when coalesce(w_sum.external_output, 0) &gt; 0
                  then greatest(coalesce(pay_sum.total_received, 0) - coalesce(w_sum.external_output, 0), 0)
@@ -89,6 +90,18 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             where del_flag = '0'
             group by project_id
         ) w_sum on w_sum.project_id = p.id
+        <!-- 外部工作量文字描述（模板4 scsr 项目工作量列）：类别名:工作量+单位，多条以换行分隔 -->
+        left join (
+            select w.project_id,
+                   string_agg(
+                       cat.name || '：' || trim(to_char(w.workload, 'FM999999990.0')) || coalesce(w.price_unit, ''),
+                       chr(10)
+                   ) as workload_desc
+            from proj_workload w
+            left join proj_category cat on cat.id = w.category_id
+            where w.del_flag = '0' and w.billing_type = 'external'
+            group by w.project_id
+        ) w_desc on w_desc.project_id = p.id
         left join proj_category cat on cat.id = p.project_category_id
         where p.del_flag = '0'
         <if test="f.projectCode != null and f.projectCode != ''">
@@ -312,7 +325,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                  or p.project_name like concat('%', #{f.keyword}, '%')
                  or p.client_unit like concat('%', #{f.keyword}, '%'))
         </if>
-        order by p.id desc
+        -- 报表统一按委托单位排序（空值置后），同单位内保持新项目在前
+        order by p.client_unit nulls last, p.id desc
     </select>
 
 </mapper>
