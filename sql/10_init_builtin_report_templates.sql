@@ -78,7 +78,7 @@ WHERE template_id = 2 AND column_index IN (11, 12) AND del_flag = '0';
 -- 模板 3：应收账款与客户对账情况统计表（yhdz_report.xlsx）
 -- 来源文件：地下空间工程中心《应收账款与客户对账情况统计表》（2026.7.31）.xlsx
 -- 结构：标题行1 / 表头行3-4（两级表头）/ 数据自第5行 / 合计行556
--- 列：A~N（14列），其中 4 列无对应字段池（所属部门/是否对账/是否发函/对账时间）
+-- 列：A~N（14列），是否对账/是否发函/对账时间由 resolveValue 动态赋值
 INSERT INTO proj_report_template (id, template_name, template_type, subject_table,
                                   source_template_id, template_file, file_name, title_row, header_row, data_start_row,
                                   has_summary_row, default_filter, remark, del_flag, create_by, create_time)
@@ -99,7 +99,10 @@ INSERT INTO proj_report_field (template_id, field_key, field_label, field_source
      (3, 'invoiceFlag', '是否开票', 'agg', NULL, 8, 10, 8, '0'),
      (3, 'totalInvoiceAmount', '开票金额', 'agg', NULL, 9, 14, 9, '0'),
      (3, 'debtMonths', '应收账期(欠款时长/月)', 'agg', NULL, 10, 14, 10, '0'),
-     (3, 'pendingAmount', '欠款金额', 'agg', NULL, 11, 14, 13, '0');
+     (3, 'isReconciled',  '是否对账', 'agg', NULL, 11, 10, 11, '0'),
+     (3, 'isSentLetter',  '是否发函', 'agg', NULL, 12, 10, 12, '0'),
+     (3, 'pendingAmount', '欠款金额', 'agg', NULL, 13, 14, 13, '0'),
+     (3, 'reconcileTime', '对账时间', 'agg', NULL, 14, 14, 14, '0');
 
 -- 多级表头分组
 UPDATE proj_report_field SET header_group = '合同及欠款情况'

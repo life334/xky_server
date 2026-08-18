@@ -36,6 +36,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             c.contract_no as "contractNo",
             c.contract_name as "contractName",
             c.contract_amount as "contractAmount",
+            c.contract_type as "contractType",
+            (select count(*) from proj_project px where px.contract_id = c.id and px.del_flag = '0') as "contractProjectCount",
             c.sign_date as "signDate",
             c.entrust_date as "entrustDate",
             c.audit_date as "auditDate",
@@ -294,10 +296,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 </otherwise>
             </choose>
         </if>
-        <!-- 欠款时长（月）：完工至今月数 -->
+        <!-- 欠款时长（月）：办结至今月数 -->
         <if test="f.debtMonths != null and f.debtMonths != ''">
-            and c.finish_date is not null
-            and extract(epoch from (now() - c.finish_date)) / 86400 / 30.44 &gt;= cast(#{f.debtMonths} as numeric)
+            and p.close_time is not null
+            and extract(epoch from (now() - p.close_time)) / 86400 / 30.44 &gt;= cast(#{f.debtMonths} as numeric)
         </if>
         <if test="f.contactPhone != null and f.contactPhone != ''">
             and p.contact_phone like concat('%', #{f.contactPhone}, '%')

@@ -774,7 +774,9 @@ public class ProjReportServiceImpl implements IProjReportService
                 && (template.getTemplateFile().toLowerCase()
                         .contains(ReportExcelExporter.UNIT_MERGE_TEMPLATE_KEYWORD)
                     || template.getTemplateFile().toLowerCase()
-                        .contains(ReportExcelExporter.UNIT_MERGE_NO_PAY_SUMMARY_KEYWORD));
+                        .contains(ReportExcelExporter.UNIT_MERGE_NO_PAY_SUMMARY_KEYWORD)
+                    || template.getTemplateFile().toLowerCase()
+                        .contains(ReportExcelExporter.UNIT_MERGE_CONTRACT_AMOUNT_KEYWORD));
     }
 
     /**
@@ -800,7 +802,23 @@ public class ProjReportServiceImpl implements IProjReportService
             {
                 return -1;
             }
-            return ua.compareTo(ub);
+            int cmp = ua.compareTo(ub);
+            if (cmp != 0)
+            {
+                return cmp;
+            }
+            // 同单位内按合同聚拢（同合同多条相邻，供合同金额列合并单元格；无合同排最后）
+            Object ca = a.get("contractId");
+            Object cb = b.get("contractId");
+            if (ca == null)
+            {
+                return cb == null ? 0 : 1;
+            }
+            if (cb == null)
+            {
+                return -1;
+            }
+            return ca.toString().compareTo(cb.toString());
         });
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy年M月d日");
         int i = 0;

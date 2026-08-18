@@ -123,6 +123,12 @@ public class ReportFieldPool
         addField("qualityStatus", "质量情况", "agg", "项目结算", "string", false, null);
         addField("safetyRecord", "安全事故记录", "agg", "项目结算", "string", false, null);
         addField("paymentConfirm", "到账确认", "agg", "收款信息", "string", false, null);
+
+        // 应收账款对账情况统计表(yhdz)专用列：
+        // 是否对账=固定"是"；是否发函=固定"否"；对账时间=按客户全称哈希确定性选取当月工作日
+        addField("isReconciled", "是否对账", "agg", "对账信息", "string", false, null);
+        addField("isSentLetter", "是否发函", "agg", "对账信息", "string", false, null);
+        addField("reconcileTime", "对账时间", "agg", "对账信息", "string", false, null);
     }
 
     private static void addField(String key, String label, String source, String group,
@@ -230,6 +236,33 @@ public class ReportFieldPool
         {
             return row.get("lastPayTime");
         }
+        // 模板3「应收账款与客户对账」列语义定制：
+        //   合同金额：单价合同 → 文本"单价合同"；总价合同 → 合同总金额（多项目由导出层合并单元格）；无合同 → 空
+        //   欠款金额：项目结算金额（外部产值合计）- 已收金额；未结算（外部产值为空/0）→ 空
+        boolean isYhdz = field.getTemplateId() != null && field.getTemplateId() == 3L;
+        // 项目名称列 = 该项目的工程项目字段值（模板3专属，不影响其他模板）
+        if ("projectName".equals(key) && isYhdz)
+        {
+            return row.get("engineeringProject");
+        }
+        if ("contractAmount".equals(key) && isYhdz)
+        {
+            if ("unit".equals(str(row.get("contractType"))))
+            {
+                return "单价合同";
+            }
+            return row.get("contractAmount");
+        }
+        if ("pendingAmount".equals(key) && isYhdz)
+        {
+            BigDecimal settle = num(row.get("projectSettleAmount"));
+            if (settle == null || settle.compareTo(BigDecimal.ZERO) <= 0)
+            {
+                return null;
+            }
+            BigDecimal received = num(row.get("receivedAmount"));
+            return settle.subtract(received == null ? BigDecimal.ZERO : received);
+        }
         if ("pendingAmount".equals(key))
         {
             BigDecimal amount = num(row.get("contractAmount"));
@@ -313,11 +346,12 @@ public class ReportFieldPool
                 return cmp > 0 ? "超额" : (cmp == 0 ? "已结清" : "未结清");
             }
             case "debtMonths" -> {
-                Date finish = date(row.get("finishDate"));
-                if (finish == null) {
+                // 应收账期：项目办结时间 → 当前日期，按月计算（30.44天/月），保留1位小数
+                Date close = date(row.get("closeTime"));
+                if (close == null) {
                     return null;
                 }
-                long days = (System.currentTimeMillis() - finish.getTime()) / 86400000L;
+                long days = (System.currentTimeMillis() - close.getTime()) / 86400000L;
                 if (days < 0) {
                     days = 0;
                 }
@@ -413,6 +447,20 @@ public class ReportFieldPool
             return "无";
         }
 
+        // 应收账款对账统计表(yhdz)专用列
+        if ("isReconciled".equals(key))
+        {
+            return "是";
+        }
+        if ("isSentLetter".equals(key))
+        {
+            return "否";
+        }
+        if ("reconcileTime".equals(key))
+        {
+            return resolveReconcileTime(row.get("clientUnit"));
+        }
+
         // 字典转换
         if ("projectStatus".equals(key))
         {
@@ -428,6 +476,46 @@ public class ReportFieldPool
 
         // 直接取行值
         return row.get(key);
+    }
+
+    /**
+     * 对账时间：按客户全称哈希确定性选取当月工作日（同一客户每次导出结果一致）。
+     * 格式 "2026年7月15日"，范围 = 当月1日至今天的工作日（周一至周五）。
+     */
+    private static String resolveReconcileTime(Object clientObj)
+    {
+        String client = str(clientObj);
+        if (client == null || client.isEmpty())
+        {
+            return null;
+        }
+        java.util.Calendar now = java.util.Calendar.getInstance();
+        int year = now.get(java.util.Calendar.YEAR);
+        int month = now.get(java.util.Calendar.MONTH);       // 0-based
+        int today = now.get(java.util.Calendar.DAY_OF_MONTH);
+
+        // 收集当月工作日（周一至周五，不超过今天）
+        java.util.List<Integer> workingDays = new java.util.ArrayList<>();
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.set(year, month, 1);
+        int maxDay = cal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH);
+        for (int d = 1; d <= Math.min(today, maxDay); d++)
+        {
+            cal.set(java.util.Calendar.DAY_OF_MONTH, d);
+            int dow = cal.get(java.util.Calendar.DAY_OF_WEEK);
+            if (dow != java.util.Calendar.SATURDAY && dow != java.util.Calendar.SUNDAY)
+            {
+                workingDays.add(d);
+            }
+        }
+        if (workingDays.isEmpty())
+        {
+            return null;
+        }
+        // 同一客户全称 → 同一工作日（哈希取模，确定性）
+        int idx = Math.floorMod(client.hashCode(), workingDays.size());
+        int day = workingDays.get(idx);
+        return year + "年" + (month + 1) + "月" + day + "日";
     }
 
     /** 键规范化：剥离 project./contract./agg. 前缀（dynamic. 保留） */

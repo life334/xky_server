@@ -52,6 +52,9 @@ public class ReportExcelExporter
      */
     public static final String UNIT_MERGE_NO_PAY_SUMMARY_KEYWORD = "byx_report";
 
+    /** 单位合并模板（yhdz 应收对账）：按客户排序 + 客户全称列合并 + 总价多项目合同的合同金额列合并 */
+    public static final String UNIT_MERGE_CONTRACT_AMOUNT_KEYWORD = "yhdz_report";
+
     /**
      * 内置模板原样导出
      *
@@ -79,7 +82,8 @@ public class ReportExcelExporter
             {
                 dataZeroIdx = 0;
             }
-            applyUnitMerge(sheet, fields, rows, isPayTimeSummaryTemplate(template), dataZeroIdx);
+            applyUnitMerge(sheet, fields, rows, isPayTimeSummaryTemplate(template),
+                    isContractAmountMergeTemplate(template), dataZeroIdx);
             // ★ 数据行行高自适应：按各列实际内容长度（结合列宽/合并区域宽度）估算
             // 所需行数，超长内容换行完整显示；短内容保持模板基础行高不变
             applyAutoRowHeight(wb, sheet, template, rows);
@@ -292,7 +296,9 @@ public class ReportExcelExporter
                 }
             }
             // 按委托单位合并：同单位多条记录合并单位名称单元格（无 clientUnit 列自动跳过）
-            applyUnitMerge(sheet, fields, rows, isPayTimeSummaryTemplate(template), dataStart);
+            // 合同金额列合并跟随来源模板（yhdz 派生的自定义模板同样生效）
+            applyUnitMerge(sheet, fields, rows, isPayTimeSummaryTemplate(template),
+                    isContractAmountMergeTemplate(sourceTemplate), dataStart);
 
             // 合计行
             if ("Y".equals(template.getHasSummaryRow()) && !rows.isEmpty())
@@ -604,17 +610,21 @@ public class ReportExcelExporter
      * 2. 到账时间列（mergePayTimeSummary=true 时）：同单位整组合并，统一写汇总描述
      *    （如"2026年8月13日到账823元"，由 Service 层计算注入行键 _unitSummary，单条记录同样写汇总）；
      *    为 false 时到账时间保持逐条显示（补验线报表）
+     * 3. 合同金额列（mergeContractAmount=true 时，yhdz 应收对账）：客户分组内连续的同合同记录
+     *    （总价合同且关联多项目）合并为一个单元格，保留首行值（合同总金额只体现一次）
      */
     private static void applyUnitMerge(Sheet sheet, List<ProjReportField> fields,
-            List<Map<String, Object>> rows, boolean mergePayTimeSummary, int dataStartRow)
+            List<Map<String, Object>> rows, boolean mergePayTimeSummary,
+            boolean mergeContractAmount, int dataStartRow)
     {
         if (rows == null || rows.isEmpty())
         {
             return;
         }
-        // 反查单位名称列 / 到账时间列（按字段 key + column_index）
+        // 反查单位名称列 / 到账时间列 / 合同金额列（按字段 key + column_index）
         int unitCol = -1;
         int payTimeCol = -1;
+        int amountCol = -1;
         for (ProjReportField f : fields)
         {
             if (f.getColumnIndex() == null || f.getColumnIndex() <= 0)
@@ -628,6 +638,10 @@ public class ReportExcelExporter
             else if ("lastPayTime".equals(f.getFieldKey()) && payTimeCol < 0)
             {
                 payTimeCol = f.getColumnIndex() - 1;
+            }
+            else if ("contractAmount".equals(f.getFieldKey()) && amountCol < 0)
+            {
+                amountCol = f.getColumnIndex() - 1;
             }
         }
         if (dataStartRow < 0)
@@ -684,6 +698,46 @@ public class ReportExcelExporter
                     }
                 }
             }
+            // 合同金额列（yhdz 对账模板）：客户分组内连续的同合同记录（总价合同且关联多项目）合并单元格
+            if (amountCol >= 0 && mergeContractAmount)
+            {
+                int j = i;
+                while (j <= end)
+                {
+                    Object cid = rows.get(j).get("contractId");
+                    Object pc = rows.get(j).get("contractProjectCount");
+                    boolean mergeable = cid != null
+                            && "total".equals(toStr(rows.get(j).get("contractType")))
+                            && pc instanceof Number && ((Number) pc).intValue() > 1;
+                    int subEnd = j;
+                    if (mergeable)
+                    {
+                        while (subEnd + 1 <= end && cid.equals(rows.get(subEnd + 1).get("contractId")))
+                        {
+                            subEnd++;
+                        }
+                        if (subEnd > j)
+                        {
+                            int rs = dataStartRow + j;
+                            int re = dataStartRow + subEnd;
+                            sheet.addMergedRegion(new CellRangeAddress(rs, re, amountCol, amountCol));
+                            for (int r = rs + 1; r <= re; r++)
+                            {
+                                Row rr = sheet.getRow(r);
+                                if (rr != null)
+                                {
+                                    Cell cc = rr.getCell(amountCol);
+                                    if (cc != null)
+                                    {
+                                        cc.setCellValue("");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    j = subEnd + 1;
+                }
+            }
             i = end + 1;
         }
     }
@@ -693,6 +747,13 @@ public class ReportExcelExporter
     {
         return template != null && template.getTemplateFile() != null
                 && template.getTemplateFile().toLowerCase().contains(UNIT_MERGE_TEMPLATE_KEYWORD);
+    }
+
+    /** 合同金额列是否合并（yhdz 应收对账：总价合同关联多项目时同客户内合并单元格） */
+    private static boolean isContractAmountMergeTemplate(ProjReportTemplate template)
+    {
+        return template != null && template.getTemplateFile() != null
+                && template.getTemplateFile().toLowerCase().contains(UNIT_MERGE_CONTRACT_AMOUNT_KEYWORD);
     }
 
     /**
