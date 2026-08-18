@@ -38,7 +38,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select b.id, b.batch_no, b.template_id, t.template_name, b.submit_time,
                b.submit_by, b.project_count, b.filter_desc, b.snapshot_file, b.remark, b.create_time
         from proj_report_submit_batch b
-        left join proj_report_template t on t.template_id = b.template_id
+        left join proj_report_template t on t.id = b.template_id
         where b.del_flag = '0'
         <if test="batchNo != null and batchNo != ''">
             and b.batch_no like concat('%', #{batchNo}, '%')
@@ -56,7 +56,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select b.id, b.batch_no, b.template_id, t.template_name, b.submit_time,
                b.submit_by, b.project_count, b.filter_desc, b.snapshot_file, b.remark, b.create_time
         from proj_report_submit_batch b
-        left join proj_report_template t on t.template_id = b.template_id
+        left join proj_report_template t on t.id = b.template_id
         where b.id = #{id}
     </select>
 

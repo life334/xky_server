@@ -532,7 +532,7 @@ public class ProjReportServiceImpl implements IProjReportService
             suffix = (file != null && file.toLowerCase().endsWith(".xls")) ? ".xls" : ".xlsx";
         }
         // 导出年月（标题实时替换 + 文件名占位符共用）
-        String[] yearMonth = extractYearMonth(filter);
+        String[] yearMonth = exportYearMonth(template, filter);
         String fileName = buildExportFileName(template, filter, suffix);
 
         try
@@ -654,7 +654,7 @@ public class ProjReportServiceImpl implements IProjReportService
             String name = pattern;
             if (pattern.contains("{year}") || pattern.contains("{month}"))
             {
-                String[] ym = extractYearMonth(filter);
+                String[] ym = exportYearMonth(template, filter);
                 name = pattern.replace("{year}", ym[0]).replace("{month}", ym[1]);
             }
             // 模板 file_name 若未带后缀则补后缀
@@ -669,6 +669,24 @@ public class ProjReportServiceImpl implements IProjReportService
                 ? "临时导出" : template.getTemplateName();
         String time = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
         return tplName + "_" + time + suffix;
+    }
+
+    /**
+     * 导出年月：模板4「市场性任务到账收入确认表」标题/文件名固定取当前系统年月
+     * （月度确认表按导出时刻的月份实时变化，与筛选条件无关）；
+     * 其它模板沿用 extractYearMonth（筛选取筛选月，无筛选取当前月）。
+     */
+    private String[] exportYearMonth(ProjReportTemplate template, Map<String, Object> filter)
+    {
+        if (template != null && Long.valueOf(4L).equals(template.getId()))
+        {
+            LocalDate now = LocalDate.now();
+            return new String[]{
+                String.valueOf(now.getYear()),
+                String.valueOf(now.getMonthValue())
+            };
+        }
+        return extractYearMonth(filter);
     }
 
     /**
@@ -980,7 +998,7 @@ public class ProjReportServiceImpl implements IProjReportService
         String snapshotPath = dir + "/" + fileName;
         try (FileOutputStream fos = new FileOutputStream(snapshotPath))
         {
-            String[] yearMonth = extractYearMonth(filter);
+            String[] yearMonth = exportYearMonth(template, filter);
             ReportExcelExporter.exportBuiltin(fos, template, fields, rows, yearMonth);
         }
         catch (ServiceException e)
