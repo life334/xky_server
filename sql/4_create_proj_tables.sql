@@ -915,3 +915,34 @@ CREATE TABLE IF NOT EXISTS proj_report_submit_log (
 CREATE UNIQUE INDEX IF NOT EXISTS uk_submit_log_code ON proj_report_submit_log(project_code);
 CREATE INDEX IF NOT EXISTS idx_submit_log_time ON proj_report_submit_log(submit_time);
 
+-- -----------------------------------------------
+-- 1. 催收记录表 proj_collection_log
+--    回款管理页面的催收闭环：每次催收登记一条，
+--    next_collect_time 到期未再催 → 前端标红"超期未催"
+-- -----------------------------------------------
+create table if not exists proj_collection_log (
+    id                  bigserial       primary key,
+    project_id          bigint          not null,               -- 关联 proj_project.id
+    collect_time        date            not null,               -- 催收时间
+    collect_method      varchar(20),                            -- 催收方式（电话/函件/上门）
+    contact_name        varchar(50),                            -- 联系人
+    collect_result      varchar(200),                           -- 催收结果
+    next_collect_time   date,                                   -- 下次催收日期（超期未催预警依据）
+    remark              varchar(500),
+    del_flag            char(1)         default '0' not null,
+    create_by           varchar(64),
+    create_time         timestamp       default now(),
+    update_by           varchar(64),
+    update_time         timestamp
+    );
+
+comment on table proj_collection_log is '回款催收记录表';
+comment on column proj_collection_log.project_id is '项目ID，关联 proj_project.id';
+comment on column proj_collection_log.collect_time is '催收时间';
+comment on column proj_collection_log.collect_method is '催收方式（电话/函件/上门）';
+comment on column proj_collection_log.contact_name is '联系人';
+comment on column proj_collection_log.collect_result is '催收结果';
+comment on column proj_collection_log.next_collect_time is '下次催收日期，超期未催预警依据';
+comment on column proj_collection_log.remark is '备注';
+
+create index if not exists idx_pcl_project on proj_collection_log(project_id);

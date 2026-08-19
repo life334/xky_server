@@ -13,6 +13,7 @@ INSERT INTO sys_menu VALUES (6, '资料管理', 0, 1, 'material', 'project/mater
 INSERT INTO sys_menu VALUES (7, '费用结算', 0, 1, 'settlement', 'project/settlement/index', '', 'Settlement', 1, 0, 'C', '0', '0', 'project:settlement:list', 'money', 'admin', now(), '', NULL, '费用结算菜单');
 -- INSERT INTO sys_menu VALUES (9, '项目管理new', 0, 0, 'dashboardnew', 'project/project/controlTower', '', 'DashboardNew', 1, 0, 'C', '0', '0', '', 'dashboard', 'admin', now(), '', NULL, '首页new');
 INSERT INTO sys_menu VALUES (10, '报表导出', 0, 1, 'report', 'report/index', '', 'Report', 1, 0, 'C', '0', '0', 'report:report:list', 'excel', 'admin', now(), '', NULL, '报表导出菜单');
+INSERT INTO sys_menu VALUES (9, '回款管理', 0, 1, 'collection', 'project/collection/index', '', 'Collection', 1, 0, 'C', '0', '0', 'project:collection:list', 'money', 'admin', now(), '', NULL, '回款管理菜单');
 
 -- -----------------------------------------------
 -- 3. 项目类别管理菜单 + 按钮权限
@@ -125,4 +126,7 @@ INSERT INTO sys_menu VALUES (1202, '模板管理', 10, 2, '', '', '', '', 1, 0, 
 INSERT INTO sys_menu VALUES (1203, '筛选方案', 10, 3, '', '', '', '', 1, 0, 'F', '0', '0', 'report:report:filter', '#', 'admin', now(), '', NULL, '筛选方案增删改权限');
 INSERT INTO sys_menu VALUES (1204, '导出历史', 10, 4, '', '', '', '', 1, 0, 'F', '0', '0', 'report:report:log', '#', 'admin', now(), '', NULL, '导出历史查看/重导权限');
 
-
+-- 回款管理按钮
+INSERT INTO sys_menu VALUES (1205, '回款管理查询', 9, 1, '', '', '', '', 1, 0, 'F', '0', '0', 'project:collection:query', '#', 'admin', now(), '', NULL, '');
+INSERT INTO sys_menu VALUES (1206, '催收记录登记', 9, 2, '', '', '', '', 1, 0, 'F', '0', '0', 'project:collection:log', '#', 'admin', now(), '', NULL, '催收记录查看与登记');
+INSERT INTO sys_menu VALUES (1207, '回款管理导出', 9, 3, '', '', '', '', 1, 0, 'F', '0', '0', 'project:collection:export', '#', 'admin', now(), '', NULL, '催款清单导出');
