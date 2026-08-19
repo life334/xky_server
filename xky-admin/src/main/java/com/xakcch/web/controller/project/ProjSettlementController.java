@@ -149,8 +149,31 @@ public class ProjSettlementController extends BaseController
             projectNode.put("workload", totalWorkload);
             projectNode.put("internalOutput", totalInternalOutput);
             projectNode.put("externalOutput", totalExternalOutput);
+            // 录入状态计数（供前端胶囊筛选：工作量记录数 / 到账记录数）
+            projectNode.put("workloadCount", workloads.size());
+            int paymentCnt = 0;
+            for (ProjPayment pm : payments)
+            {
+                if ("advance".equals(pm.getPaymentType()) || "final".equals(pm.getPaymentType())) paymentCnt++;
+            }
+            projectNode.put("paymentCount", paymentCnt);
             // 结算状态 + 已收/待收差额（结算总额 = 外部产值合计，与编辑页面口径一致）
             fillSettlementSummary(projectNode, payments, totalExternalOutput);
+            // 开票/付款组合状态：not_invoiced 未开未付 / invoiced_unpaid 已开未付 / invoiced_paid 已开已付 / voided 已作废
+            String invStatus = (String) projectNode.get("invoiceStatus");
+            BigDecimal invAmt = (BigDecimal) projectNode.get("invoiceAmount");
+            String invDate = (String) projectNode.get("invoiceDate");
+            boolean hasInvoice = (invDate != null && !invDate.isEmpty())
+                || (invAmt != null && invAmt.compareTo(BigDecimal.ZERO) > 0);
+            boolean isVoided = "已作废".equals(invStatus);
+            BigDecimal recv = (BigDecimal) projectNode.get("receivedAmount");
+            boolean hasPaid = recv != null && recv.compareTo(BigDecimal.ZERO) > 0;
+            String invoicePaymentStatus;
+            if (isVoided) invoicePaymentStatus = "voided";
+            else if (hasInvoice && !hasPaid) invoicePaymentStatus = "invoiced_unpaid";
+            else if (hasInvoice && hasPaid) invoicePaymentStatus = "invoiced_paid";
+            else invoicePaymentStatus = "not_invoiced";
+            projectNode.put("invoicePaymentStatus", invoicePaymentStatus);
             projectNode.put("children", userChildren);
             tree.add(projectNode);
         }
@@ -326,6 +349,87 @@ public class ProjSettlementController extends BaseController
         return success();
     }
 
+    /**
+     * 保存工作量明细（独立保存，不涉及付款）
+     */
+    @PreAuthorize("@ss.hasPermi('project:settlement:edit')")
+    @Log(title = "工作量明细", businessType = BusinessType.UPDATE)
+    @Transactional(rollbackFor = Exception.class)
+    @PutMapping("/workload")
+    public AjaxResult saveWorkload(@RequestBody Map<String, Object> params)
+    {
+        Long projectId = toLong(params.get("projectId"));
+        if (projectId == null)
+        {
+            return error("项目ID不能为空");
+        }
+
+        String username = getUsername();
+
+        // 保存前先逻辑删除该项目所有工作量（全量替换，避免外部工作量 user_id 为 null 时 ON CONFLICT 失效导致重复插入）
+        workloadMapper.deleteWorkloadsByProjectId(projectId);
+
+        // Save workloads only
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> workloadList = (List<Map<String, Object>>) params.get("workloads");
+        if (workloadList != null && !workloadList.isEmpty())
+        {
+            for (Map<String, Object> wl : workloadList)
+            {
+                ProjWorkload w = new ProjWorkload();
+                w.setProjectId(projectId);
+                w.setUserId(toLong(wl.get("userId")));
+                w.setCategoryId(toLong(wl.get("categoryId")));
+                w.setInternalWorkload(toBigDecimal(wl.get("internalWorkload")));
+                w.setExternalWorkload(toBigDecimal(wl.get("externalWorkload")));
+                w.setInternalPrice(toBigDecimal(wl.get("internalPrice")));
+                w.setExternalPrice(toBigDecimal(wl.get("externalPrice")));
+                w.setInternalOutput(toBigDecimal(wl.get("internalOutput")));
+                w.setExternalOutput(toBigDecimal(wl.get("externalOutput")));
+                w.setWorkload(toBigDecimal(wl.get("workload")));
+                w.setPriceSource((String) wl.getOrDefault("priceSource", "manual"));
+                w.setBillingType((String) wl.getOrDefault("billingType", ""));
+                w.setBillingCategory((String) wl.getOrDefault("billingCategory", ""));
+                w.setPriceUnit((String) wl.getOrDefault("priceUnit", ""));
+                w.setMinQuantity(toBigDecimal(wl.get("minQuantity")));
+                w.setUnitPrice(toBigDecimal(wl.get("unitPrice")));
+                w.setRemark((String) wl.getOrDefault("remark", ""));
+                w.setCreateBy(username);
+                workloadMapper.upsertWorkload(w);
+            }
+        }
+
+        return success();
+    }
+
+    /**
+     * 保存到账信息（付款 + 开票，独立保存，不涉及工作量）
+     */
+    @PreAuthorize("@ss.hasPermi('project:settlement:edit')")
+    @Log(title = "到账信息", businessType = BusinessType.UPDATE)
+    @Transactional(rollbackFor = Exception.class)
+    @PutMapping("/payment")
+    public AjaxResult savePayment(@RequestBody Map<String, Object> params)
+    {
+        Long projectId = toLong(params.get("projectId"));
+        if (projectId == null)
+        {
+            return error("项目ID不能为空");
+        }
+
+        String username = getUsername();
+        String remark = (String) params.getOrDefault("remark", "");
+
+        // Save payments（预付款 + 尾款）
+        savePaymentIfPresent((Map<String, Object>) params.get("prepay"), projectId, "advance", username, remark);
+        savePaymentIfPresent((Map<String, Object>) params.get("tail"), projectId, "final", username, remark);
+
+        // Save refunds（退款多笔，整组替换）
+        saveRefunds(params.get("refunds"), projectId, username);
+
+        return success();
+    }
+
     // ===== Private helpers =====
 
     /** 构建项目级树节点 */
@@ -488,14 +592,29 @@ public class ProjSettlementController extends BaseController
         pm.setPaymentType(type);
         pm.setAmount(toBigDecimal(payMap.get("amount")));
         pm.setPayTime(toDate(payMap.get("payTime")));
-        // 空值防御：金额和日期都为空时不插入付款记录
-        if (pm.getAmount() == null && pm.getPayTime() == null) return;
         pm.setPayUnit((String) payMap.get("payUnit"));
         pm.setPayMethod((String) payMap.get("payMethod"));
         pm.setInvoiceNo((String) payMap.get("invoiceNo"));
         pm.setInvoiceDate(toDate(payMap.get("invoiceDate")));
         pm.setInvoiceAmount(toBigDecimal(payMap.get("invoiceAmount")));
-        pm.setInvoiceStatus((String) payMap.get("invoiceStatus"));
+        // 开票状态自动推断：勾选作废→已作废；有发票信息→已开；否则 null（未开，不再手选）
+        String invoiceStatus = (String) payMap.get("invoiceStatus");
+        boolean hasInvoice = pm.getInvoiceNo() != null || pm.getInvoiceDate() != null
+            || (pm.getInvoiceAmount() != null && pm.getInvoiceAmount().compareTo(BigDecimal.ZERO) > 0);
+        if ("已作废".equals(invoiceStatus))
+        {
+            pm.setInvoiceStatus("已作废");
+        }
+        else if (hasInvoice)
+        {
+            pm.setInvoiceStatus("已开");
+        }
+        else
+        {
+            pm.setInvoiceStatus(null);
+        }
+        // 空值防御：付款金额、付款日期、发票信息均为空且未标记作废时不插入记录
+        if (pm.getAmount() == null && pm.getPayTime() == null && !hasInvoice && !"已作废".equals(invoiceStatus)) return;
         pm.setRemark(remark);
         pm.setCreateBy(username);
         paymentMapper.upsertPayment(pm);

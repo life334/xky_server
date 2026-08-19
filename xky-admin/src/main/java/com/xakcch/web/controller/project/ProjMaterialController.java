@@ -96,7 +96,7 @@ public class ProjMaterialController extends BaseController
     /**
      * 根据ID获取详细信息
      */
-    @GetMapping(value = "/{id}")
+    @GetMapping(value = "/{id:[0-9]+}")
     public AjaxResult getInfo(@PathVariable Long id)
     {
         return success(materialService.selectMaterialById(id));
@@ -132,7 +132,7 @@ public class ProjMaterialController extends BaseController
      */
     @PreAuthorize("@ss.hasPermi('project:material:remove')")
     @Log(title = "资料提交", businessType = BusinessType.DELETE)
-    @DeleteMapping("/{ids}")
+    @DeleteMapping("/{ids:[0-9,]+}")
     public AjaxResult remove(@PathVariable Long[] ids)
     {
         return toAjax(materialService.deleteMaterialByIds(ids));

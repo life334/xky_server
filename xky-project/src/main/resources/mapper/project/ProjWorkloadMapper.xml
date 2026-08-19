@@ -180,6 +180,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </foreach>
     </delete>
 
+    <delete id="deleteWorkloadsByProjectId" parameterType="Long">
+        update proj_workload set del_flag = '2' where project_id = #{projectId} and del_flag = '0'
+    </delete>
+
     <select id="selectWorkloadsByProjectId" parameterType="Long" resultMap="ProjWorkloadResult">
         select w.id, w.project_id, w.user_id, w.category_id,
                w.internal_workload, w.external_workload,

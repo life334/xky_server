@@ -63,7 +63,7 @@ public class ProjPaymentController extends BaseController
     /**
      * 根据ID获取详细信息
      */
-    @GetMapping(value = "/{id}")
+    @GetMapping(value = "/{id:[0-9]+}")
     public AjaxResult getInfo(@PathVariable Long id)
     {
         return success(paymentService.selectPaymentById(id));
@@ -98,7 +98,7 @@ public class ProjPaymentController extends BaseController
      */
     @PreAuthorize("@ss.hasPermi('project:payment:remove')")
     @Log(title = "付款记录", businessType = BusinessType.DELETE)
-    @DeleteMapping("/{ids}")
+    @DeleteMapping("/{ids:[0-9,]+}")
     public AjaxResult remove(@PathVariable Long[] ids)
     {
         return toAjax(paymentService.deletePaymentByIds(ids));

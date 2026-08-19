@@ -98,7 +98,7 @@ public class ProjContractController extends BaseController
     /**
      * 根据合同ID获取详细信息
      */
-    @GetMapping(value = "/{id}")
+    @GetMapping(value = "/{id:[0-9]+}")
     public AjaxResult getInfo(@PathVariable Long id)
     {
         return success(contractService.selectContractById(id));
@@ -143,7 +143,7 @@ public class ProjContractController extends BaseController
      */
     @PreAuthorize("@ss.hasPermi('project:contract:remove')")
     @Log(title = "合同管理", businessType = BusinessType.DELETE)
-    @DeleteMapping("/{ids}")
+    @DeleteMapping("/{ids:[0-9,]+}")
     public AjaxResult remove(@PathVariable Long[] ids)
     {
         return toAjax(contractService.deleteContractByIds(ids));

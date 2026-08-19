@@ -65,4 +65,12 @@ public interface ProjWorkloadMapper
      * @return 结果
      */
     public int upsertWorkload(ProjWorkload workload);
+
+    /**
+     * 按项目ID删除工作量（逻辑删除，用于保存前全量替换）
+     *
+     * @param projectId 项目ID
+     * @return 结果
+     */
+    public int deleteWorkloadsByProjectId(Long projectId);
 }

@@ -39,7 +39,7 @@ public class ProjFieldDefController extends BaseController
     /**
      * 根据ID查询
      */
-    @GetMapping(value = "/{id}")
+    @GetMapping(value = "/{id:[0-9]+}")
     public AjaxResult getInfo(@PathVariable Long id)
     {
         return success(fieldDefService.selectFieldDefById(id));
@@ -72,7 +72,7 @@ public class ProjFieldDefController extends BaseController
      */
     @PreAuthorize("@ss.hasPermi('system:fieldDef:remove')")
     @Log(title = "动态字段定义", businessType = BusinessType.DELETE)
-    @DeleteMapping("/{ids}")
+    @DeleteMapping("/{ids:[0-9,]+}")
     public AjaxResult remove(@PathVariable Long[] ids)
     {
         return toAjax(fieldDefService.deleteFieldDefByIds(ids));

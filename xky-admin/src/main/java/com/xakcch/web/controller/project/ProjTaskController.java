@@ -61,7 +61,7 @@ public class ProjTaskController extends BaseController
     /**
      * 根据任务编号获取详细信息
      */
-    @GetMapping(value = "/{id}")
+    @GetMapping(value = "/{id:[0-9]+}")
     public AjaxResult getInfo(@PathVariable Long id)
     {
         return success(taskService.selectTaskById(id));
@@ -97,7 +97,7 @@ public class ProjTaskController extends BaseController
      */
     @PreAuthorize("@ss.hasPermi('project:task:remove')")
     @Log(title = "任务信息", businessType = BusinessType.DELETE)
-    @DeleteMapping("/{ids}")
+    @DeleteMapping("/{ids:[0-9,]+}")
     public AjaxResult remove(@PathVariable Long[] ids)
     {
         return toAjax(taskService.deleteTaskByIds(ids));

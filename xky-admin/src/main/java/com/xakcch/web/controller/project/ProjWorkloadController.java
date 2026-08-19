@@ -61,7 +61,7 @@ public class ProjWorkloadController extends BaseController
     /**
      * 根据ID获取详细信息
      */
-    @GetMapping(value = "/{id}")
+    @GetMapping(value = "/{id:[0-9]+}")
     public AjaxResult getInfo(@PathVariable Long id)
     {
         return success(workloadService.selectWorkloadById(id));
@@ -96,7 +96,7 @@ public class ProjWorkloadController extends BaseController
      */
     @PreAuthorize("@ss.hasPermi('project:workload:remove')")
     @Log(title = "工作量信息", businessType = BusinessType.DELETE)
-    @DeleteMapping("/{ids}")
+    @DeleteMapping("/{ids:[0-9,]+}")
     public AjaxResult remove(@PathVariable Long[] ids)
     {
         return toAjax(workloadService.deleteWorkloadByIds(ids));

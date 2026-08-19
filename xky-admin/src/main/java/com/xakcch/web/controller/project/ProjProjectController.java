@@ -107,7 +107,7 @@ public class ProjProjectController extends BaseController
     /**
      * 根据项目编号获取详细信息
      */
-    @GetMapping(value = "/{id}")
+    @GetMapping(value = "/{id:[0-9]+}")
     public AjaxResult getInfo(@PathVariable Long id)
     {
         return success(projectService.selectProjectById(id));
@@ -151,7 +151,7 @@ public class ProjProjectController extends BaseController
      */
     @PreAuthorize("@ss.hasPermi('project:project:remove')")
     @Log(title = "项目信息", businessType = BusinessType.DELETE)
-    @DeleteMapping("/{ids}")
+    @DeleteMapping("/{ids:[0-9,]+}")
     public AjaxResult remove(@PathVariable Long[] ids)
     {
         checkClosedProjects(ids, "删除");
