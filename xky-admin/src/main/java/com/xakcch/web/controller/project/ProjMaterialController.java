@@ -139,19 +139,19 @@ public class ProjMaterialController extends BaseController
     }
 
     /**
-     * 领取资料
-     * 担保人由后端从资料记录读取（资料编辑页维护），前端仅需确认
+     * 领取资料（编辑页保存触发）
+     * 接收本次领取信息（领取时间/是否担保/担保人/备注等），更新主表并追加一条历史记录
      */
     @PreAuthorize("@ss.hasPermi('project:material:borrow')")
     @Log(title = "资料领取", businessType = BusinessType.UPDATE)
     @PutMapping("/borrow/{id}")
-    public AjaxResult borrow(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> params)
+    public AjaxResult borrow(@PathVariable Long id, @RequestBody(required = false) ProjMaterial data)
     {
         LoginUser loginUser = SecurityUtils.getLoginUser();
         Long userId = loginUser.getUser().getUserId();
         String userName = loginUser.getUser().getNickName();
-        String remark = params != null && params.get("remark") != null ? params.get("remark").toString() : null;
-        materialService.borrowMaterial(id, remark, userId, userName);
+        if (data == null) data = new ProjMaterial();
+        materialService.borrowMaterial(id, data, userId, userName);
         return success();
     }
 

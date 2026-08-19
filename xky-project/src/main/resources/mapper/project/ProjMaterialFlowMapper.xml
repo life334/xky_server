@@ -14,11 +14,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="remark"          column="remark"          />
         <result property="userName"        column="user_name"       />
         <result property="guarantorName"   column="guarantor_name"  />
+        <result property="snapshot"        column="snapshot"        />
     </resultMap>
 
     <select id="selectFlowListByMaterialId" parameterType="Long" resultMap="ProjMaterialFlowResult">
         select f.id, f.material_id, f.flow_type, f.user_id, f.guarantor_id,
-               f.operate_time, f.remark,
+               f.operate_time, f.remark, f.snapshot::text as snapshot,
                u1.nick_name as user_name,
                u2.nick_name as guarantor_name
         from proj_material_flow f
@@ -36,6 +37,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="guarantorId != null">guarantor_id,</if>
             <if test="operateTime != null">operate_time,</if>
             <if test="remark != null and remark != ''">remark,</if>
+            <if test="snapshot != null and snapshot != ''">snapshot,</if>
             create_time
         )values(
             <if test="materialId != null">#{materialId},</if>
@@ -44,6 +46,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="guarantorId != null">#{guarantorId},</if>
             <if test="operateTime != null">#{operateTime},</if>
             <if test="remark != null and remark != ''">#{remark},</if>
+            <if test="snapshot != null and snapshot != ''">#{snapshot}::jsonb,</if>
             now()
         )
     </insert>

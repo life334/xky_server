@@ -45,6 +45,9 @@ public class ProjMaterialFlow extends BaseEntity
     /** 担保人姓名 */
     private String guarantorName;
 
+    /** 本次领取时的资料快照（JSON：联系人/电话/成果类型/交付时间等） */
+    private String snapshot;
+
     // ===== getter/setter =====
 
     public Long getId() { return id; }
@@ -73,6 +76,9 @@ public class ProjMaterialFlow extends BaseEntity
 
     public String getGuarantorName() { return guarantorName; }
     public void setGuarantorName(String guarantorName) { this.guarantorName = guarantorName; }
+
+    public String getSnapshot() { return snapshot; }
+    public void setSnapshot(String snapshot) { this.snapshot = snapshot; }
 
     @Override
     public String toString() {

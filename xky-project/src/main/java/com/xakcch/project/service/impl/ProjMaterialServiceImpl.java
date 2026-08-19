@@ -11,6 +11,7 @@ import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xakcch.common.exception.ServiceException;
 import com.xakcch.project.domain.ProjContract;
 import com.xakcch.project.domain.ProjFieldDef;
@@ -46,6 +47,9 @@ public class ProjMaterialServiceImpl implements IProjMaterialService
 
     @Autowired
     private ProjFieldDefMapper fieldDefMapper;
+
+    /** JSON 序列化器：领取时把资料快照存入历史记录 */
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Override
     public List<ProjMaterial> selectMaterialList(ProjMaterial material)
@@ -108,28 +112,42 @@ public class ProjMaterialServiceImpl implements IProjMaterialService
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void borrowMaterial(Long materialId, String remark, Long userId, String userName)
+    public void borrowMaterial(Long materialId, ProjMaterial data, Long userId, String userName)
     {
-        // 校验资料状态
+        // 校验资料存在
         ProjMaterial material = materialMapper.selectMaterialById(materialId);
         if (material == null) throw new ServiceException("资料不存在");
-        if (!"pending".equals(material.getStatus()) && !"returned".equals(material.getStatus()))
-            throw new ServiceException("当前状态【" + material.getStatus() + "】不允许领取");
 
-        // 校验担保人：资料标记需要担保但未设置时拦截
-        if ("Y".equals(material.getGuarantorFlag()) && material.getGuarantorId() == null)
-            throw new ServiceException("该资料需要担保人，请先在编辑页设置担保人");
+        // 校验担保人：本次标记需要担保但未选择担保人时拦截
+        if ("Y".equals(data.getGuarantorFlag()) && data.getGuarantorId() == null)
+            throw new ServiceException("已勾选需要担保人，请选择担保人");
 
-        // 更新资料状态
-        materialMapper.updateMaterialStatus(materialId, "received", userName);
+        // 状态：pending -> received；received 保持 received（再次领取登记）
+        String newStatus = "pending".equals(material.getStatus()) ? "received" : material.getStatus();
 
-        // 写入流转记录（仅记录领取时间，不记录领取人）
+        // 交付时间即领取时间，刷新为当前领取时刻（避免历史记录都是同一旧时间）
+        Date now = new Date();
+        data.setSubmitTime(now);
+        // 更新主表本次领取信息（领取时间/是否担保/担保人/备注/状态等）
+        data.setId(materialId);
+        data.setStatus(newStatus);
+        data.setUpdateBy(userName);
+        materialMapper.updateMaterial(data);
+
+        // 写入历史记录（领取人 + 担保人 + 领取时间 + 备注）
         ProjMaterialFlow flow = new ProjMaterialFlow();
         flow.setMaterialId(materialId);
         flow.setFlowType("领取");
-        flow.setGuarantorId(material.getGuarantorId());
-        flow.setOperateTime(new Date());
-        flow.setRemark(remark);
+        flow.setUserId(userId);
+        flow.setGuarantorId("Y".equals(data.getGuarantorFlag()) ? data.getGuarantorId() : null);
+        flow.setOperateTime(now);
+        flow.setRemark(data.getRemark());
+        // 快照：记录本次领取时的资料信息（联系人/电话/成果类型等）供历史追溯
+        try {
+            flow.setSnapshot(MAPPER.writeValueAsString(data));
+        } catch (Exception e) {
+            flow.setSnapshot(null);
+        }
         flowMapper.insertFlow(flow);
     }
 

@@ -19,14 +19,14 @@ public interface IProjMaterialService
     public int deleteMaterialByIds(Long[] ids);
 
     /**
-     * 领取资料
-     * 担保人从资料记录（guarantor_flag/guarantor_id）读取，写入流转记录
+     * 领取资料（编辑页保存触发）
+     * 每次领取更新主表本次领取信息（领取时间/是否担保/担保人/备注/状态）并追加一条历史记录
      * @param materialId 资料ID
-     * @param remark 备注
-     * @param userId 操作人ID
-     * @param userName 操作人姓名
+     * @param data 本次领取信息（submitTime/guarantorFlag/guarantorId/remark 等）
+     * @param userId 领取人ID
+     * @param userName 领取人姓名
      */
-    public void borrowMaterial(Long materialId, String remark, Long userId, String userName);
+    public void borrowMaterial(Long materialId, ProjMaterial data, Long userId, String userName);
 
     /**
      * 归还资料

@@ -428,7 +428,7 @@ CREATE TABLE proj_material_flow (r
     material_id BIGINT NOT NULL, flow_type VARCHAR(20) NOT NULL,
     user_id BIGINT, guarantor_id BIGINT,
     operate_time TIMESTAMP DEFAULT now(),
-    remark VARCHAR(500), del_flag VARCHAR(2) DEFAULT '0',
+    remark VARCHAR(500), snapshot JSONB, del_flag VARCHAR(2) DEFAULT '0',
     create_time TIMESTAMP DEFAULT now()
 );
 COMMENT ON COLUMN proj_material_flow.id            IS '主键';
@@ -438,6 +438,7 @@ COMMENT ON COLUMN proj_material_flow.user_id       IS '操作人ID（关联sys_u
 COMMENT ON COLUMN proj_material_flow.guarantor_id  IS '担保人ID（首次领取时必填，关联sys_user.user_id）';
 COMMENT ON COLUMN proj_material_flow.operate_time  IS '操作时间';
 COMMENT ON COLUMN proj_material_flow.remark        IS '备注';
+COMMENT ON COLUMN proj_material_flow.snapshot      IS '本次领取时的资料快照（JSON：联系人/电话/成果类型等）';
 COMMENT ON COLUMN proj_material_flow.del_flag      IS '删除标志（0=正常，2=删除）';
 COMMENT ON COLUMN proj_material_flow.create_time   IS '创建时间';
 
