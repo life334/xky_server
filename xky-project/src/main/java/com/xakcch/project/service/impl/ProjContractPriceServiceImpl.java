@@ -65,7 +65,8 @@ public class ProjContractPriceServiceImpl implements IProjContractPriceService
             }
             else if (p.getPrice() != null && p.getPrice().compareTo(BigDecimal.ZERO) >= 0)
             {
-                // 新记录，有有效单价 → 插入
+                // 新记录，有有效单价 → 插入（必须带 billingId）
+                if (p.getBillingId() == null) continue;
                 p.setCreateBy(username);
                 priceMapper.insertPrice(p);
                 count++;

@@ -154,6 +154,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where p.id = #{id}
     </select>
 
+    <select id="selectExistProjectCodes" resultType="java.lang.String">
+        select project_code from proj_project where del_flag = '0'
+    </select>
+
     <select id="checkProjectCodeUnique" parameterType="ProjProject" resultMap="ProjProjectResult">
         <include refid="selectProjectVo"/>
         where p.project_code = #{projectCode} and p.del_flag = '0' limit 1

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjImportLogMapper">
+
+    <resultMap type="ProjImportLog" id="ProjImportLogResult">
+        <id     property="id"            column="id"/>
+        <result property="fileName"      column="file_name"/>
+        <result property="totalRows"     column="total_rows"/>
+        <result property="successCount"  column="success_count"/>
+        <result property="skippedCount"  column="skipped_count"/>
+        <result property="failedCount"   column="failed_count"/>
+        <result property="costMs"        column="cost_ms"/>
+        <result property="failDetails"   column="fail_details"/>
+        <result property="skipDetails"   column="skip_details"/>
+        <result property="status"        column="status"/>
+        <result property="delFlag"       column="del_flag"/>
+        <result property="createBy"      column="create_by"/>
+        <result property="createTime"    column="create_time"/>
+        <result property="updateBy"      column="update_by"/>
+        <result property="updateTime"    column="update_time"/>
+        <result property="finishTime"    column="finish_time"/>
+    </resultMap>
+
+    <insert id="insertImportLog" parameterType="ProjImportLog" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_import_log(
+            file_name, total_rows, success_count, skipped_count, failed_count,
+            cost_ms, fail_details, skip_details, status, del_flag,
+            create_by, create_time
+        ) values (
+            #{fileName}, #{totalRows}, #{successCount}, #{skippedCount}, #{failedCount},
+            #{costMs}, #{failDetails}, #{skipDetails}, #{status}, '0',
+            #{createBy}, now()
+        )
+    </insert>
+
+    <update id="updateImportLog" parameterType="ProjImportLog">
+        update proj_import_log
+        <set>
+            <if test="fileName != null">file_name = #{fileName},</if>
+            <if test="totalRows != null">total_rows = #{totalRows},</if>
+            <if test="successCount != null">success_count = #{successCount},</if>
+            <if test="skippedCount != null">skipped_count = #{skippedCount},</if>
+            <if test="failedCount != null">failed_count = #{failedCount},</if>
+            <if test="costMs != null">cost_ms = #{costMs},</if>
+            <if test="failDetails != null">fail_details = #{failDetails},</if>
+            <if test="skipDetails != null">skip_details = #{skipDetails},</if>
+            <if test="status != null">status = #{status},</if>
+            finish_time = now(),
+            update_by = #{updateBy},
+            update_time = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <select id="selectImportLogById" parameterType="Long" resultMap="ProjImportLogResult">
+        select * from proj_import_log where id = #{id} and del_flag = '0'
+    </select>
+
+    <select id="selectImportLogList" parameterType="ProjImportLog" resultMap="ProjImportLogResult">
+        select * from proj_import_log
+        where del_flag = '0'
+        order by id desc
+        limit 50
+    </select>
+</mapper>

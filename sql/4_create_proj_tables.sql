@@ -113,6 +113,7 @@ CREATE TABLE proj_contract_price (
     contract_id         BIGINT          NOT NULL,
     category_id         BIGINT          NOT NULL,
     price               DECIMAL(12,2)   DEFAULT NULL,
+    billing_id         BIGINT          DEFAULT NULL,
     del_flag            CHAR(1)         DEFAULT '0',
     create_by           VARCHAR(64)     DEFAULT '',
     create_time         TIMESTAMP,
@@ -125,10 +126,11 @@ COMMENT ON TABLE proj_contract_price IS '合同单价明细表';
 COMMENT ON COLUMN proj_contract_price.contract_id IS '合同ID，关联 proj_contract.id';
 COMMENT ON COLUMN proj_contract_price.category_id IS '项目类别ID（小类），关联 proj_category.id';
 COMMENT ON COLUMN proj_contract_price.price IS '合同单价（不区分内/外）';
+COMMENT ON COLUMN proj_contract_price.billing_id IS '计费方式ID，关联 proj_category_billing.id（外部计费方式）';
 
 CREATE INDEX idx_proj_cp_contract ON proj_contract_price(contract_id);
 CREATE INDEX idx_proj_cp_category ON proj_contract_price(category_id);
-CREATE UNIQUE INDEX uk_proj_cp_contract_category ON proj_contract_price(contract_id, category_id) WHERE del_flag = '0';
+CREATE UNIQUE INDEX IF NOT EXISTS uk_contract_billing ON proj_contract_price (contract_id, billing_id) WHERE del_flag = '0' AND billing_id IS NOT NULL;
 
 
 -- ----------------------------
@@ -190,6 +192,7 @@ CREATE INDEX idx_proj_project_contract ON proj_project(contract_id);
 CREATE INDEX idx_proj_project_status ON proj_project(status);
 CREATE INDEX idx_proj_project_assign_date ON proj_project(assign_date);
 CREATE INDEX idx_proj_project_extra ON proj_project USING GIN (extra_data);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_proj_project_code ON proj_project(project_code) WHERE del_flag = '0';
 
 
 -- ----------------------------
@@ -947,3 +950,30 @@ comment on column proj_collection_log.next_collect_time is '下次催收日期�
 comment on column proj_collection_log.remark is '备注';
 
 create index if not exists idx_pcl_project on proj_collection_log(project_id);
+
+-- ============================================================
+-- 历史数据导入 建表 + 菜单脚本
+-- 执行前请确认 PostgreSQL 环境
+-- ============================================================
+
+-- 1) 建表 proj_import_log
+CREATE TABLE IF NOT EXISTS proj_import_log (
+    id BIGSERIAL PRIMARY KEY,
+    file_name VARCHAR(255),
+    total_rows INTEGER DEFAULT 0,
+    success_count INTEGER DEFAULT 0,
+    skipped_count INTEGER DEFAULT 0,
+    failed_count INTEGER DEFAULT 0,
+    cost_ms BIGINT,
+    fail_details TEXT,           -- JSON 数组
+    skip_details TEXT,           -- JSON 数组
+    status VARCHAR(16) DEFAULT 'running',
+    del_flag CHAR(1) DEFAULT '0',
+    create_by VARCHAR(64),
+    create_time TIMESTAMP DEFAULT now(),
+    update_by VARCHAR(64),
+    update_time TIMESTAMP,
+    finish_time TIMESTAMP,
+    remark VARCHAR(500)
+    );
+COMMENT ON TABLE proj_import_log IS '历史数据导入日志';

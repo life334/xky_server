@@ -46,6 +46,26 @@ public class ProjContractPrice extends BaseEntity
     /** 字典默认外部单价 */
     private BigDecimal dictExternalPrice;
 
+    // ===== 计费方式维度字段（JOIN 带出，不持久化） =====
+
+    /** 计费方式ID（关联 proj_category_billing.id） */
+    private Long billingId;
+
+    /** 计费类型（internal=内部 external=外部） */
+    private String billingType;
+
+    /** 计费类别（如：常规测绘、加急测绘） */
+    private String billingCategory;
+
+    /** 字典单价（proj_category_billing.unit_price，只读展示） */
+    private BigDecimal dictUnitPrice;
+
+    /** 计价单位（如：平方公里、公里、宗） */
+    private String priceUnit;
+
+    /** 起步量 */
+    private BigDecimal minQuantity;
+
     // ===== getter/setter =====
 
     public Long getId()
@@ -146,6 +166,66 @@ public class ProjContractPrice extends BaseEntity
     public void setDictExternalPrice(BigDecimal dictExternalPrice)
     {
         this.dictExternalPrice = dictExternalPrice;
+    }
+
+    public Long getBillingId()
+    {
+        return billingId;
+    }
+
+    public void setBillingId(Long billingId)
+    {
+        this.billingId = billingId;
+    }
+
+    public String getBillingType()
+    {
+        return billingType;
+    }
+
+    public void setBillingType(String billingType)
+    {
+        this.billingType = billingType;
+    }
+
+    public String getBillingCategory()
+    {
+        return billingCategory;
+    }
+
+    public void setBillingCategory(String billingCategory)
+    {
+        this.billingCategory = billingCategory;
+    }
+
+    public BigDecimal getDictUnitPrice()
+    {
+        return dictUnitPrice;
+    }
+
+    public void setDictUnitPrice(BigDecimal dictUnitPrice)
+    {
+        this.dictUnitPrice = dictUnitPrice;
+    }
+
+    public String getPriceUnit()
+    {
+        return priceUnit;
+    }
+
+    public void setPriceUnit(String priceUnit)
+    {
+        this.priceUnit = priceUnit;
+    }
+
+    public BigDecimal getMinQuantity()
+    {
+        return minQuantity;
+    }
+
+    public void setMinQuantity(BigDecimal minQuantity)
+    {
+        this.minQuantity = minQuantity;
     }
 
     @Override

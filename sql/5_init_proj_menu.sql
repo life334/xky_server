@@ -14,6 +14,7 @@ INSERT INTO sys_menu VALUES (7, '费用结算', 0, 1, 'settlement', 'project/set
 -- INSERT INTO sys_menu VALUES (9, '项目管理new', 0, 0, 'dashboardnew', 'project/project/controlTower', '', 'DashboardNew', 1, 0, 'C', '0', '0', '', 'dashboard', 'admin', now(), '', NULL, '首页new');
 INSERT INTO sys_menu VALUES (10, '报表导出', 0, 1, 'report', 'report/index', '', 'Report', 1, 0, 'C', '0', '0', 'report:report:list', 'excel', 'admin', now(), '', NULL, '报表导出菜单');
 INSERT INTO sys_menu VALUES (9, '回款管理', 0, 1, 'collection', 'project/collection/index', '', 'Collection', 1, 0, 'C', '0', '0', 'project:collection:list', 'money', 'admin', now(), '', NULL, '回款管理菜单');
+INSERT INTO sys_menu VALUES (11, '历史数据导入', 0, 1, 'import', 'project/import/index', '', 'Import', 1, 0, 'C', '0', '0', 'project:import:view', 'build', 'admin', now(), '', NULL, '历史数据批量导入');
 
 -- -----------------------------------------------
 -- 3. 项目类别管理菜单 + 按钮权限

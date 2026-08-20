@@ -132,4 +132,9 @@ public interface ProjProjectMapper
      * @return 候选项目列表（id, projectCode, projectName）
      */
     public List<ProjProject> selectRelatedCandidates(@Param("engineeringProject") String engineeringProject);
+
+    /**
+     * 轻量查询所有未删除的工程编号
+     */
+    public List<String> selectExistProjectCodes();
 }
