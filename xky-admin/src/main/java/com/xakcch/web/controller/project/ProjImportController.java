@@ -13,6 +13,7 @@ import com.xakcch.project.domain.ProjImportLog;
 import com.xakcch.project.domain.vo.*;
 import com.xakcch.project.mapper.ProjImportLogMapper;
 import com.xakcch.project.service.IProjImportService;
+import com.xakcch.project.service.IProjContractImportService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -27,6 +28,7 @@ public class ProjImportController extends BaseController
     private static final Logger log = LoggerFactory.getLogger(ProjImportController.class);
 
     @Autowired private IProjImportService importService;
+    @Autowired private IProjContractImportService contractImportService;
     @Autowired private ProjImportLogMapper importLogMapper;
     private final ObjectMapper om = new ObjectMapper();
 
@@ -100,5 +102,35 @@ public class ProjImportController extends BaseController
             rows.size());
         ExcelUtil<ImportCommitResult.RowDetail> util = new ExcelUtil<>(ImportCommitResult.RowDetail.class);
         util.exportExcel(resp, rows, "跳过明细");
+    }
+
+    // ====================== 合同数据导入 ======================
+
+    /** 合同导入-步骤1：上传Excel解析预览（不落库） */
+    @PostMapping("/contract/preview")
+    public AjaxResult contractPreview(@RequestParam("file") MultipartFile file) throws Exception {
+        ContractImportPreviewResponse resp = contractImportService.previewContract(file);
+        return success(resp);
+    }
+
+    /** 合同导入-步骤2：提交确认后的数据落库 */
+    @PostMapping("/contract/commit")
+    public AjaxResult contractCommit(@RequestBody ImportCommitRequest req) {
+        ImportCommitResult r = contractImportService.commitContract(req);
+        log.info("[proj-contract-import] commit finished logId={} succ={} skip={} fail={} failedDetailsSize={} skippedDetailsSize={}",
+            r.getLogId(), r.getSuccessCount(), r.getSkippedCount(), r.getFailedCount(),
+            r.getFailedDetails() == null ? 0 : r.getFailedDetails().size(),
+            r.getSkippedDetails() == null ? 0 : r.getSkippedDetails().size());
+        return success(r);
+    }
+
+    /** 合同导入-下载预览问题行明细（type=duplicate|error） */
+    @GetMapping("/contract/downloadProblems")
+    public void contractDownloadProblems(@RequestParam String token, @RequestParam String type, HttpServletResponse resp) throws Exception {
+        List<ProblemRowDetail> rows = contractImportService.getContractProblems(token, type);
+        if (rows == null) rows = Collections.emptyList();
+        ExcelUtil<ProblemRowDetail> util = new ExcelUtil<>(ProblemRowDetail.class);
+        String sheetName = "duplicate".equals(type) ? "已存在明细" : "无法导入明细";
+        util.exportExcel(resp, rows, sheetName);
     }
 }
