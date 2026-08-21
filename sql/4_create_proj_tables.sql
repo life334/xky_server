@@ -179,7 +179,7 @@ COMMENT ON COLUMN proj_project.status IS '项目状态';
 COMMENT ON COLUMN proj_project.extra_data IS '动态字段数据（JSONB）';
 COMMENT ON COLUMN proj_project.related_project_id IS '关联定线项目ID（验线项目关联对应的定线项目）';
 COMMENT ON COLUMN proj_project.close_time IS '办结时间（状态流转为 closed 时写入，报表/补验线用）';
-COMMENT ON COLUMN proj_category.link_rule IS '关联规则：0=不关联，1=可选关联，2=必须关联';
+COMMENT ON COLUMN proj_project.link_rule IS '关联规则：0=不关联，1=可选关联，2=必须关联';
 COMMENT ON COLUMN proj_project.assign_date IS '安排日期（项目级）';
 COMMENT ON COLUMN proj_project.duration_require IS '工期要求（天）';
 COMMENT ON COLUMN proj_project.total_duration IS '总时长（天）';
@@ -323,7 +323,6 @@ CREATE INDEX idx_proj_workload_user ON proj_workload(user_id);
 CREATE INDEX idx_proj_workload_category ON proj_workload(category_id);
 CREATE INDEX idx_proj_workload_extra ON proj_workload USING GIN (extra_data);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_workload_unique ON proj_workload (project_id, user_id, category_id) WHERE del_flag = '0';
-CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_unique ON proj_payment (project_id, payment_type) WHERE del_flag = '0' AND payment_type <> 'refund';
 CREATE UNIQUE INDEX IF NOT EXISTS uk_workload_billing ON proj_workload (project_id, user_id, category_id, billing_type, billing_category) WHERE del_flag = '0';
 
 
@@ -373,6 +372,7 @@ COMMENT ON COLUMN proj_payment.remark IS '备注';
 CREATE INDEX idx_proj_payment_project ON proj_payment(project_id);
 CREATE INDEX idx_proj_payment_type ON proj_payment(payment_type);
 CREATE INDEX idx_proj_payment_extra ON proj_payment USING GIN (extra_data);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_unique ON proj_payment (project_id, payment_type) WHERE del_flag = '0' AND payment_type <> 'refund';
 
 
 -- ----------------------------
@@ -426,7 +426,7 @@ CREATE INDEX idx_proj_material_guarantor ON proj_material(guarantor_id);
 
 -- 资料流转记录表r
 DROP TABLE IF EXISTS proj_material_flow;
-CREATE TABLE proj_material_flow (r
+CREATE TABLE proj_material_flow (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     material_id BIGINT NOT NULL, flow_type VARCHAR(20) NOT NULL,
     user_id BIGINT, guarantor_id BIGINT,
@@ -777,15 +777,16 @@ COMMENT ON TABLE proj_report_template IS '报表导出-模板表';
 -- 2. 模板字段表（内置模板列映射 / 自定义模板勾选字段）
 -- -----------------------------------------------
 CREATE TABLE IF NOT EXISTS proj_report_field (
-                                                 id                BIGSERIAL PRIMARY KEY,
-                                                 template_id       BIGINT NOT NULL,                   -- 所属模板 ID
-                                                 field_key         VARCHAR(100) NOT NULL,             -- 字段键（如 project.client_unit / agg.receivedAmount / dynamic.xxx）
+    id                BIGSERIAL PRIMARY KEY,
+    template_id       BIGINT NOT NULL,                   -- 所属模板 ID
+    field_key         VARCHAR(100) NOT NULL,             -- 字段键（如 project.client_unit / agg.receivedAmount / dynamic.xxx）
     field_label       VARCHAR(100),                      -- 列名（表头显示名）
     field_source      VARCHAR(20)  DEFAULT 'subject',    -- subject 主体 / join 关联带出 / agg 聚合计算 / dynamic 动态字段
     join_table        VARCHAR(50),                       -- 关联表（join 类型使用）
     sort_order        INT          DEFAULT 0,            -- 排序
     width             INT          DEFAULT 120,          -- 列宽（字符数）
     column_index      INT,                               -- 内置模板中对应列序号（1-based，仅内置模板使用）
+    header_group      VARCHAR(100),                      -- 表头分组
     del_flag          CHAR(1)      DEFAULT '0'
     );
 CREATE INDEX IF NOT EXISTS idx_report_field_tpl ON proj_report_field(template_id);

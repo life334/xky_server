@@ -91,17 +91,6 @@ FROM generate_series('2026-01-01'::date, '2026-12-31'::date, '1 day') AS d
 WHERE EXTRACT(ISODOW FROM d) IN (6, 7)
 ON CONFLICT (day) DO NOTHING;
 
--- ----------------------------
--- 3、菜单：系统管理 → 工作日历
--- ----------------------------
-INSERT INTO sys_menu VALUES (1200, '工作日历', 1, 10, 'workday', 'system/workday/index', '', 'Workday', 1, 0, 'C', '0', '0', 'system:workday:list', 'date', 'admin', now(), '', NULL, '工作日历菜单（节假日/调休维护）');
-INSERT INTO sys_menu VALUES (1201, '工作日历查询', 1200, 1, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:query', '#', 'admin', now(), '', NULL, '');
-INSERT INTO sys_menu VALUES (1202, '工作日历新增', 1200, 2, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:add', '#', 'admin', now(), '', NULL, '');
-INSERT INTO sys_menu VALUES (1203, '工作日历修改', 1200, 3, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:edit', '#', 'admin', now(), '', NULL, '');
-INSERT INTO sys_menu VALUES (1204, '工作日历删除', 1200, 4, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:remove', '#', 'admin', now(), '', NULL, '');
-INSERT INTO sys_menu VALUES (1205, '工作日历生成', 1200, 5, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:generate', '#', 'admin', now(), '', NULL, '');
-INSERT INTO sys_menu VALUES (1206, '工作日历批量录入', 1200, 6, '', '', '', '', 1, 0, 'F', '0', '0', 'system:workday:batch', '#', 'admin', now(), '', NULL, '');
-
 -- ============================================================
 -- 汇总：proj_workday_calendar 表 + 2026 年 39 条节假日/调休记录
 --       + 全年周末基线（约 104 条）+ 菜单 7 条
