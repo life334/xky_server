@@ -17,6 +17,7 @@ CREATE TABLE proj_category (
     external_price      DECIMAL(12,2)   DEFAULT NULL,
     sort_order          INT             DEFAULT 0,
     status              CHAR(1)         DEFAULT '0',
+    link_rule           INT             DEFAULT 0,
     del_flag            CHAR(1)         DEFAULT '0',
     create_by           VARCHAR(64)     DEFAULT '',
     create_time         TIMESTAMP,
@@ -36,6 +37,7 @@ COMMENT ON COLUMN proj_category.sort_order IS '排序号';
 COMMENT ON COLUMN proj_category.status IS '状态（0启用 1停用）';
 COMMENT ON COLUMN proj_category.del_flag IS '删除标志（0正常 2删除）';
 COMMENT ON COLUMN proj_category.remark IS '备注';
+COMMENT ON COLUMN proj_category.link_rule IS '关联规则（0=不关联，1=可选关联，2=必须关联）';
 
 CREATE INDEX idx_proj_category_parent ON proj_category(parent_id);
 CREATE INDEX idx_proj_category_level ON proj_category(level);
