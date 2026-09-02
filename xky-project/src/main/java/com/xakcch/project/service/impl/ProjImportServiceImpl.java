@@ -8,11 +8,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.xakcch.common.core.domain.entity.SysUser;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.ss.usermodel.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -74,7 +72,7 @@ public class ProjImportServiceImpl implements IProjImportService
         }
         return _txRequiresNew;
     }
-    @Autowired private com.xakcch.system.mapper.SysUserMapper userMapper;
+    @Autowired private com.xakcch.project.service.IProjProjectService projectService;
 
     private ObjectMapper om = new ObjectMapper();
 
@@ -91,7 +89,6 @@ public class ProjImportServiceImpl implements IProjImportService
         List<ImportPreviewRow> readyRows = new ArrayList<>();
         List<ImportPreviewRow> problemRows = new ArrayList<>();
         for (ImportPreviewRow r : fullResp.getRows()) {
-            if (r.isDuplicate()) { problemRows.add(r); continue; }
             if (r.getErrors() != null && !r.getErrors().isEmpty()) { problemRows.add(r); continue; }
             if (StringUtils.isBlank(r.getProjectCode())) {
                 r.getErrors().add("工程编号为空");
@@ -102,35 +99,28 @@ public class ProjImportServiceImpl implements IProjImportService
                 problemRows.add(r); continue;
             }
             boolean missCat = r.getProjectCategoryId() == null;
-            boolean missLeader = StringUtils.isNotBlank(r.getLeaderName()) && r.getLeaderId() == null;
+            // 负责人未匹配不再阻断：落库时自动创建负责人档案（影子用户）
             boolean missBill = r.getWorkloads().stream().anyMatch(w -> w.getBillingId() == null);
             boolean hasWarn = (r.getWarnings() != null && !r.getWarnings().isEmpty())
                 || r.getWorkloads().stream().anyMatch(w -> w.getWarning() != null && !w.getWarning().isEmpty());
-            if (missCat || missLeader || missBill || hasWarn) {
-                problemRows.add(r); continue;
-            }
-            if (r.getWorkloads().isEmpty()) {
-                r.getWarnings().add("无工作量数据");
+            if (missCat || missBill || hasWarn) {
                 problemRows.add(r); continue;
             }
             readyRows.add(r);
         }
         fullResp.setTotalRows(fullResp.getRows().size());
         // 统计问题行分类
-        int dupCnt = 0, errCnt = 0, warnCnt = 0;
+        int errCnt = 0, warnCnt = 0;
         for (ImportPreviewRow r : problemRows) {
-            if (r.isDuplicate()) dupCnt++;
-            else if (r.getErrors() != null && !r.getErrors().isEmpty()) errCnt++;
+            if (r.getErrors() != null && !r.getErrors().isEmpty()) errCnt++;
             else warnCnt++;
         }
-        fullResp.setDuplicateCount(dupCnt);
         fullResp.setErrorCount(errCnt);
         fullResp.setWarningCount(warnCnt);
         fullResp.setReadyCount(readyRows.size());
         // 问题摘要
         ImportPreviewResponse.ProblemSummary ps = new ImportPreviewResponse.ProblemSummary();
         if (warnCnt > 0) ps.setWarningDesc(warnCnt + " 行数据存在未匹配字段（项目类别/负责人/计费类别等），请查看下方明细，修正Excel后重新上传");
-        if (dupCnt > 0) ps.setDuplicateDesc(dupCnt + " 行的工程编号已存在于系统中，重复导入将自动跳过");
         if (errCnt > 0) ps.setErrorDesc(errCnt + " 行缺少关键字段，无法导入");
         fullResp.setProblemSummary(ps);
         // 生成token，缓存全量数据
@@ -143,12 +133,10 @@ public class ProjImportServiceImpl implements IProjImportService
         lightResp.setTotalRows(fullResp.getTotalRows());
         lightResp.setReadyCount(fullResp.getReadyCount());
         lightResp.setWarningCount(warnCnt);
-        lightResp.setDuplicateCount(dupCnt);
         lightResp.setErrorCount(errCnt);
         lightResp.setProblemSummary(ps);
         lightResp.getCategoryOptions().addAll(fullResp.getCategoryOptions());
         lightResp.getBillingOptions().addAll(fullResp.getBillingOptions());
-        lightResp.getUserOptions().addAll(fullResp.getUserOptions());
         lightResp.getRows().addAll(readyRows);
         // 问题行明细（供前端页面展示）
         List<ProblemRowDetail> pDetails = new ArrayList<>();
@@ -162,11 +150,7 @@ public class ProjImportServiceImpl implements IProjImportService
         List<String> problems = new ArrayList<>();
         List<String> suggestions = new ArrayList<>();
         String probType;
-        if (r.isDuplicate()) {
-            probType = "已存在";
-            problems.add("工程编号已存在于系统");
-            suggestions.add("如需更新请在系统中修改");
-        } else if (r.getErrors() != null && !r.getErrors().isEmpty()) {
+        if (r.getErrors() != null && !r.getErrors().isEmpty()) {
             probType = "无法导入";
             problems.addAll(r.getErrors());
             suggestions.add("请补全Excel中缺失的关键字段");
@@ -177,10 +161,6 @@ public class ProjImportServiceImpl implements IProjImportService
                     ? "委托任务「" + r.getEngineeringProject() + "」无法匹配到项目类别"
                     : "委托任务为空，无法匹配项目类别");
                 suggestions.add("请在系统中确认项目类别名称，或修改Excel中的委托任务名称");
-            }
-            if (StringUtils.isNotBlank(r.getLeaderName()) && r.getLeaderId() == null) {
-                problems.add("负责人「" + r.getLeaderName() + "」无法匹配到系统用户");
-                suggestions.add("请在系统中确认用户昵称，或修改Excel中的负责人姓名");
             }
             for (ImportPreviewWorkload w : r.getWorkloads()) {
                 if (w.getBillingId() == null) {
@@ -195,10 +175,6 @@ public class ProjImportServiceImpl implements IProjImportService
                 for (String warn : r.getWarnings()) {
                     if (!problems.contains(warn)) problems.add(warn);
                 }
-            }
-            if (r.getWorkloads().isEmpty()) {
-                problems.add("无工作量数据");
-                suggestions.add("请在Excel中补充工作量列");
             }
         }
         ProblemRowDetail d = new ProblemRowDetail();
@@ -222,16 +198,14 @@ public class ProjImportServiceImpl implements IProjImportService
         List<ProblemRowDetail> all = new ArrayList<>();
         for (ImportPreviewRow r : cached.getRows()) {
             boolean isTarget = false;
-            if ("duplicate".equals(type) && r.isDuplicate()) isTarget = true;
-            else if ("error".equals(type) && r.getErrors() != null && !r.getErrors().isEmpty()) isTarget = true;
-            else if ("warning".equals(type) && !r.isDuplicate()
+            if ("error".equals(type) && r.getErrors() != null && !r.getErrors().isEmpty()) isTarget = true;
+            else if ("warning".equals(type)
                 && (r.getErrors() == null || r.getErrors().isEmpty())
                 && (r.getProjectCategoryId() == null
                     || (StringUtils.isNotBlank(r.getLeaderName()) && r.getLeaderId() == null)
                     || r.getWorkloads().stream().anyMatch(w -> w.getBillingId() == null)
                     || (r.getWarnings() != null && !r.getWarnings().isEmpty())
                     || r.getWorkloads().stream().anyMatch(w -> w.getWarning() != null && !w.getWarning().isEmpty())
-                    || r.getWorkloads().isEmpty()
                     || StringUtils.isBlank(r.getEngineeringProject()))) isTarget = true;
             if (!isTarget) continue;
             all.add(buildProblemDetail(r));
@@ -323,14 +297,6 @@ public class ProjImportServiceImpl implements IProjImportService
             bo.setUnitPrice(b.getUnitPrice()); bo.setPriceUnit(b.getPriceUnit()); bo.setMinQuantity(b.getMinQuantity());
             resp.getBillingOptions().add(bo);
         }
-        SysUser uq = new SysUser();
-        uq.setStatus("0");
-        List<SysUser> us = userMapper.selectUserList(uq);
-        for (SysUser u : us) {
-            ImportPreviewResponse.UserOption uo = new ImportPreviewResponse.UserOption();
-            uo.setUserId(u.getUserId()); uo.setNickName(u.getNickName()); uo.setUserName(u.getUserName());
-            resp.getUserOptions().add(uo);
-        }
     }
 
     // ====================== 解析 Sheet1 ======================
@@ -352,7 +318,6 @@ public class ProjImportServiceImpl implements IProjImportService
         List<Object> headerL1 = rows.get(headerRowIdx);
         Map<String, Integer> colMap = new HashMap<>();
         Map<Integer, String> billingCol = new LinkedHashMap<>();
-        Map<Integer, String> outputCol = new LinkedHashMap<>();
         List<Object> headerL2 = headerRowIdx > 0 ? rows.get(headerRowIdx - 1) : null;
         for (int c = 0; c < headerL1.size(); c++) {
             Object v = headerL1.get(c);
@@ -362,7 +327,6 @@ public class ProjImportServiceImpl implements IProjImportService
             colMap.put(s, c);
         }
         // 工作量列：只从顶层表头含"工作量"的组中找（管线定验线实测工作量/管线图工作量/其它工作量）
-        // 产值列：从顶层表头含"内部产值"/"外部产值"的组中找
         if (headerL2 != null) {
             for (int c = 0; c < headerL2.size(); c++) {
                 if (headerL2.get(c) == null) continue;
@@ -373,10 +337,6 @@ public class ProjImportServiceImpl implements IProjImportService
                 if (top.contains("工作量") && !sub.equals("秦华外部")) {
                     // 工作量列：子表头含(内部)的是内部工作量，否则是外部工作量
                     billingCol.put(c, sub);
-                } else if (top.contains("内部产值")) {
-                    outputCol.put(c, sub); // 内部产值金额列
-                } else if (top.contains("外部产值")) {
-                    outputCol.put(c, sub); // 外部产值金额列
                 }
             }
         }
@@ -386,12 +346,33 @@ public class ProjImportServiceImpl implements IProjImportService
         int colLocation    = firstMatch(colMap, "委托地点|工程地点");
         int colLeader      = firstMatch(colMap, "项目负责人|负责人");
         int colFinish      = firstMatch(colMap, "验收日期|办结日期");
-        int colInternalTot = firstMatch(colMap, "内部产值.*合计|内部产值合计|内部合计");
-        int colExternalTot = firstMatch(colMap, "外部产值.*合计|外部产值合计|外部合计");
+        // 内部产值合计/外部产值合计：产值只读合计列，不再读 J~N、P~S 细分列。
+        // 一级表头(headerL2)中「内部产值」「外部产值」组之后的第一个「合计」列即对应合计列（O/T）。
+        int colInternalTot = -1;
+        int colExternalTot = -1;
+        if (headerL2 != null) {
+            int internalGroupStart = -1, externalGroupStart = -1;
+            for (int c = 0; c < headerL2.size(); c++) {
+                String top = headerL2.get(c) == null ? "" : headerL2.get(c).toString().trim();
+                if (top.contains("内部产值")) internalGroupStart = c;
+                else if (top.contains("外部产值")) externalGroupStart = c;
+            }
+            if (internalGroupStart >= 0) {
+                for (int c = internalGroupStart + 1; c < headerL2.size(); c++) {
+                    String top = headerL2.get(c) == null ? "" : headerL2.get(c).toString().trim();
+                    if (top.contains("合计")) { colInternalTot = c; break; }
+                }
+            }
+            if (externalGroupStart >= 0) {
+                for (int c = externalGroupStart + 1; c < headerL2.size(); c++) {
+                    String top = headerL2.get(c) == null ? "" : headerL2.get(c).toString().trim();
+                    if (top.contains("合计")) { colExternalTot = c; break; }
+                }
+            }
+        }
         int colPayTime     = firstMatch(colMap, "到账时间|付款时间");
         int colMaterial    = firstMatch(colMap, "资料领取");
         
-        Set<String> existCodes = new HashSet<>(projectMapper.selectExistProjectCodes());
         for (int r = headerRowIdx + 1; r < rows.size(); r++) {
             List<Object> row = rows.get(r);
             if (row == null || row.isEmpty()) continue;
@@ -410,10 +391,6 @@ public class ProjImportServiceImpl implements IProjImportService
                 mat = pr.getFinishDate();
             }
             pr.setMaterialSubmitTime(mat);
-            if (existCodes.contains(pr.getProjectCode())) {
-                pr.setDuplicate(true);
-                pr.getWarnings().add("工程编号已存在，导入时将跳过");
-            }
             if (StringUtils.isNotBlank(pr.getEngineeringProject())) {
                 FuzzyResult<ProjCategory> fr = fuzzyMatchCategory(pr.getEngineeringProject(), resp.getCategoryOptions());
                 if (fr != null && fr.score >= 0.5) {
@@ -429,14 +406,12 @@ public class ProjImportServiceImpl implements IProjImportService
                 pr.getWarnings().add("委托任务为空，无法匹配项目类别");
             }
             if (StringUtils.isNotBlank(pr.getLeaderName())) {
-                FuzzyResult2 fr = fuzzyMatchUser(pr.getLeaderName(), resp.getUserOptions());
-                if (fr != null && fr.score >= 0.5) {
-                    pr.setLeaderId(fr.userId);
-                    pr.setLeaderScore(fr.score);
-                } else if (fr != null) {
-                    pr.getWarnings().add("负责人匹配度" + String.format("%.2f", fr.score) + "，请手动选择");
-                } else {
-                    pr.getWarnings().add("未匹配到负责人，请手动选择");
+                // 昵称精确匹配（含离职/影子用户）；匹配不到则预览阶段静默跳过，落库时自动建档
+                com.xakcch.common.core.domain.entity.SysUser exact =
+                        leaderMapper.selectUserByNickName(pr.getLeaderName().trim());
+                if (exact != null) {
+                    pr.setLeaderId(exact.getUserId());
+                    pr.setLeaderScore(1.0);
                 }
             }
             // 解析工作量（billingCol: 顶层"工作量"组的列）
@@ -448,12 +423,12 @@ public class ProjImportServiceImpl implements IProjImportService
                 ImportPreviewWorkload w = new ImportPreviewWorkload();
                 w.setBillingCategoryRaw(rawHeader);
                 w.setWorkload(wl);
-                // 子表头含(内部)的是内部工作量，否则是外部工作量
-                boolean isInt = rawHeader.contains("(内部)") || rawHeader.contains("（内部）");
+                // 内/外判定：优先显式(内部)/(外部)；其次"水准"/"管线"特殊规则（包含即触发）
+                boolean isInt = isInternalWorkload(rawHeader, pr.getEngineeringProject());
                 w.setBillingType(isInt ? "internal" : "external");
-                // 提取计费类别名：去掉(内部)/(外部)及空白
-                String billingCatName = rawHeader.replaceAll("[（(](内部|外部)[）)]", "").trim();
-                FuzzyBilling fb = fuzzyMatchBilling(billingCatName, w.getBillingType(), resp.getBillingOptions(), pr.getProjectCategoryId());
+                // 提取计费类别名：去掉(内部)/(外部)/(内)/(外)及空白
+                String billingCatName = rawHeader.replaceAll("[（(](内部|外部|内|外)[）)]", "").trim();
+                FuzzyBilling fb = fuzzyMatchBilling(billingCatName, w.getBillingType(), resp.getBillingOptions(), resp.getCategoryOptions(), pr.getProjectCategoryId());
                 if (fb != null && fb.score >= 0.5) {
                     w.setBillingId(fb.billingId);
                     w.setBillingCategory(fb.billingCategory);
@@ -461,6 +436,7 @@ public class ProjImportServiceImpl implements IProjImportService
                     w.setScore(fb.score);
                     w.setPriceUnit(fb.priceUnit);
                     w.setMinQuantity(fb.minQuantity);
+                    w.setUnitPrice(fb.unitPrice);
                 } else if (fb != null) {
                     w.setWarning("计费类别「" + billingCatName + "」匹配度" + String.format("%.2f", fb.score) + "，请手动选择");
                 } else {
@@ -468,63 +444,122 @@ public class ProjImportServiceImpl implements IProjImportService
                 }
                 pr.getWorkloads().add(w);
             }
-            // 解析产值金额（outputCol: 顶层"内部产值"/"外部产值"组的列）
-            BigDecimal internalSum = BigDecimal.ZERO;
-            BigDecimal externalSum = BigDecimal.ZERO;
-            for (Map.Entry<Integer, String> me : outputCol.entrySet()) {
-                BigDecimal amt = numCell(row, me.getKey());
-                if (amt == null || amt.signum() == 0) continue;
-                // 根据顶层表头判断内/外
-                String topHdr = "";
-                if (headerL2 != null && me.getKey() < headerL2.size() && headerL2.get(me.getKey()) != null) {
-                    topHdr = headerL2.get(me.getKey()).toString().trim();
-                }
-                if (topHdr.contains("内部")) internalSum = internalSum.add(amt);
-                else if (topHdr.contains("外部")) externalSum = externalSum.add(amt);
-            }
-            if (internalSum.signum() > 0) pr.setInternalTotalFromExcel(internalSum);
-            if (externalSum.signum() > 0) pr.setExternalTotalFromExcel(externalSum);
+            // 产值只读合计：内部产值合计(O)、外部产值合计(T)
+            BigDecimal internalTotal = numCell(row, colInternalTot);
+            BigDecimal externalTotal = numCell(row, colExternalTot);
+            if (internalTotal != null && internalTotal.signum() > 0) pr.setInternalTotalFromExcel(internalTotal);
+            if (externalTotal != null && externalTotal.signum() > 0) pr.setExternalTotalFromExcel(externalTotal);
             resp.getRows().add(pr);
         }
     }
 
     private void recalcPrices(ImportPreviewResponse resp) {
         for (ImportPreviewRow row : resp.getRows()) {
-            if (row.isDuplicate()) continue;
             List<ImportPreviewWorkload> internals = row.getWorkloads().stream().filter(w-> "internal".equals(w.getBillingType())).collect(Collectors.toList());
             List<ImportPreviewWorkload> externals = row.getWorkloads().stream().filter(w-> "external".equals(w.getBillingType())).collect(Collectors.toList());
             calcGroup(internals, row.getInternalTotalFromExcel(), true, row);
             calcGroup(externals, row.getExternalTotalFromExcel(), false, row);
         }
     }
-    private void calcGroup(List<ImportPreviewWorkload> list, BigDecimal totalFromExcel, boolean isInternal, ImportPreviewRow row) {
-        if (list.isEmpty() || totalFromExcel == null || totalFromExcel.signum() == 0) {
-            if (isInternal) row.setInternalTotalCalced(BigDecimal.ZERO); else row.setExternalTotalCalced(BigDecimal.ZERO);
-            return;
+    private void calcGroup(List<ImportPreviewWorkload> list, BigDecimal total, boolean isInternal, ImportPreviewRow row) {
+        final BigDecimal zero = BigDecimal.ZERO;
+        if (isInternal) row.setInternalTotalCalced(zero); else row.setExternalTotalCalced(zero);
+        if (list.isEmpty() || total == null || total.signum() == 0) return;
+
+        // 只保留工作量 > 0 的项（工作量为 0 的项产值直接为 0，不参与分摊；不考虑起步量）
+        List<ImportPreviewWorkload> items = new ArrayList<>();
+        for (ImportPreviewWorkload w : list) {
+            if (w.getWorkload() != null && w.getWorkload().signum() > 0) items.add(w);
         }
-        BigDecimal wlSum = list.stream().map(w -> w.getWorkload() == null ? BigDecimal.ZERO : w.getWorkload())
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (wlSum.signum() == 0) return;
+        if (items.isEmpty()) return;
+
+        // 分组：有配置单价 vs 无配置单价（匹配到小类，unitPrice 为 null）
+        List<ImportPreviewWorkload> priced = new ArrayList<>();
+        List<ImportPreviewWorkload> unpriced = new ArrayList<>();
+        for (ImportPreviewWorkload w : items) {
+            if (w.getUnitPrice() != null && w.getUnitPrice().signum() > 0) priced.add(w);
+            else unpriced.add(w);
+        }
+
+        if (unpriced.isEmpty()) {
+            // 全部有单价：等比缩放 k = 合计 ÷ Σ(配置单价×工作量)，单价_i = 配置单价_i × k
+            BigDecimal baseSum = sumBase(priced);
+            if (baseSum.signum() > 0) {
+                final BigDecimal k = total.divide(baseSum, 6, RoundingMode.HALF_UP);
+                assignOutputs(priced, total, w -> w.getUnitPrice().multiply(k));
+            }
+        } else if (priced.isEmpty()) {
+            // 全部无单价：按工作量均分，单价 = 合计 ÷ Σ工作量
+            BigDecimal wlSum = sumWorkload(items);
+            if (wlSum.signum() > 0) {
+                final BigDecimal k = total.divide(wlSum, 6, RoundingMode.HALF_UP);
+                assignOutputs(items, total, w -> k);
+            }
+        } else {
+            // 混合：有单价项按配置单价原价，无单价项瓜分剩余 = 合计 - Σ(有单价项原价产值)
+            BigDecimal baseSum = sumBase(priced);
+            BigDecimal remain = total.subtract(baseSum);
+            if (remain.signum() > 0) {
+                for (ImportPreviewWorkload w : priced) {
+                    w.setOutput(w.getUnitPrice().multiply(w.getWorkload()).setScale(2, RoundingMode.HALF_UP));
+                }
+                BigDecimal wlSum = sumWorkload(unpriced);
+                if (wlSum.signum() > 0) {
+                    final BigDecimal k = remain.divide(wlSum, 6, RoundingMode.HALF_UP);
+                    assignOutputs(unpriced, remain, w -> k);
+                }
+            } else {
+                // 有单价项原价已超总额：整体等比缩放拉回，无单价项记 0
+                final BigDecimal k = total.divide(baseSum, 6, RoundingMode.HALF_UP);
+                assignOutputs(priced, total, w -> w.getUnitPrice().multiply(k));
+                for (ImportPreviewWorkload w : unpriced) { w.setUnitPrice(zero); w.setOutput(zero); }
+            }
+        }
+
+        BigDecimal sum = zero;
+        for (ImportPreviewWorkload w : items) {
+            if (w.getOutput() != null) sum = sum.add(w.getOutput());
+        }
+        if (isInternal) row.setInternalTotalCalced(sum); else row.setExternalTotalCalced(sum);
+    }
+
+    /** 末项尾差兜底：按 unitPriceFn 算各单价，产值=单价×工作量，末项产值=合计-前面之和 */
+    private void assignOutputs(List<ImportPreviewWorkload> items, BigDecimal total,
+                               java.util.function.Function<ImportPreviewWorkload, BigDecimal> unitPriceFn) {
         BigDecimal sumOut = BigDecimal.ZERO;
-        for (int i = 0; i < list.size(); i++) {
-            ImportPreviewWorkload w = list.get(i);
-            BigDecimal wl = w.getWorkload() == null ? BigDecimal.ZERO : w.getWorkload();
-            BigDecimal unitPrice = totalFromExcel.multiply(wl).divide(wlSum, 4, RoundingMode.HALF_UP);
-            w.setUnitPrice(unitPrice);
-            if (i < list.size() - 1) {
-                BigDecimal out = unitPrice.multiply(wl).setScale(2, RoundingMode.HALF_UP);
+        for (int i = 0; i < items.size(); i++) {
+            ImportPreviewWorkload w = items.get(i);
+            w.setUnitPrice(unitPriceFn.apply(w));
+            if (i < items.size() - 1) {
+                BigDecimal out = w.getUnitPrice().multiply(w.getWorkload()).setScale(2, RoundingMode.HALF_UP);
                 w.setOutput(out);
                 sumOut = sumOut.add(out);
             }
         }
-        ImportPreviewWorkload last = list.get(list.size() - 1);
-        BigDecimal tail = totalFromExcel.subtract(sumOut).setScale(2, RoundingMode.HALF_UP);
+        ImportPreviewWorkload last = items.get(items.size() - 1);
+        BigDecimal tail = total.subtract(sumOut).setScale(2, RoundingMode.HALF_UP);
         last.setOutput(tail);
-        BigDecimal wl = last.getWorkload() == null ? BigDecimal.ZERO : last.getWorkload();
-        if (wl.signum() > 0) {
-            last.setUnitPrice(tail.divide(wl, 4, RoundingMode.HALF_UP));
+        if (last.getWorkload().signum() != 0) {
+            last.setUnitPrice(tail.divide(last.getWorkload(), 4, RoundingMode.HALF_UP));
         }
-        if (isInternal) row.setInternalTotalCalced(sumOut.add(tail)); else row.setExternalTotalCalced(sumOut.add(tail));
+    }
+
+    private BigDecimal sumBase(List<ImportPreviewWorkload> list) {
+        BigDecimal sum = BigDecimal.ZERO;
+        for (ImportPreviewWorkload w : list) {
+            if (w.getUnitPrice() != null && w.getWorkload() != null) {
+                sum = sum.add(w.getUnitPrice().multiply(w.getWorkload()));
+            }
+        }
+        return sum;
+    }
+
+    private BigDecimal sumWorkload(List<ImportPreviewWorkload> list) {
+        BigDecimal sum = BigDecimal.ZERO;
+        for (ImportPreviewWorkload w : list) {
+            if (w.getWorkload() != null) sum = sum.add(w.getWorkload());
+        }
+        return sum;
     }
 
     private void parseSheet2AndMerge(Map<String, List<List<Object>>> book, ImportPreviewResponse resp) {
@@ -535,92 +570,84 @@ public class ProjImportServiceImpl implements IProjImportService
             rows = e.getValue(); break;
         }
         if (rows == null || rows.isEmpty()) return;
-        int headerRowIdx = -1;
+
+        // 找一级表头行（含"工程编号"）
+        int l1Idx = -1;
         for (int i = 0; i < Math.min(rows.size(), 5); i++) {
             List<Object> r = rows.get(i);
-            for (Object o : r) if (o != null && o.toString().contains("工程编号")) { headerRowIdx = i; break; }
-            if (headerRowIdx >= 0) break;
+            for (Object o : r) if (o != null && o.toString().contains("工程编号")) { l1Idx = i; break; }
+            if (l1Idx >= 0) break;
         }
-        if (headerRowIdx < 0) return;
-        List<Object> h = rows.get(headerRowIdx);
-        Map<String,Integer> colMap = new HashMap<>();
-        for (int c = 0; c < h.size(); c++) {
-            Object v = h.get(c); if (v == null) continue;
-            colMap.put(v.toString().trim(), c);
+        if (l1Idx < 0) return;
+
+        List<Object> l1 = rows.get(l1Idx);                                                   // 一级表头：预付款 / 尾款支付 / 工程编号 / 到账说明 / 备注
+        List<Object> l2 = (l1Idx + 1 < rows.size()) ? rows.get(l1Idx + 1) : null;            // 二级表头：金额 / 支付时间及方式
+
+        int colProjectCode = findCol(l1, "工程编号", 0, -1);
+
+        // 一级表头定位「预付款」「尾款支付」分组起始列
+        int prepayGroup = findCol(l1, "预付款", 0, -1);
+        int finalGroup  = findCol(l1, "尾款", 0, -1);
+
+        int colPrepayAmt = -1, colPrepayTime = -1;
+        int colFinalAmt = -1, colFinalTime = -1;
+        if (l2 != null) {
+            if (prepayGroup >= 0) {
+                colPrepayAmt  = findCol(l2, "金额", prepayGroup, finalGroup < 0 ? -1 : finalGroup);
+                colPrepayTime = findCol(l2, "时间", prepayGroup, finalGroup < 0 ? -1 : finalGroup);
+            }
+            if (finalGroup >= 0) {
+                colFinalAmt  = findCol(l2, "金额", finalGroup, -1);
+                colFinalTime = findCol(l2, "时间", finalGroup, -1);
+            }
         }
-        int colProjectCode = firstMatch(colMap, "工程编号");
-        int colPrepay      = firstMatch(colMap, "预付款金额|预付款");
-        int colPrepayTime  = firstMatch(colMap, "预付款.*时间|预付时间");
-        int colPrepayWay   = firstMatch(colMap, "预付款.*方式|支付方式预付款");
-        int colFinalAmt    = firstMatch(colMap, "尾款.*金额|尾款支付金额|尾款");
-        int colFinalTime   = firstMatch(colMap, "尾款.*时间|尾款支付时间");
-        int colFinalWay    = firstMatch(colMap, "尾款.*方式|尾款支付方式");
-        int colRemark      = firstMatch(colMap, "备注");
+
+        // 备注字段 = 到账说明 + 备注 两列拼接
+        int colExplain = findCol(l1, "到账说明", 0, -1);
+        int colRemark  = findCol(l1, "备注", 0, -1);
+
         Map<String, ImportPreviewRow> codeMap = resp.getRows().stream()
             .collect(Collectors.toMap(ImportPreviewRow::getProjectCode, x -> x, (a,b) -> a));
-        for (int r = headerRowIdx + 1; r < rows.size(); r++) {
+
+        int dataStart = l2 != null ? l1Idx + 2 : l1Idx + 1;
+        for (int r = dataStart; r < rows.size(); r++) {
             List<Object> row = rows.get(r);
             String code = strCell(row, colProjectCode);
             if (StringUtils.isBlank(code)) continue;
             ImportPreviewRow pr = codeMap.get(code.trim());
             if (pr == null) continue;
-            BigDecimal preAmt = numCell(row, colPrepay);
+
+            BigDecimal preAmt = numCell(row, colPrepayAmt);
             if (preAmt != null && preAmt.signum() > 0) {
                 ImportPreviewPayment p = new ImportPreviewPayment();
-                p.setPaymentType("预付款");
+                p.setPaymentType("advance");
                 p.setAmount(preAmt);
                 p.setPayTime(dateCell(row, colPrepayTime));
-                p.setPayMethod(strCell(row, colPrepayWay));
                 p.setSource("sheet2预付款");
+                p.setRemark(buildRemark(row, colExplain, colRemark));
                 pr.getPayments().add(p);
             }
             BigDecimal finalAmt = numCell(row, colFinalAmt);
-            Date finalTime = dateCell(row, colFinalTime);
-            String finalWay = strCell(row, colFinalWay);
-            String remark = strCell(row, colRemark);
-            if ((finalTime == null || finalWay == null || finalAmt == null) && StringUtils.isNotBlank(remark)) {
-                ParsedRemark prm = parseRemark(remark);
-                if (finalTime == null && prm.month != null) {
-                    Calendar cal = Calendar.getInstance();
-                    cal.clear();
-                    cal.set(prm.year != null ? prm.year : 2024, prm.month - 1, 1);
-                    finalTime = cal.getTime();
-                }
-                if (finalAmt == null && prm.amount != null) finalAmt = prm.amount;
-                if (finalWay == null && prm.method != null) finalWay = prm.method;
-            }
             if (finalAmt != null && finalAmt.signum() > 0) {
                 ImportPreviewPayment p = new ImportPreviewPayment();
-                p.setPaymentType("尾款");
+                p.setPaymentType("final");
                 p.setAmount(finalAmt);
-                p.setPayTime(finalTime);
-                p.setPayMethod(finalWay);
-                p.setSource("sheet2尾款" + (finalTime == null && StringUtils.isNotBlank(remark) ? "(备注解析)" : ""));
+                p.setPayTime(dateCell(row, colFinalTime));
+                p.setSource("sheet2尾款");
+                p.setRemark(buildRemark(row, colExplain, colRemark));
                 pr.getPayments().add(p);
             }
         }
     }
 
-    static class ParsedRemark { Integer month, year; BigDecimal amount; String method; }
-    private ParsedRemark parseRemark(String rmk) {
-        ParsedRemark prm = new ParsedRemark();
-        List<String> nums = new ArrayList<>();
-        Matcher m = Pattern.compile("(\\d+)(?:\\.(\\d+))?").matcher(rmk);
-        while (m.find()) nums.add(m.group());
-        for (String n : nums) {
-            boolean isFloat = n.contains(".");
-            if (isFloat) {
-                prm.amount = new BigDecimal(n).multiply(new BigDecimal("10000"));
-            } else {
-                int iv = Integer.parseInt(n);
-                if (iv >= 1 && iv <= 12 && prm.month == null) prm.month = iv;
-                else if (iv >= 1900 && iv <= 2100) prm.year = iv;
-            }
-        }
-        if (rmk.contains("转账")) prm.method = "转账";
-        else if (rmk.contains("现金")) prm.method = "现金";
-        else if (rmk.contains("电汇")) prm.method = "电汇";
-        return prm;
+    /** 备注 = 到账说明 + 备注 拼接（空值/日期跳过，分号分隔） */
+    private String buildRemark(List<Object> row, int colExplain, int colRemark) {
+        String explain = textOf(row, colExplain);
+        String remark = textOf(row, colRemark);
+        if (explain == null && remark == null) return null;
+        if (explain == null) return remark;
+        if (remark == null) return explain;
+        return explain + "；" + remark;
     }
 
     // ====================== 提交导入 ======================
@@ -651,16 +678,9 @@ public class ProjImportServiceImpl implements IProjImportService
         // 1. log insert 独立事务（避免被后续错误牵连）
         runInNewTx(() -> importLogMapper.insertImportLog(log));
         try {
+            // 按工程编号分组（保持 Excel 顺序）：同编号多条记录 = 同一父项目的多个子项
+            LinkedHashMap<String, List<ImportPreviewRow>> groups = new LinkedHashMap<>();
             for (ImportPreviewRow row : rows) {
-                // 已存在 / 错误判定（不涉及DB写入，不在新事务里也行）
-                if (row.isDuplicate()) {
-                    counter[1]++;
-                    ImportCommitResult.RowDetail d = new ImportCommitResult.RowDetail();
-                    d.setExcelRow(row.getExcelRow()); d.setProjectCode(row.getProjectCode());
-                    d.setReason("工程编号已存在");
-                    result.getSkippedDetails().add(d);
-                    continue;
-                }
                 if (row.getErrors() != null && !row.getErrors().isEmpty()) {
                     counter[2]++;
                     ImportCommitResult.RowDetail d = new ImportCommitResult.RowDetail();
@@ -677,26 +697,32 @@ public class ProjImportServiceImpl implements IProjImportService
                     result.getFailedDetails().add(d);
                     continue;
                 }
-                // 2. 单行写入：REQUIRES_NEW，任何DB错误只回滚该行
+                groups.computeIfAbsent(row.getProjectCode().trim(), k -> new ArrayList<>()).add(row);
+            }
+            for (Map.Entry<String, List<ImportPreviewRow>> g : groups.entrySet()) {
+                List<ImportPreviewRow> group = g.getValue();
+                // 一组 = 一个父项目 + 若干子项，单事务写入，任何 DB 错误只回滚本组
                 try {
                     Throwable[] err = {null};
                     runInNewTx(() -> {
                         try {
-                            writeOneRow(row, user);
+                            writeOneGroup(group, user);
                         } catch (Throwable t) { err[0] = t; throw t; }
                     });
                     if (err[0] != null) throw new RuntimeException(err[0].getMessage(), err[0]);
-                    counter[0]++;
+                    counter[0] += group.size();
                 } catch (Exception ex) {
-                    counter[2]++;
-                    ImportCommitResult.RowDetail d = new ImportCommitResult.RowDetail();
-                    d.setExcelRow(row.getExcelRow()); d.setProjectCode(row.getProjectCode());
+                    counter[2] += group.size();
                     String msg = ex.getCause() != null && ex.getCause().getMessage() != null
                         ? ex.getCause().getMessage() : ex.getMessage();
                     // 去掉可能超长的 PSQLException 堆栈前缀(只留第一行)
                     if (msg != null && msg.contains("\n")) msg = msg.split("\n")[0];
-                    d.setReason(msg);
-                    result.getFailedDetails().add(d);
+                    for (ImportPreviewRow row : group) {
+                        ImportCommitResult.RowDetail d = new ImportCommitResult.RowDetail();
+                        d.setExcelRow(row.getExcelRow()); d.setProjectCode(row.getProjectCode());
+                        d.setReason(msg);
+                        result.getFailedDetails().add(d);
+                    }
                 }
             }
         } catch (Exception ex) {
@@ -763,49 +789,153 @@ public class ProjImportServiceImpl implements IProjImportService
         });
     }
 
-    /** 单行写入（必须运行在独立事务中，任何异常都会只回滚本行） */
-    private void writeOneRow(ImportPreviewRow row, String user) {
-        if (row.getProjectCode() == null) throw new RuntimeException("工程编号为空");
-        ProjProject dup = projectMapper.checkProjectCodeUnique(new ProjProject() {{ setProjectCode(row.getProjectCode()); }});
-        if (dup != null) throw new RuntimeException("工程编号已存在");
-        if (row.getProjectCategoryId() == null) throw new RuntimeException("项目类别未选择");
-        for (ImportPreviewWorkload w : row.getWorkloads()) {
-            if (w.getBillingId() == null) {
-                String disp = w.getBillingCategoryRaw() == null ? "" : w.getBillingCategoryRaw()
-                    .replaceAll("[（(](内部|外部)[）)]", "").trim();
-                throw new RuntimeException("工作项未匹配计费类别：" + disp);
+    /**
+     * 一组写入（同一工程编号的所有行 = 一个父项目 + 若干子项；必须运行在独立事务中）。
+     * 父项目字段合并：close_time 取最晚、负责人取并集、其余文本取第一条非空；
+     * 子项体现在 proj_workload.sub_item_no / sub_item_name 上。
+     */
+    private void writeOneGroup(List<ImportPreviewRow> group, String user) {
+        if (group == null || group.isEmpty()) return;
+        String code = group.get(0).getProjectCode() == null ? "" : group.get(0).getProjectCode().trim();
+        if (code.isEmpty()) throw new RuntimeException("工程编号为空");
+
+        // 1. 解析负责人（未匹配则自动建档影子用户）并合并父项目字段
+        String projectName = null, engineeringProject = null, clientUnit = null, projectLocation = null;
+        Long categoryId = null;
+        Date closeTime = null;
+        Date materialTime = null;
+        LinkedHashSet<Long> leaderIds = new LinkedHashSet<>();
+        for (ImportPreviewRow row : group) {
+            if (row.getLeaderId() == null && StringUtils.isNotBlank(row.getLeaderName())) {
+                com.xakcch.common.core.domain.entity.SysUser shadow =
+                        projectService.ensureLeaderByName(row.getLeaderName(), user);
+                row.setLeaderId(shadow.getUserId());
+            }
+            if (row.getLeaderId() != null) leaderIds.add(row.getLeaderId());
+            if (projectName == null && StringUtils.isNotBlank(row.getEngineeringProject())) {
+                projectName = row.getEngineeringProject();
+            }
+            if (engineeringProject == null && StringUtils.isNotBlank(row.getEngineeringProject())) {
+                engineeringProject = row.getEngineeringProject();
+            }
+            if (clientUnit == null && StringUtils.isNotBlank(row.getClientUnit())) {
+                clientUnit = row.getClientUnit();
+            }
+            if (projectLocation == null && StringUtils.isNotBlank(row.getProjectLocation())) {
+                projectLocation = row.getProjectLocation();
+            }
+            if (categoryId == null && row.getProjectCategoryId() != null) {
+                categoryId = row.getProjectCategoryId();
+            }
+            if (row.getFinishDate() != null && (closeTime == null || row.getFinishDate().after(closeTime))) {
+                closeTime = row.getFinishDate();
+            }
+            if (materialTime == null && row.getMaterialSubmitTime() != null) {
+                materialTime = row.getMaterialSubmitTime();
             }
         }
-        ProjProject pj = new ProjProject();
-        pj.setProjectCode(row.getProjectCode());
-        pj.setProjectName(StringUtils.isNotBlank(row.getEngineeringProject()) ? row.getEngineeringProject() : row.getProjectCode());
-        pj.setEngineeringProject(row.getEngineeringProject());
-        pj.setProjectCategoryId(row.getProjectCategoryId());
-        pj.setClientUnit(row.getClientUnit());
-        pj.setProjectLocation(row.getProjectLocation());
-        pj.setStatus("closed");
-        pj.setCloseTime(row.getFinishDate());
-        pj.setAssignDate(row.getFinishDate());
-        pj.setCreateBy(user);
-        projectMapper.insertProject(pj);
-        if (row.getLeaderId() != null) {
-            leaderMapper.insertProjectLeaders(pj.getId(), new Long[]{row.getLeaderId()}, user);
+        if (categoryId == null) throw new RuntimeException("项目类别未选择");
+        if (leaderIds.isEmpty()) throw new RuntimeException("负责人为空且姓名缺失");
+        if (StringUtils.isBlank(projectName)) projectName = code;
+
+        // 2. 校验所有子项的工作量计费类别均已匹配
+        for (ImportPreviewRow row : group) {
+            for (ImportPreviewWorkload w : row.getWorkloads()) {
+                if (w.getBillingId() == null) {
+                    String disp = w.getBillingCategoryRaw() == null ? "" : w.getBillingCategoryRaw()
+                        .replaceAll("[（(](内部|外部)[）)]", "").trim();
+                    throw new RuntimeException("工作项未匹配计费类别：" + disp);
+                }
+            }
         }
-        ProjTask task = new ProjTask();
-        task.setProjectId(pj.getId());
-        task.setUserId(row.getLeaderId());
-        task.setTaskName(StringUtils.isNotBlank(row.getEngineeringProject()) ? row.getEngineeringProject() : pj.getProjectName());
-        task.setStatus("finished");
-        task.setActualFinishDate(row.getFinishDate());
-        task.setRequiredFinishDate(row.getFinishDate());
-        task.setAssignDate(row.getFinishDate());
-        task.setCreateBy(user);
-        taskMapper.insertTask(task);
-        // 按组合键(categoryId, billingType, billingCategory)聚合，避免uk_workload_billing唯一键冲突
-        // 原因：Excel中3个工作量组(定验线/管线图/其它)可能有同名二级表头，匹配后组合键完全相同
+
+        // 3. 确定父项目：不存在则新建，存在则复用并合并办结时间（取更晚）
+        ProjProject pj = projectMapper.checkProjectCodeUnique(new ProjProject() {{ setProjectCode(code); }});
+        if (pj == null) {
+            pj = new ProjProject();
+            pj.setProjectCode(code);
+            pj.setProjectName(projectName);
+            pj.setEngineeringProject(engineeringProject);
+            pj.setProjectCategoryId(categoryId);
+            pj.setClientUnit(clientUnit);
+            pj.setProjectLocation(projectLocation);
+            pj.setStatus("closed");
+            pj.setCloseTime(closeTime);
+            pj.setAssignDate(closeTime);
+            pj.setCreateBy(user);
+            projectMapper.insertProject(pj);
+        } else if (closeTime != null) {
+            projectMapper.updateProjectCloseTime(pj.getId(), closeTime);
+        }
+
+        // 4. 负责人并集（已有项目保留原负责人，仅插入新增，避免唯一索引冲突）
+        Long[] existingLeaderIds = leaderMapper.selectLeaderIdsByProjectId(pj.getId());
+        Set<Long> existingSet = new HashSet<>();
+        if (existingLeaderIds != null) existingSet.addAll(Arrays.asList(existingLeaderIds));
+        List<Long> toInsert = new ArrayList<>();
+        for (Long lid : leaderIds) if (!existingSet.contains(lid)) toInsert.add(lid);
+        if (!toInsert.isEmpty()) {
+            leaderMapper.insertProjectLeaders(pj.getId(), toInsert.toArray(new Long[0]), user);
+        }
+
+        // 5. 任务：每个负责人一条（合并），批量插入
+        List<ProjTask> tasks = new ArrayList<>();
+        for (Long lid : leaderIds) {
+            ProjTask task = new ProjTask();
+            task.setProjectId(pj.getId());
+            task.setUserId(lid);
+            task.setTaskName(projectName);
+            task.setStatus("finished");
+            task.setActualFinishDate(closeTime);
+            task.setRequiredFinishDate(closeTime);
+            task.setAssignDate(closeTime);
+            task.setCreateBy(user);
+            tasks.add(task);
+        }
+        if (!tasks.isEmpty()) taskMapper.insertTaskBatch(tasks);
+
+        // 6. 子项写入：每个 Excel 行 = 一个子项，sub_item_no 项目内自增（续接已有最大序号）
+        Integer maxNo = workloadMapper.selectMaxSubItemNo(pj.getId());
+        int seq = maxNo == null ? 0 : maxNo;
+        List<ProjWorkload> allWorkloads = new ArrayList<>();
+        for (ImportPreviewRow row : group) {
+            seq++;
+            allWorkloads.addAll(buildSubItemWorkloads(pj, row, seq, user));
+        }
+        if (!allWorkloads.isEmpty()) workloadMapper.insertWorkloadBatch(allWorkloads);
+
+        // 7. 付款合并（同类型金额累加成一条）
+        writeMergedPayments(pj, group, user);
+
+        // 8. 资料提交合并为一条（取首个非空领取时间）
+        if (materialTime != null) {
+            ProjMaterial mat = new ProjMaterial();
+            mat.setProjectId(pj.getId());
+            mat.setSubmitTime(materialTime);
+            mat.setStatus("已领取");
+            mat.setSubmitStatus("submitted");
+            mat.setGuarantorFlag("N");
+            mat.setArchiveFlag("N");
+            mat.setCreateBy(user);
+            materialMapper.insertMaterial(mat);
+            ProjMaterialFlow flow = new ProjMaterialFlow();
+            flow.setMaterialId(mat.getId());
+            flow.setFlowType("领取");
+            flow.setOperateTime(materialTime);
+            flow.setCreateBy(user);
+            materialFlowMapper.insertFlow(flow);
+        }
+    }
+
+    /** 构造单个子项的工作量列表（按组合键聚合同类项，打上 sub_item_no / sub_item_name），由调用方统一批量插入 */
+    private List<ProjWorkload> buildSubItemWorkloads(ProjProject pj, ImportPreviewRow row, int subItemNo, String user) {
+        List<ProjWorkload> result = new ArrayList<>();
+        // 按组合键(categoryId, billingType, billingCategory)聚合，避免唯一键冲突
+        // 原因：Excel 中 3 个工作量组(定验线/管线图/其它)可能有同名二级表头，匹配后组合键完全相同
         Map<String, ImportPreviewWorkload> mergedWl = new LinkedHashMap<>();
         for (ImportPreviewWorkload w : row.getWorkloads()) {
-            if (w.getBillingId() == null || w.getCategoryId() == null) continue;
+            // 匹配到小类（billingId 为 null）也要落库，故只校验 categoryId
+            if (w.getCategoryId() == null) continue;
             String key = w.getCategoryId() + "|" + w.getBillingType() + "|"
                 + (w.getBillingCategory() == null ? "" : w.getBillingCategory());
             ImportPreviewWorkload exist = mergedWl.get(key);
@@ -836,6 +966,8 @@ public class ProjImportServiceImpl implements IProjImportService
             wl.setWorkload(w.getWorkload());
             wl.setBillingType(w.getBillingType());
             wl.setBillingCategory(w.getBillingCategory());
+            wl.setSubItemNo(subItemNo);
+            wl.setSubItemName(row.getEngineeringProject());
             wl.setPriceUnit(w.getPriceUnit());
             wl.setMinQuantity(w.getMinQuantity());
             wl.setUnitPrice(w.getUnitPrice());
@@ -848,10 +980,48 @@ public class ProjImportServiceImpl implements IProjImportService
                 wl.setExternalOutput(w.getOutput());
             }
             wl.setCreateBy(user);
-            workloadMapper.insertWorkload(wl);
+            result.add(wl);
         }
-        for (ImportPreviewPayment pm : row.getPayments()) {
-            if (pm.getAmount() == null || pm.getAmount().signum() == 0) continue;
+        return result;
+    }
+
+    /** 付款合并：同类型金额累加成一条，并与已有项目付款累加后 upsert */
+    private void writeMergedPayments(ProjProject pj, List<ImportPreviewRow> group, String user) {
+        Map<String, ImportPreviewPayment> merged = new LinkedHashMap<>();
+        for (ImportPreviewRow row : group) {
+            for (ImportPreviewPayment pm : row.getPayments()) {
+                if (pm.getAmount() == null || pm.getAmount().signum() == 0) continue;
+                String key = pm.getPaymentType() == null ? "" : pm.getPaymentType();
+                ImportPreviewPayment exist = merged.get(key);
+                if (exist == null) {
+                    ImportPreviewPayment copy = new ImportPreviewPayment();
+                    copy.setPaymentType(pm.getPaymentType());
+                    copy.setAmount(pm.getAmount());
+                    copy.setPayTime(pm.getPayTime());
+                    copy.setPayUnit(pm.getPayUnit());
+                    copy.setPayMethod(pm.getPayMethod());
+                    copy.setSource(pm.getSource());
+                    copy.setRemark(pm.getRemark());
+                    merged.put(key, copy);
+                } else {
+                    exist.setAmount(exist.getAmount().add(pm.getAmount()));
+                    if (exist.getPayTime() == null) exist.setPayTime(pm.getPayTime());
+                    if (exist.getPayMethod() == null) exist.setPayMethod(pm.getPayMethod());
+                    if (exist.getRemark() == null) exist.setRemark(pm.getRemark());
+                }
+            }
+        }
+        if (merged.isEmpty()) return;
+        // 复用已有项目时，同类型付款与库内累加
+        List<ProjPayment> existing = paymentMapper.selectPaymentsByProjectId(pj.getId());
+        for (ProjPayment ep : existing) {
+            String key = ep.getPaymentType() == null ? "" : ep.getPaymentType();
+            ImportPreviewPayment m = merged.get(key);
+            if (m != null && ep.getAmount() != null) {
+                m.setAmount(m.getAmount().add(ep.getAmount()));
+            }
+        }
+        for (ImportPreviewPayment pm : merged.values()) {
             ProjPayment pp = new ProjPayment();
             pp.setProjectId(pj.getId());
             pp.setPaymentType(pm.getPaymentType());
@@ -861,26 +1031,9 @@ public class ProjImportServiceImpl implements IProjImportService
             pp.setPayMethod(pm.getPayMethod());
             pp.setReceivedStatus("received");
             pp.setInvoiceStatus("pending");
-            pp.setRemark(pm.getSource());
+            pp.setRemark(pm.getRemark());
             pp.setCreateBy(user);
-            paymentMapper.insertPayment(pp);
-        }
-        if (row.getMaterialSubmitTime() != null) {
-            ProjMaterial mat = new ProjMaterial();
-            mat.setProjectId(pj.getId());
-            mat.setSubmitTime(row.getMaterialSubmitTime());
-            mat.setStatus("已领取");
-            mat.setSubmitStatus("submitted");
-            mat.setGuarantorFlag("N");
-            mat.setArchiveFlag("N");
-            mat.setCreateBy(user);
-            materialMapper.insertMaterial(mat);
-            ProjMaterialFlow flow = new ProjMaterialFlow();
-            flow.setMaterialId(mat.getId());
-            flow.setFlowType("领取");
-            flow.setOperateTime(row.getMaterialSubmitTime());
-            flow.setCreateBy(user);
-            materialFlowMapper.insertFlow(flow);
+            paymentMapper.upsertPayment(pp);
         }
     }
 
@@ -892,9 +1045,27 @@ public class ProjImportServiceImpl implements IProjImportService
         }
         return -1;
     }
+    /** 在一行中找首个 cell 文本含 keyword 的列索引；endExcl<0 表示到行尾 */
+    private int findCol(List<Object> row, String keyword, int startIncl, int endExcl) {
+        if (row == null || startIncl < 0) return -1;
+        int end = (endExcl < 0 || endExcl > row.size()) ? row.size() : endExcl;
+        for (int c = startIncl; c < end; c++) {
+            Object v = row.get(c);
+            if (v != null && v.toString().contains(keyword)) return c;
+        }
+        return -1;
+    }
     private String strCell(List<Object> row, int c) {
         if (row == null || c < 0 || c >= row.size()) return null;
         Object v = row.get(c); if (v == null) return null;
+        String s = v.toString().trim();
+        return s.isEmpty() ? null : s;
+    }
+    /** 取单元格文本；日期类型视为无文本（返回 null，避免日期 toString 污染备注） */
+    private String textOf(List<Object> row, int c) {
+        if (row == null || c < 0 || c >= row.size()) return null;
+        Object v = row.get(c); if (v == null) return null;
+        if (v instanceof Date) return null;
         String s = v.toString().trim();
         return s.isEmpty() ? null : s;
     }
@@ -915,7 +1086,7 @@ public class ProjImportServiceImpl implements IProjImportService
         try {
             String s = v.toString().trim();
             if (s.isEmpty()) return null;
-            if (s.matches("\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}.*")) {
+            if (s.matches("\\d{4}[-/年]\\d{1,2}[-/月]\\d{1,2}日?.*")) {
                 String[] parts = s.split("[-/ :年月日]");
                 int y = Integer.parseInt(parts[0]);
                 int m = parts.length > 1 ? Integer.parseInt(parts[1]) : 1;
@@ -928,9 +1099,30 @@ public class ProjImportServiceImpl implements IProjImportService
         } catch (Exception e) { return null; }
     }
 
+    /**
+     * 判断某工作量二级表头是否为「内部工作量」。
+     * 规则（包含即触发）：
+     * 1. 表头含(内部)/（内部）→ 内部；含(外部)/（外部）→ 外部。
+     * 2. 表头含"水准" → 委托任务含"定线"或"实测"为外部，否则内部。
+     * 3. 表头含"管线" → 委托任务含"验线"为内部，否则外部。
+     * 4. 其余默认外部。
+     */
+    private boolean isInternalWorkload(String rawHeader, String engineeringProject) {
+        if (rawHeader == null) return false;
+        if (rawHeader.contains("(内部)") || rawHeader.contains("（内部）")) return true;
+        if (rawHeader.contains("(外部)") || rawHeader.contains("（外部）")) return false;
+        String eng = engineeringProject == null ? "" : engineeringProject;
+        if (rawHeader.contains("水准")) {
+            return !(eng.contains("定线") || eng.contains("实测"));
+        }
+        if (rawHeader.contains("管线")) {
+            return eng.contains("验线");
+        }
+        return false;
+    }
+
     static class FuzzyResult<T> { T item; double score; }
-    static class FuzzyResult2 { Long userId; String nickName; double score; }
-    static class FuzzyBilling { Long billingId; Long categoryId; String billingCategory; String priceUnit; BigDecimal minQuantity; double score; }
+    static class FuzzyBilling { Long billingId; Long categoryId; String billingCategory; String priceUnit; BigDecimal minQuantity; BigDecimal unitPrice; double score; }
 
     private FuzzyResult<ProjCategory> fuzzyMatchCategory(String query, List<ImportPreviewResponse.CategoryOption> options) {
         if (options == null || options.isEmpty()) return null;
@@ -944,30 +1136,15 @@ public class ProjImportServiceImpl implements IProjImportService
         }
         return best;
     }
-    private FuzzyResult2 fuzzyMatchUser(String query, List<ImportPreviewResponse.UserOption> opts) {
-        if (opts == null || opts.isEmpty()) return null;
-        FuzzyResult2 best = null;
-        for (ImportPreviewResponse.UserOption o : opts) {
-            double s1 = similarity(query, o.getNickName() == null ? "" : o.getNickName());
-            double s2 = similarity(query, o.getUserName() == null ? "" : o.getUserName());
-            double s = Math.max(s1, s2);
-            if (best == null || s > best.score) {
-                FuzzyResult2 r = new FuzzyResult2(); r.userId = o.getUserId(); r.nickName = o.getNickName(); r.score = s; best = r;
-            }
-        }
-        return best;
-    }
     private FuzzyBilling fuzzyMatchBilling(String rawHeader, String billingType,
-                                           List<ImportPreviewResponse.BillingOption> opts, Long projectCategoryId) {
+                                           List<ImportPreviewResponse.BillingOption> opts,
+                                           List<ImportPreviewResponse.CategoryOption> cats,
+                                           Long projectCategoryId) {
         if (opts == null || opts.isEmpty()) return null;
-        String clean = rawHeader.replaceAll("[（(](内部|外部)[）)]", "").trim();
+        String clean = normalizeBilling(rawHeader);
         if (clean.endsWith("工作量")) clean = clean.substring(0, clean.length() - 3).trim();
-        // Normalize: 数据库billingType可能存中文("内部"/"外部")或英文("internal"/"external")
         boolean wantInternal = "internal".equals(billingType);
-        // Round-by-round priority:
-        // 1. same projectCategoryId + billingType match
-        // 2. same projectCategoryId + billingType relaxed
-        // 3. billingType relaxed + all categories
+        // 三轮匹配计费类别（billing_category）
         FuzzyBilling best = findBestBilling(clean, opts, wantInternal, projectCategoryId, true, true);
         if (best != null && best.score >= 1.0) return best;
         FuzzyBilling r2 = findBestBilling(clean, opts, wantInternal, projectCategoryId, true, false);
@@ -975,6 +1152,13 @@ public class ProjImportServiceImpl implements IProjImportService
         if (best != null && best.score >= 1.0) return best;
         FuzzyBilling r3 = findBestBilling(clean, opts, wantInternal, null, false, false);
         if (r3 != null && r3.score > (best == null ? 0 : best.score) + 0.001) best = r3;
+        // 计费类别匹配度达标(>=0.5)则直接返回
+        if (best != null && best.score >= 0.5) return best;
+        // 匹配不到计费类别，退而匹配小类（proj_category.name，level=2），billingId 置 null
+        if (cats != null && !cats.isEmpty()) {
+            FuzzyBilling catBest = findBestCategory(clean, cats);
+            if (catBest != null && catBest.score >= 0.5) return catBest;
+        }
         return best;
     }
     private boolean billingTypeMatch(boolean wantInternal, String dbBillingType, boolean strict) {
@@ -994,17 +1178,49 @@ public class ProjImportServiceImpl implements IProjImportService
                 && !projectCategoryId.equals(o.getCategoryId())) continue;
             String dbBillingType = o.getBillingType() == null ? null : o.getBillingType().trim();
             if (!billingTypeMatch(wantInternal, dbBillingType, strictType)) continue;
-            String dbCat = o.getBillingCategory() == null ? "" : o.getBillingCategory().trim();
-            double s = similarity(clean, dbCat);
+            String dbCatRaw = o.getBillingCategory() == null ? "" : o.getBillingCategory().trim();
+            double s = similarity(clean, normalizeBilling(dbCatRaw));
             if (best == null || s > best.score) {
                 FuzzyBilling b = new FuzzyBilling();
                 b.billingId = o.getBillingId(); b.categoryId = o.getCategoryId();
-                b.billingCategory = dbCat;
+                b.billingCategory = dbCatRaw;
                 b.priceUnit = o.getPriceUnit(); b.minQuantity = o.getMinQuantity();
+                b.unitPrice = o.getUnitPrice();
                 b.score = s; best = b;
             }
         }
         return best;
+    }
+
+    /** 匹配小类（proj_category.name，level=2）：billingId 置 null，单价 null（由 calcGroup 剩余项兜底推算） */
+    private FuzzyBilling findBestCategory(String clean, List<ImportPreviewResponse.CategoryOption> cats) {
+        FuzzyBilling best = null;
+        for (ImportPreviewResponse.CategoryOption c : cats) {
+            String catName = c.getName() == null ? "" : c.getName().trim();
+            double s = similarity(clean, normalizeBilling(catName));
+            if (best == null || s > best.score) {
+                FuzzyBilling b = new FuzzyBilling();
+                b.billingId = null;
+                b.categoryId = c.getId();
+                b.billingCategory = catName;
+                b.priceUnit = null;
+                b.minQuantity = null;
+                b.unitPrice = null;
+                b.score = s;
+                best = b;
+            }
+        }
+        return best;
+    }
+
+    /** 归一化计费类别/小类名：剥离(内部/外部/内/外)标记、全角括号转半角、去空白 */
+    private String normalizeBilling(String s) {
+        if (s == null) return "";
+        s = s.trim();
+        s = s.replaceAll("[（(](内部|外部|内|外)[）)]", "");
+        s = s.replaceAll("（", "(").replaceAll("）", ")");
+        s = s.replaceAll("[\\s　]", "");
+        return s;
     }
 
     private double similarity(String a, String b) {

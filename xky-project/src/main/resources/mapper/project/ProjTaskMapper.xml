@@ -162,4 +162,48 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </foreach>
     </update>
 
+    <!-- 逻辑删除指定项目下所有任务（删除项目时级联清理） -->
+    <update id="deleteTasksByProjectId" parameterType="Long">
+        update proj_task set del_flag = '2'
+        where project_id = #{projectId} and del_flag = '0'
+    </update>
+
+    <!-- 批量逻辑删除多个项目下的任务（批量删除项目时级联清理） -->
+    <update id="deleteTasksByProjectIds">
+        update proj_task set del_flag = '2'
+        where project_id in
+        <foreach item="projectId" collection="projectIds" open="(" separator="," close=")">
+            #{projectId}
+        </foreach>
+        and del_flag = '0'
+    </update>
+
+    <!-- 批量新增任务（导入时一次性插入；null 字段用 choose 兜底默认值） -->
+    <insert id="insertTaskBatch" parameterType="java.util.List">
+        insert into proj_task(
+            project_id, user_id, task_name,
+            assign_date, required_finish_date, actual_finish_date,
+            duration_require, total_duration,
+            status, extra_data, remark,
+            create_by, create_time
+        ) values
+        <foreach collection="list" item="item" separator=",">
+        (
+            #{item.projectId}, #{item.userId}, #{item.taskName},
+            #{item.assignDate}, #{item.requiredFinishDate}, #{item.actualFinishDate},
+            #{item.durationRequire}, #{item.totalDuration},
+            <choose>
+                <when test="item.status != null and item.status != ''">#{item.status}</when>
+                <otherwise>''</otherwise>
+            </choose>,
+            <choose>
+                <when test="item.extraData != null and item.extraData != ''">#{item.extraData}::jsonb</when>
+                <otherwise>'{}'</otherwise>
+            </choose>,
+            #{item.remark},
+            #{item.createBy}, now()
+        )
+        </foreach>
+    </insert>
+
 </mapper>

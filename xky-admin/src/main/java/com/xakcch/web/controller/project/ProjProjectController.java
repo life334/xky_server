@@ -24,6 +24,7 @@ import com.xakcch.common.enums.BusinessType;
 import com.xakcch.common.exception.ServiceException;
 import com.xakcch.common.utils.SecurityUtils;
 import com.xakcch.common.utils.poi.ExcelUtil;
+import com.xakcch.common.core.domain.entity.SysUser;
 import com.xakcch.project.domain.ProjProject;
 import com.xakcch.project.service.IProjProjectService;
 
@@ -72,6 +73,31 @@ public class ProjProjectController extends BaseController
     {
         List<String> list = projectService.getDistinctValues(field);
         return success(list);
+    }
+
+    /**
+     * 负责人下拉选项：在职项目经理 ∪ 项目表已出现过的负责人（含离职，status='1' 打标记）
+     */
+    @GetMapping("/leaderOptions")
+    public AjaxResult leaderOptions()
+    {
+        List<SysUser> list = projectService.getLeaderOptions();
+        return success(list);
+    }
+
+    /**
+     * 按姓名获取/创建负责人档案：昵称精确匹配已有用户则返回；
+     * 不存在则自动创建停用影子用户（不可登录），用于手动添加离职人员等历史负责人
+     */
+    @Log(title = "项目信息", businessType = BusinessType.INSERT)
+    @PostMapping("/ensureLeader")
+    public AjaxResult ensureLeader(@RequestParam String name)
+    {
+        SysUser u = projectService.ensureLeaderByName(name, getUsername());
+        AjaxResult ajax = AjaxResult.success();
+        ajax.put("userId", u.getUserId());
+        ajax.put("nickName", u.getNickName());
+        return ajax;
     }
 
     /**

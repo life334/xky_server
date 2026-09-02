@@ -133,4 +133,23 @@ public interface IProjProjectService
      * @return 候选项目列表
      */
     public List<ProjProject> getRelatedCandidates(String engineeringProject);
+
+    /**
+     * 负责人下拉选项：在职项目经理 ∪ 项目表已出现过的负责人（含停用的离职/影子用户）
+     * 用于项目编辑页与查询区负责人筛选
+     *
+     * @return 用户列表（status='1' 表示离职，前端打标记）
+     */
+    public List<com.xakcch.common.core.domain.entity.SysUser> getLeaderOptions();
+
+    /**
+     * 按姓名获取/创建负责人档案（影子用户）：
+     * 昵称精确匹配已有用户（在职优先）则直接返回；否则自动创建停用账号（不可登录），
+     * 用于手动添加系统用户表不存在的负责人（如历史数据中的离职人员）
+     *
+     * @param name 负责人姓名（昵称）
+     * @param operName 操作人
+     * @return 对应的用户档案
+     */
+    public com.xakcch.common.core.domain.entity.SysUser ensureLeaderByName(String name, String operName);
 }

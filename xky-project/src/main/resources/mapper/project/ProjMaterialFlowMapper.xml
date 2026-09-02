@@ -51,4 +51,24 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         )
     </insert>
 
+    <!-- 逻辑删除某项目下所有资料的流转记录（删除项目时级联清理） -->
+    <update id="deleteFlowsByProjectId" parameterType="Long">
+        update proj_material_flow set del_flag = '2'
+        where material_id in (
+            select id from proj_material where project_id = #{projectId}
+        )
+    </update>
+
+    <!-- 批量逻辑删除多个项目下所有资料的流转记录（批量删除项目时级联清理） -->
+    <update id="deleteFlowsByProjectIds">
+        update proj_material_flow set del_flag = '2'
+        where material_id in (
+            select id from proj_material
+            where project_id in
+            <foreach item="projectId" collection="projectIds" open="(" separator="," close=")">
+                #{projectId}
+            </foreach>
+        )
+    </update>
+
 </mapper>

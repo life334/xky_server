@@ -2,6 +2,7 @@ package com.xakcch.project.mapper;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Date;
 import org.apache.ibatis.annotations.Param;
 import com.xakcch.project.domain.ProjProject;
 
@@ -137,4 +138,13 @@ public interface ProjProjectMapper
      * 轻量查询所有未删除的工程编号
      */
     public List<String> selectExistProjectCodes();
+
+    /**
+     * 更新项目办结时间（历史导入合并：取更晚的验收日期，原子 GREATEST）
+     *
+     * @param id 项目ID
+     * @param closeTime 办结时间
+     * @return 结果
+     */
+    public int updateProjectCloseTime(@Param("id") Long id, @Param("closeTime") Date closeTime);
 }

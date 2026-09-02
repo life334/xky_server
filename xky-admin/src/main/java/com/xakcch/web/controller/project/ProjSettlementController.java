@@ -120,14 +120,22 @@ public class ProjSettlementController extends BaseController
         }
         List<ProjProject> projects = projectService.selectProjectList(project);
 
+        // 一次性批量查询所有项目的工作量与付款，避免逐项目 N+1 查询
+        Long[] projectIds = projects.stream().map(ProjProject::getId).toArray(Long[]::new);
+        Map<Long, List<ProjWorkload>> workloadMap = projectIds.length == 0 ? Collections.emptyMap()
+            : workloadMapper.selectWorkloadsByProjectIds(projectIds).stream()
+                .collect(Collectors.groupingBy(ProjWorkload::getProjectId));
+        Map<Long, List<ProjPayment>> paymentMap = projectIds.length == 0 ? Collections.emptyMap()
+            : paymentMapper.selectPaymentsByProjectIds(projectIds).stream()
+                .collect(Collectors.groupingBy(ProjPayment::getProjectId));
+
         List<Map<String, Object>> tree = new ArrayList<>();
         for (ProjProject p : projects)
         {
             Map<String, Object> projectNode = buildProjectNode(p);
-            // 查询该项目的工作量
-            List<ProjWorkload> workloads = workloadMapper.selectWorkloadsByProjectId(p.getId());
-            // 查询该项目的付款记录
-            List<ProjPayment> payments = paymentMapper.selectPaymentsByProjectId(p.getId());
+            // 从批量查询结果中取该项目的工作量与付款
+            List<ProjWorkload> workloads = workloadMap.getOrDefault(p.getId(), Collections.emptyList());
+            List<ProjPayment> payments = paymentMap.getOrDefault(p.getId(), Collections.emptyList());
 
             // 填充付款信息到项目节点
             fillPaymentInfo(projectNode, payments, p.getId());
@@ -137,14 +145,14 @@ public class ProjSettlementController extends BaseController
 
             // 汇总项目级工作量
             BigDecimal totalWorkload = BigDecimal.ZERO;
-            BigDecimal totalInternalOutput = BigDecimal.ZERO;
             BigDecimal totalExternalOutput = BigDecimal.ZERO;
             for (ProjWorkload w : workloads)
             {
                 if (w.getWorkload() != null) totalWorkload = totalWorkload.add(w.getWorkload());
-                if (w.getInternalOutput() != null) totalInternalOutput = totalInternalOutput.add(w.getInternalOutput());
                 if (w.getExternalOutput() != null) totalExternalOutput = totalExternalOutput.add(w.getExternalOutput());
             }
+            // 内部产值合计（含「管线新测 + 管线修测」保底 6000）
+            BigDecimal totalInternalOutput = calcInternalOutputTotal(workloads);
 
             projectNode.put("workload", totalWorkload);
             projectNode.put("internalOutput", totalInternalOutput);
@@ -195,11 +203,10 @@ public class ProjSettlementController extends BaseController
         List<ProjPayment> payments = paymentMapper.selectPaymentsByProjectId(projectId);
 
         // 产值汇总（内部产值与外部产值各自独立，不相加；结算总额 = 外部产值）
-        BigDecimal internalOutput = BigDecimal.ZERO;
+        BigDecimal internalOutput = calcInternalOutputTotal(workloads);
         BigDecimal externalOutput = BigDecimal.ZERO;
         for (ProjWorkload w : workloads)
         {
-            if (w.getInternalOutput() != null) internalOutput = internalOutput.add(w.getInternalOutput());
             if (w.getExternalOutput() != null) externalOutput = externalOutput.add(w.getExternalOutput());
         }
         // 结算总额 = 外部产值合计（与编辑页面口径一致）
@@ -341,6 +348,13 @@ public class ProjSettlementController extends BaseController
                 w.setMinQuantity(toBigDecimal(wl.get("minQuantity")));
                 w.setUnitPrice(toBigDecimal(wl.get("unitPrice")));
                 w.setRemark((String) wl.getOrDefault("remark", ""));
+                Object subItemNoObj = wl.get("subItemNo");
+                if (subItemNoObj != null)
+                {
+                    Long subNo = toLong(subItemNoObj);
+                    if (subNo != null) w.setSubItemNo(subNo.intValue());
+                }
+                w.setSubItemName((String) wl.getOrDefault("subItemName", ""));
                 w.setCreateBy(username);
                 workloadMapper.upsertWorkload(w);
             }
@@ -394,6 +408,13 @@ public class ProjSettlementController extends BaseController
                 w.setMinQuantity(toBigDecimal(wl.get("minQuantity")));
                 w.setUnitPrice(toBigDecimal(wl.get("unitPrice")));
                 w.setRemark((String) wl.getOrDefault("remark", ""));
+                Object subItemNoObj = wl.get("subItemNo");
+                if (subItemNoObj != null)
+                {
+                    Long subNo = toLong(subItemNoObj);
+                    if (subNo != null) w.setSubItemNo(subNo.intValue());
+                }
+                w.setSubItemName((String) wl.getOrDefault("subItemName", ""));
                 w.setCreateBy(username);
                 workloadMapper.upsertWorkload(w);
             }
@@ -431,6 +452,40 @@ public class ProjSettlementController extends BaseController
     }
 
     // ===== Private helpers =====
+
+    /** 内部工作量「管线新测 / 管线修测」合并保底产值（元） */
+    private static final BigDecimal INTERNAL_REVISE_MIN = new BigDecimal("6000");
+
+    /**
+     * 计算内部产值合计（含「管线新测 + 管线修测」保底 6000）
+     * 规则：内部工作量中任一存在「管线新测」或「管线修测」时，
+     *      内部产值合计 = 其他内部产值 + max(管线新测产值 + 管线修测产值, 6000)。
+     *      保底差额只体现在合计中，不改变各行的 internalOutput。
+     *
+     * @param workloads 该项目全部工作量
+     * @return 内部产值合计（含保底）
+     */
+    private BigDecimal calcInternalOutputTotal(List<ProjWorkload> workloads)
+    {
+        BigDecimal total = BigDecimal.ZERO;
+        BigDecimal reviseSum = BigDecimal.ZERO;
+        boolean hasRevise = false;
+        for (ProjWorkload w : workloads)
+        {
+            if (w.getInternalOutput() == null) continue;
+            total = total.add(w.getInternalOutput());
+            if ("管线新测".equals(w.getBillingCategory()) || "管线修测".equals(w.getBillingCategory()))
+            {
+                reviseSum = reviseSum.add(w.getInternalOutput());
+                hasRevise = true;
+            }
+        }
+        if (hasRevise && reviseSum.compareTo(INTERNAL_REVISE_MIN) < 0)
+        {
+            total = total.subtract(reviseSum).add(INTERNAL_REVISE_MIN);
+        }
+        return total;
+    }
 
     /** 构建项目级树节点 */
     private Map<String, Object> buildProjectNode(ProjProject p)

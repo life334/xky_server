@@ -22,12 +22,15 @@ import com.xakcch.project.domain.ProjPayment;
 import com.xakcch.project.domain.ProjProject;
 import com.xakcch.project.domain.ProjTask;
 import com.xakcch.project.mapper.ProjCategoryMapper;
+import com.xakcch.project.mapper.ProjCollectionMapper;
 import com.xakcch.project.mapper.ProjFieldDefMapper;
 import com.xakcch.project.mapper.ProjLeaderMapper;
+import com.xakcch.project.mapper.ProjMaterialFlowMapper;
 import com.xakcch.project.mapper.ProjMaterialMapper;
 import com.xakcch.project.mapper.ProjPaymentMapper;
 import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.mapper.ProjTaskMapper;
+import com.xakcch.project.mapper.ProjWorkloadMapper;
 import com.xakcch.project.service.IProjProjectService;
 import com.xakcch.system.mapper.SysUserMapper;
 import com.xakcch.system.service.ISysWorkdayCalendarService;
@@ -70,6 +73,15 @@ public class ProjProjectServiceImpl implements IProjProjectService
 
     @Autowired
     private ProjPaymentMapper paymentMapper;
+
+    @Autowired
+    private ProjWorkloadMapper workloadMapper;
+
+    @Autowired
+    private ProjMaterialFlowMapper materialFlowMapper;
+
+    @Autowired
+    private ProjCollectionMapper collectionMapper;
 
     @Autowired
     private ProjFieldDefMapper fieldDefMapper;
@@ -182,28 +194,61 @@ public class ProjProjectServiceImpl implements IProjProjectService
     }
 
     /**
-     * 删除项目（含负责人关联清理）
+     * 删除项目（含全部关联数据清理）
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int deleteProjectById(Long id)
     {
-        leaderMapper.deleteLeadersByProjectId(id);
+        cascadeDeleteProject(id);
         return projectMapper.deleteProjectById(id);
     }
 
     /**
-     * 批量删除项目（含负责人关联清理）
+     * 批量删除项目（含全部关联数据清理）
+     * 采用按项目ID数组批量 IN 删除关联表，避免逐项目循环导致的大量 SQL 往返（如 50 个项目 7 张表 = 350 次 UPDATE → 7 次）
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int deleteProjectByIds(Long[] ids)
     {
-        for (Long id : ids)
-        {
-            leaderMapper.deleteLeadersByProjectId(id);
-        }
+        cascadeDeleteProjects(ids);
         return projectMapper.deleteProjectByIds(ids);
+    }
+
+    /**
+     * 级联逻辑删除项目下的全部关联数据
+     * 顺序：负责人 → 任务 → 工作量 → 付款 → 催收记录 → 资料流转 → 资料
+     * 注意：合同（proj_contract）及其附件为独立实体，一个合同可挂多个项目，不随项目删除
+     *
+     * @param projectId 项目ID
+     */
+    private void cascadeDeleteProject(Long projectId)
+    {
+        leaderMapper.deleteLeadersByProjectId(projectId);       // 负责人关联
+        taskMapper.deleteTasksByProjectId(projectId);           // 任务
+        workloadMapper.deleteWorkloadsByProjectId(projectId);   // 工作量（费用结算）
+        paymentMapper.deletePaymentsByProjectId(projectId);     // 付款记录（费用结算）
+        collectionMapper.deleteLogsByProjectId(projectId);      // 催收记录（回款管理）
+        materialFlowMapper.deleteFlowsByProjectId(projectId);   // 资料流转记录
+        materialMapper.deleteMaterialsByProjectId(projectId);   // 资料提交（资料管理）
+    }
+
+    /**
+     * 批量级联逻辑删除多个项目下的全部关联数据（每张关联表一条 IN 删除）
+     * 顺序：负责人 → 任务 → 工作量 → 付款 → 催收记录 → 资料流转 → 资料
+     *
+     * @param projectIds 项目ID数组
+     */
+    private void cascadeDeleteProjects(Long[] projectIds)
+    {
+        leaderMapper.deleteLeadersByProjectIds(projectIds);       // 负责人关联
+        taskMapper.deleteTasksByProjectIds(projectIds);           // 任务
+        workloadMapper.deleteWorkloadsByProjectIds(projectIds);   // 工作量（费用结算）
+        paymentMapper.deletePaymentsByProjectIds(projectIds);     // 付款记录（费用结算）
+        collectionMapper.deleteLogsByProjectIds(projectIds);      // 催收记录（回款管理）
+        materialFlowMapper.deleteFlowsByProjectIds(projectIds);   // 资料流转记录
+        materialMapper.deleteMaterialsByProjectIds(projectIds);   // 资料提交（资料管理）
     }
 
     /**
@@ -813,5 +858,73 @@ public class ProjProjectServiceImpl implements IProjProjectService
     public List<ProjProject> getRelatedCandidates(String engineeringProject)
     {
         return projectMapper.selectRelatedCandidates(engineeringProject);
+    }
+
+    /**
+     * 负责人下拉选项：在职项目经理 ∪ 项目表已出现过的负责人（含离职/影子用户）
+     */
+    @Override
+    public List<SysUser> getLeaderOptions()
+    {
+        // LinkedHashMap 按 userId 去重：在职项目经理在前，历史负责人补充在后
+        Map<Long, SysUser> byId = new java.util.LinkedHashMap<>();
+        // 1. 在职项目经理（原下拉数据源）
+        SysUser uq = new SysUser();
+        uq.setStatus("0");
+        uq.getParams().put("postName", "项目经理");
+        for (SysUser u : userMapper.selectUserList(uq))
+        {
+            byId.putIfAbsent(u.getUserId(), u);
+        }
+        // 2. 项目表已出现过的全部负责人（含停用）
+        for (SysUser u : leaderMapper.selectDistinctLeaders())
+        {
+            byId.putIfAbsent(u.getUserId(), u);
+        }
+        return new ArrayList<>(byId.values());
+    }
+
+    /**
+     * 按姓名获取/创建负责人档案（影子用户）：精确匹配优先，匹配不到自动建档（停用、不可登录）
+     */
+    @Override
+    public SysUser ensureLeaderByName(String name, String operName)
+    {
+        String nickName = name == null ? "" : name.trim();
+        if (nickName.isEmpty())
+        {
+            throw new ServiceException("负责人姓名不能为空");
+        }
+        // 1. 昵称精确匹配已有用户（在职优先，含离职/影子用户）
+        SysUser exist = leaderMapper.selectUserByNickName(nickName);
+        if (exist != null)
+        {
+            return exist;
+        }
+        // 2. 自动创建影子用户：user_name 自动生成（ext_ 前缀 + 随机串，保证唯一）
+        String userName = null;
+        for (int i = 0; i < 5; i++)
+        {
+            String candidate = "ext_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+            if (userMapper.checkUserNameUnique(candidate) == null)
+            {
+                userName = candidate;
+                break;
+            }
+        }
+        if (userName == null)
+        {
+            userName = "ext_" + System.currentTimeMillis();
+        }
+        SysUser u = new SysUser();
+        u.setUserName(userName);
+        u.setNickName(nickName);
+        // 随机密码（BCrypt），账号为停用状态本身即不可登录，双重保险
+        u.setPassword(SecurityUtils.encryptPassword(java.util.UUID.randomUUID().toString()));
+        u.setStatus("1");
+        u.setRemark("负责人档案（历史数据/手动添加，系统自动创建，不可登录）");
+        u.setCreateBy(operName);
+        userMapper.insertUser(u);
+        return u;
     }
 }

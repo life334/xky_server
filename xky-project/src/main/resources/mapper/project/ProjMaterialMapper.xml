@@ -181,6 +181,22 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </foreach>
     </delete>
 
+    <!-- 逻辑删除某项目的全部资料（删除项目时级联清理） -->
+    <update id="deleteMaterialsByProjectId" parameterType="Long">
+        update proj_material set del_flag = '2'
+        where project_id = #{projectId} and del_flag = '0'
+    </update>
+
+    <!-- 批量逻辑删除多个项目的资料（批量删除项目时级联清理） -->
+    <update id="deleteMaterialsByProjectIds">
+        update proj_material set del_flag = '2'
+        where project_id in
+        <foreach item="projectId" collection="projectIds" open="(" separator="," close=")">
+            #{projectId}
+        </foreach>
+        and del_flag = '0'
+    </update>
+
     <update id="updateMaterialStatus">
         update proj_material set status = #{status}, update_time = now(), update_by = #{updateBy}
         where id = #{id}

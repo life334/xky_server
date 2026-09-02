@@ -286,6 +286,8 @@ CREATE TABLE proj_workload (
     price_source        VARCHAR(20)     DEFAULT 'dict',
     billing_type        VARCHAR(20)     DEFAULT '',
     billing_category    VARCHAR(100)     DEFAULT '',
+    sub_item_no         INTEGER         NOT NULL DEFAULT 0,
+    sub_item_name       VARCHAR(200)    DEFAULT '',
     price_unit          VARCHAR(50)     DEFAULT '',
     min_quantity        DECIMAL(12,4),
     unit_price          DECIMAL(12,2),
@@ -313,6 +315,8 @@ COMMENT ON COLUMN proj_workload.workload IS '工作量（统一字段）';
 COMMENT ON COLUMN proj_workload.price_source IS '单价来源（contract=合同价 dict=字典默认价 manual=手动覆盖）';
 COMMENT ON COLUMN proj_workload.billing_type IS '计费类型（internal=内部 external=外部）';
 COMMENT ON COLUMN proj_workload.billing_category IS '计费类别（如：常规、加急）';
+COMMENT ON COLUMN proj_workload.sub_item_no IS '子项序号（项目内自增，历史导入同工程编号多记录时区分子项）';
+COMMENT ON COLUMN proj_workload.sub_item_name IS '子项名称（=委托任务，工作量列表展示用）';
 COMMENT ON COLUMN proj_workload.price_unit IS '计价单位（如：平方公里、公里）';
 COMMENT ON COLUMN proj_workload.min_quantity IS '起步量（最低计价数量，不足按起步量计算）';
 COMMENT ON COLUMN proj_workload.unit_price IS '采用的单价（元）';
@@ -324,8 +328,8 @@ CREATE INDEX idx_proj_workload_project ON proj_workload(project_id);
 CREATE INDEX idx_proj_workload_user ON proj_workload(user_id);
 CREATE INDEX idx_proj_workload_category ON proj_workload(category_id);
 CREATE INDEX idx_proj_workload_extra ON proj_workload USING GIN (extra_data);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_workload_unique ON proj_workload (project_id, user_id, category_id) WHERE del_flag = '0';
-CREATE UNIQUE INDEX IF NOT EXISTS uk_workload_billing ON proj_workload (project_id, user_id, category_id, billing_type, billing_category) WHERE del_flag = '0';
+-- 唯一性由 uk_workload_billing 保证（含 billing_type/billing_category/sub_item_no）
+CREATE UNIQUE INDEX IF NOT EXISTS uk_workload_billing ON proj_workload (project_id, user_id, category_id, billing_type, billing_category, sub_item_no) WHERE del_flag = '0';
 
 
 -- ----------------------------

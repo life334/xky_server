@@ -152,6 +152,24 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by pm.payment_type
     </select>
 
+    <select id="selectPaymentsByProjectIds" resultMap="ProjPaymentResult">
+        select pm.id, pm.project_id, pm.payment_type, pm.amount,
+               pm.pay_time, pm.pay_unit, pm.pay_method,
+               pm.invoice_no, pm.invoice_date, pm.invoice_amount, pm.invoice_status,
+               pm.received_status,
+               pm.extra_data::text as extra_data, pm.del_flag,
+               pm.create_by, pm.create_time, pm.update_by, pm.update_time, pm.remark,
+               p.project_name
+        from proj_payment pm
+        left join proj_project p on p.id = pm.project_id
+        where pm.project_id in
+        <foreach collection="projectIds" item="pid" open="(" separator="," close=")">
+            #{pid}
+        </foreach>
+        and pm.del_flag = '0'
+        order by pm.project_id, pm.payment_type
+    </select>
+
     <insert id="upsertPayment" parameterType="ProjPayment">
         insert into proj_payment(
             project_id, payment_type, amount,
@@ -279,6 +297,22 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <update id="deleteRefundsByProjectId">
         update proj_payment set del_flag = '2', update_by = #{updateBy}, update_time = now()
         where project_id = #{projectId} and payment_type = 'refund' and del_flag = '0'
+    </update>
+
+    <!-- 逻辑删除某项目的全部付款记录（删除项目时级联清理） -->
+    <update id="deletePaymentsByProjectId" parameterType="Long">
+        update proj_payment set del_flag = '2'
+        where project_id = #{projectId} and del_flag = '0'
+    </update>
+
+    <!-- 批量逻辑删除多个项目的付款记录（批量删除项目时级联清理） -->
+    <update id="deletePaymentsByProjectIds">
+        update proj_payment set del_flag = '2'
+        where project_id in
+        <foreach item="projectId" collection="projectIds" open="(" separator="," close=")">
+            #{projectId}
+        </foreach>
+        and del_flag = '0'
     </update>
 
 </mapper>

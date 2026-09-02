@@ -75,4 +75,28 @@ public interface ProjTaskMapper
      * @return 结果
      */
     public int deleteTaskByProjectIdAndUserIds(@Param("projectId") Long projectId, @Param("userIds") List<Long> userIds);
+
+    /**
+     * 逻辑删除指定项目下所有任务（删除项目时级联清理）
+     *
+     * @param projectId 项目ID
+     * @return 结果
+     */
+    public int deleteTasksByProjectId(Long projectId);
+
+    /**
+     * 逻辑删除指定项目ID数组下的所有任务（批量删除项目时级联清理）
+     *
+     * @param projectIds 项目ID数组
+     * @return 结果
+     */
+    public int deleteTasksByProjectIds(@Param("projectIds") Long[] projectIds);
+
+    /**
+     * 批量新增任务（导入时一次性插入，替代逐条 insertTask）
+     *
+     * @param list 任务列表
+     * @return 结果
+     */
+    public int insertTaskBatch(@Param("list") List<ProjTask> list);
 }

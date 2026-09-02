@@ -46,6 +46,14 @@ public interface ProjPaymentMapper
     public List<ProjPayment> selectPaymentsByProjectId(Long projectId);
 
     /**
+     * 按项目ID数组批量查询付款记录（用于结算列表，避免 N+1 查询）
+     *
+     * @param projectIds 项目ID数组
+     * @return 付款记录列表
+     */
+    public List<ProjPayment> selectPaymentsByProjectIds(@org.apache.ibatis.annotations.Param("projectIds") Long[] projectIds);
+
+    /**
      * Upsert 付款记录（按 project_id + payment_type 唯一）
      *
      * @param payment 付款记录
@@ -93,4 +101,20 @@ public interface ProjPaymentMapper
      */
     public int deleteRefundsByProjectId(@org.apache.ibatis.annotations.Param("projectId") Long projectId,
                                         @org.apache.ibatis.annotations.Param("updateBy") String updateBy);
+
+    /**
+     * 逻辑删除某项目的全部付款记录（删除项目时级联清理）
+     *
+     * @param projectId 项目ID
+     * @return 结果
+     */
+    public int deletePaymentsByProjectId(Long projectId);
+
+    /**
+     * 逻辑删除指定项目ID数组下的全部付款记录（批量删除项目时级联清理）
+     *
+     * @param projectIds 项目ID数组
+     * @return 结果
+     */
+    public int deletePaymentsByProjectIds(@org.apache.ibatis.annotations.Param("projectIds") Long[] projectIds);
 }

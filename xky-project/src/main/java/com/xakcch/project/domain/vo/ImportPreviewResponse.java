@@ -10,7 +10,6 @@ public class ImportPreviewResponse implements Serializable
 
     private String token;
     private Integer totalRows;
-    private Integer duplicateCount;
     private Integer readyCount;
     private Integer warningCount;
     private Integer errorCount;
@@ -19,7 +18,6 @@ public class ImportPreviewResponse implements Serializable
 
     private List<CategoryOption> categoryOptions = new ArrayList<>();
     private List<BillingOption> billingOptions = new ArrayList<>();
-    private List<UserOption> userOptions = new ArrayList<>();
 
     /** 仅可导入的行数据 */
     private List<ImportPreviewRow> rows = new ArrayList<>();
@@ -31,8 +29,6 @@ public class ImportPreviewResponse implements Serializable
     public void setToken(String token) { this.token = token; }
     public Integer getTotalRows() { return totalRows; }
     public void setTotalRows(Integer n) { this.totalRows = n; }
-    public Integer getDuplicateCount() { return duplicateCount; }
-    public void setDuplicateCount(Integer n) { this.duplicateCount = n; }
     public Integer getReadyCount() { return readyCount; }
     public void setReadyCount(Integer n) { this.readyCount = n; }
     public Integer getWarningCount() { return warningCount; }
@@ -45,8 +41,6 @@ public class ImportPreviewResponse implements Serializable
     public void setCategoryOptions(List<CategoryOption> o) { this.categoryOptions = o; }
     public List<BillingOption> getBillingOptions() { return billingOptions; }
     public void setBillingOptions(List<BillingOption> o) { this.billingOptions = o; }
-    public List<UserOption> getUserOptions() { return userOptions; }
-    public void setUserOptions(List<UserOption> o) { this.userOptions = o; }
     public List<ImportPreviewRow> getRows() { return rows; }
     public void setRows(List<ImportPreviewRow> r) { this.rows = r; }
     public List<ProblemRowDetail> getProblemRows() { return problemRows; }
@@ -54,12 +48,9 @@ public class ImportPreviewResponse implements Serializable
 
     public static class ProblemSummary implements Serializable {
         private String warningDesc;
-        private String duplicateDesc;
         private String errorDesc;
         public String getWarningDesc() { return warningDesc; }
         public void setWarningDesc(String v) { this.warningDesc = v; }
-        public String getDuplicateDesc() { return duplicateDesc; }
-        public void setDuplicateDesc(String v) { this.duplicateDesc = v; }
         public String getErrorDesc() { return errorDesc; }
         public void setErrorDesc(String v) { this.errorDesc = v; }
     }
@@ -98,17 +89,5 @@ public class ImportPreviewResponse implements Serializable
         public void setPriceUnit(String v) { this.priceUnit = v; }
         public java.math.BigDecimal getMinQuantity() { return minQuantity; }
         public void setMinQuantity(java.math.BigDecimal v) { this.minQuantity = v; }
-    }
-
-    public static class UserOption implements Serializable {
-        private Long userId;
-        private String nickName;
-        private String userName;
-        public Long getUserId() { return userId; }
-        public void setUserId(Long v) { this.userId = v; }
-        public String getNickName() { return nickName; }
-        public void setNickName(String v) { this.nickName = v; }
-        public String getUserName() { return userName; }
-        public void setUserName(String v) { this.userName = v; }
     }
 }

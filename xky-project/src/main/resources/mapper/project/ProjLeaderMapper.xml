@@ -16,9 +16,36 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         update proj_leader set del_flag = '2' where project_id = #{projectId}
     </delete>
 
+    <!-- 批量逻辑删除多个项目的负责人关联（批量删除项目时级联清理） -->
+    <delete id="deleteLeadersByProjectIds">
+        update proj_leader set del_flag = '2'
+        where project_id in
+        <foreach item="projectId" collection="projectIds" open="(" separator="," close=")">
+            #{projectId}
+        </foreach>
+    </delete>
+
     <select id="selectLeaderIdsByProjectId" parameterType="Long" resultType="Long">
         select user_id from proj_leader
         where project_id = #{projectId} and del_flag = '0'
+    </select>
+
+    <!-- 按昵称精确查询用户（不限状态，在职优先） -->
+    <select id="selectUserByNickName" resultType="com.xakcch.common.core.domain.entity.SysUser">
+        select u.user_id as "userId", u.nick_name as "nickName", u.user_name as "userName", u.status as "status"
+        from sys_user u
+        where u.nick_name = #{nickName} and u.del_flag = '0'
+        order by (case when u.status = '0' then 0 else 1 end), u.user_id
+        limit 1
+    </select>
+
+    <!-- 项目表已出现过的全部负责人（去重，含停用用户） -->
+    <select id="selectDistinctLeaders" resultType="com.xakcch.common.core.domain.entity.SysUser">
+        select distinct u.user_id as "userId", u.nick_name as "nickName", u.user_name as "userName", u.status as "status"
+        from proj_leader l
+        join sys_user u on u.user_id = l.user_id
+        where l.del_flag = '0' and u.del_flag = '0'
+        order by u.nick_name
     </select>
 
 </mapper>

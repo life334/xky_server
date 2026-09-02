@@ -44,9 +44,6 @@ public class ImportPreviewRow
     /** 付款项 */
     private List<ImportPreviewPayment> payments = new ArrayList<>();
 
-    /** 该项目是否重复（跳过） */
-    private boolean duplicate;
-
     /** 错误 */
     private List<String> errors = new ArrayList<>();
     /** 警告 */
@@ -90,8 +87,6 @@ public class ImportPreviewRow
     public void setWorkloads(List<ImportPreviewWorkload> w) { this.workloads = w; }
     public List<ImportPreviewPayment> getPayments() { return payments; }
     public void setPayments(List<ImportPreviewPayment> p) { this.payments = p; }
-    public boolean isDuplicate() { return duplicate; }
-    public void setDuplicate(boolean duplicate) { this.duplicate = duplicate; }
     public List<String> getErrors() { return errors; }
     public void setErrors(List<String> errors) { this.errors = errors; }
     public List<String> getWarnings() { return warnings; }

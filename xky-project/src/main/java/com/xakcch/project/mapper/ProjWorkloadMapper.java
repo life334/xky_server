@@ -1,6 +1,7 @@
 package com.xakcch.project.mapper;
 
 import java.util.List;
+import org.apache.ibatis.annotations.Param;
 import com.xakcch.project.domain.ProjWorkload;
 
 /**
@@ -59,6 +60,14 @@ public interface ProjWorkloadMapper
     public List<ProjWorkload> selectWorkloadsByProjectId(Long projectId);
 
     /**
+     * 按项目ID数组批量查询工作量列表（用于结算列表，避免 N+1 查询）
+     *
+     * @param projectIds 项目ID数组
+     * @return 工作量集合
+     */
+    public List<ProjWorkload> selectWorkloadsByProjectIds(@Param("projectIds") Long[] projectIds);
+
+    /**
      * Upsert 工作量（按 project_id + user_id + category_id 唯一）
      *
      * @param workload 工作量
@@ -73,4 +82,28 @@ public interface ProjWorkloadMapper
      * @return 结果
      */
     public int deleteWorkloadsByProjectId(Long projectId);
+
+    /**
+     * 按项目ID数组批量删除工作量（逻辑删除，删除项目时级联清理）
+     *
+     * @param projectIds 项目ID数组
+     * @return 结果
+     */
+    public int deleteWorkloadsByProjectIds(@Param("projectIds") Long[] projectIds);
+
+    /**
+     * 查询项目下最大子项序号（用于导入时子项自增）
+     *
+     * @param projectId 项目ID
+     * @return 最大子项序号（无子项时返回 0）
+     */
+    public Integer selectMaxSubItemNo(Long projectId);
+
+    /**
+     * 批量新增工作量（导入时一次性插入，替代逐条 insertWorkload）
+     *
+     * @param list 工作量列表
+     * @return 结果
+     */
+    public int insertWorkloadBatch(@Param("list") List<ProjWorkload> list);
 }

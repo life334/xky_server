@@ -56,6 +56,12 @@ public class ProjWorkload extends BaseEntity
     /** 计费类别（如：常规、加急） */
     private String billingCategory;
 
+    /** 子项序号（项目内自增，历史导入同工程编号多记录时区分子项） */
+    private Integer subItemNo;
+
+    /** 子项名称（=委托任务，工作量列表展示用） */
+    private String subItemName;
+
     /** 计价单位（如：平方公里、公里、宗） */
     private String priceUnit;
 
@@ -224,6 +230,26 @@ public class ProjWorkload extends BaseEntity
         this.billingCategory = billingCategory;
     }
 
+    public Integer getSubItemNo()
+    {
+        return subItemNo;
+    }
+
+    public void setSubItemNo(Integer subItemNo)
+    {
+        this.subItemNo = subItemNo;
+    }
+
+    public String getSubItemName()
+    {
+        return subItemName;
+    }
+
+    public void setSubItemName(String subItemName)
+    {
+        this.subItemName = subItemName;
+    }
+
     public String getPriceUnit()
     {
         return priceUnit;
@@ -321,6 +347,8 @@ public class ProjWorkload extends BaseEntity
             .append("priceSource", getPriceSource())
             .append("billingType", getBillingType())
             .append("billingCategory", getBillingCategory())
+            .append("subItemNo", getSubItemNo())
+            .append("subItemName", getSubItemName())
             .append("priceUnit", getPriceUnit())
             .append("minQuantity", getMinQuantity())
             .append("unitPrice", getUnitPrice())

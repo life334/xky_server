@@ -19,6 +19,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="priceSource"       column="price_source"      />
         <result property="billingType"       column="billing_type"      />
         <result property="billingCategory"   column="billing_category"  />
+        <result property="subItemNo"         column="sub_item_no"       />
+        <result property="subItemName"       column="sub_item_name"     />
         <result property="priceUnit"         column="price_unit"        />
         <result property="minQuantity"       column="min_quantity"      />
         <result property="unitPrice"         column="unit_price"        />
@@ -41,7 +43,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.price_unit, w.min_quantity, w.unit_price,
+               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark
         from proj_workload w
@@ -54,7 +56,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.price_unit, w.min_quantity, w.unit_price,
+               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -87,7 +89,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.price_unit, w.min_quantity, w.unit_price,
+               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -115,6 +117,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="priceSource != null and priceSource != ''">price_source,</if>
             <if test="billingType != null and billingType != ''">billing_type,</if>
             <if test="billingCategory != null and billingCategory != ''">billing_category,</if>
+            <if test="subItemNo != null">sub_item_no,</if>
+            <if test="subItemName != null and subItemName != ''">sub_item_name,</if>
             <if test="priceUnit != null">price_unit,</if>
             <if test="minQuantity != null">min_quantity,</if>
             <if test="unitPrice != null">unit_price,</if>
@@ -136,6 +140,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="priceSource != null and priceSource != ''">#{priceSource},</if>
             <if test="billingType != null and billingType != ''">#{billingType},</if>
             <if test="billingCategory != null and billingCategory != ''">#{billingCategory},</if>
+            <if test="subItemNo != null">#{subItemNo},</if>
+            <if test="subItemName != null and subItemName != ''">#{subItemName},</if>
             <if test="priceUnit != null">#{priceUnit},</if>
             <if test="minQuantity != null">#{minQuantity},</if>
             <if test="unitPrice != null">#{unitPrice},</if>
@@ -162,6 +168,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="priceSource != null and priceSource != ''">price_source = #{priceSource},</if>
             <if test="billingType != null and billingType != ''">billing_type = #{billingType},</if>
             <if test="billingCategory != null and billingCategory != ''">billing_category = #{billingCategory},</if>
+            <if test="subItemNo != null">sub_item_no = #{subItemNo},</if>
+            <if test="subItemName != null and subItemName != ''">sub_item_name = #{subItemName},</if>
             <if test="priceUnit != null">price_unit = #{priceUnit},</if>
             <if test="minQuantity != null">min_quantity = #{minQuantity},</if>
             <if test="unitPrice != null">unit_price = #{unitPrice},</if>
@@ -184,6 +192,68 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         update proj_workload set del_flag = '2' where project_id = #{projectId} and del_flag = '0'
     </delete>
 
+    <!-- 批量逻辑删除多个项目的工作量（批量删除项目时级联清理） -->
+    <delete id="deleteWorkloadsByProjectIds">
+        update proj_workload set del_flag = '2'
+        where project_id in
+        <foreach item="projectId" collection="projectIds" open="(" separator="," close=")">
+            #{projectId}
+        </foreach>
+        and del_flag = '0'
+    </delete>
+
+    <select id="selectMaxSubItemNo" parameterType="Long" resultType="java.lang.Integer">
+        select coalesce(max(sub_item_no), 0) from proj_workload
+        where project_id = #{projectId} and del_flag = '0'
+    </select>
+
+    <!-- 批量新增工作量（导入时一次性插入；null 字段用 choose 兜底默认值，与 upsertWorkload 语义一致） -->
+    <insert id="insertWorkloadBatch" parameterType="java.util.List">
+        insert into proj_workload(
+            project_id, user_id, category_id,
+            internal_workload, external_workload,
+            internal_price, external_price,
+            internal_output, external_output,
+            workload, price_source,
+            billing_type, billing_category, sub_item_no, sub_item_name,
+            price_unit, min_quantity, unit_price,
+            extra_data, remark,
+            create_by, create_time
+        ) values
+        <foreach collection="list" item="item" separator=",">
+        (
+            #{item.projectId}, #{item.userId}, #{item.categoryId},
+            #{item.internalWorkload}, #{item.externalWorkload},
+            #{item.internalPrice}, #{item.externalPrice},
+            #{item.internalOutput}, #{item.externalOutput},
+            #{item.workload}, #{item.priceSource},
+            <choose>
+                <when test="item.billingType != null and item.billingType != ''">#{item.billingType}</when>
+                <otherwise>''</otherwise>
+            </choose>,
+            <choose>
+                <when test="item.billingCategory != null and item.billingCategory != ''">#{item.billingCategory}</when>
+                <otherwise>''</otherwise>
+            </choose>,
+            <choose>
+                <when test="item.subItemNo != null">#{item.subItemNo}</when>
+                <otherwise>0</otherwise>
+            </choose>,
+            <choose>
+                <when test="item.subItemName != null and item.subItemName != ''">#{item.subItemName}</when>
+                <otherwise>''</otherwise>
+            </choose>,
+            #{item.priceUnit}, #{item.minQuantity}, #{item.unitPrice},
+            <choose>
+                <when test="item.extraData != null and item.extraData != ''">#{item.extraData}::jsonb</when>
+                <otherwise>null</otherwise>
+            </choose>,
+            #{item.remark},
+            #{item.createBy}, now()
+        )
+        </foreach>
+    </insert>
+
     <select id="selectWorkloadsByProjectId" parameterType="Long" resultMap="ProjWorkloadResult">
         select w.id, w.project_id, w.user_id, w.category_id,
                w.internal_workload, w.external_workload,
@@ -191,7 +261,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.price_unit, w.min_quantity, w.unit_price,
+               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -205,6 +275,31 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by u.nick_name, c.name
     </select>
 
+    <select id="selectWorkloadsByProjectIds" resultMap="ProjWorkloadResult">
+        select w.id, w.project_id, w.user_id, w.category_id,
+               w.internal_workload, w.external_workload,
+               w.internal_price, w.external_price,
+               w.internal_output, w.external_output,
+               w.workload,
+               w.price_source,
+               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price,
+               w.extra_data::text as extra_data, w.del_flag,
+               w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
+               p.project_name,
+               u.nick_name,
+               c.name as category_name
+        from proj_workload w
+        left join proj_project p on p.id = w.project_id
+        left join sys_user u on u.user_id = w.user_id
+        left join proj_category c on c.id = w.category_id
+        where w.project_id in
+        <foreach collection="projectIds" item="pid" open="(" separator="," close=")">
+            #{pid}
+        </foreach>
+        and w.del_flag = '0'
+        order by w.project_id, u.nick_name, c.name
+    </select>
+
     <insert id="upsertWorkload" parameterType="ProjWorkload">
         insert into proj_workload(
             project_id, user_id, category_id,
@@ -213,7 +308,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             internal_output, external_output,
             workload,
             price_source,
-            billing_type, billing_category, price_unit, min_quantity, unit_price,
+            billing_type, billing_category, sub_item_no, sub_item_name, price_unit, min_quantity, unit_price,
             extra_data, remark,
             create_by, create_time
         )values(
@@ -231,13 +326,21 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 <when test="billingCategory != null and billingCategory != ''">#{billingCategory},</when>
                 <otherwise>'',</otherwise>
             </choose>
+            <choose>
+                <when test="subItemNo != null">#{subItemNo},</when>
+                <otherwise>0,</otherwise>
+            </choose>
+            <choose>
+                <when test="subItemName != null and subItemName != ''">#{subItemName},</when>
+                <otherwise>'',</otherwise>
+            </choose>
             #{priceUnit}, #{minQuantity}, #{unitPrice},
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="extraData == null or extraData == ''">null,</if>
             #{remark},
             #{createBy}, now()
         )
-        on conflict (project_id, user_id, category_id, billing_type, billing_category) where del_flag = '0'
+        on conflict (project_id, user_id, category_id, billing_type, billing_category, sub_item_no) where del_flag = '0'
         do update set
             internal_workload = EXCLUDED.internal_workload,
             external_workload = EXCLUDED.external_workload,
@@ -249,6 +352,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             price_source = EXCLUDED.price_source,
             billing_type = EXCLUDED.billing_type,
             billing_category = EXCLUDED.billing_category,
+            sub_item_no = EXCLUDED.sub_item_no,
+            sub_item_name = EXCLUDED.sub_item_name,
             price_unit = EXCLUDED.price_unit,
             min_quantity = EXCLUDED.min_quantity,
             unit_price = EXCLUDED.unit_price,

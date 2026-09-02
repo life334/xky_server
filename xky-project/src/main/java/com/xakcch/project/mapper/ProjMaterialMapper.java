@@ -39,6 +39,22 @@ public interface ProjMaterialMapper
     public int deleteMaterialByIds(Long[] ids);
 
     /**
+     * 逻辑删除某项目的全部资料（删除项目时级联清理）
+     *
+     * @param projectId 项目ID
+     * @return 结果
+     */
+    public int deleteMaterialsByProjectId(Long projectId);
+
+    /**
+     * 逻辑删除指定项目ID数组下的全部资料（批量删除项目时级联清理）
+     *
+     * @param projectIds 项目ID数组
+     * @return 结果
+     */
+    public int deleteMaterialsByProjectIds(@Param("projectIds") Long[] projectIds);
+
+    /**
      * 更新资料状态
      */
     public int updateMaterialStatus(@Param("id") Long id, @Param("status") String status, @Param("updateBy") String updateBy);

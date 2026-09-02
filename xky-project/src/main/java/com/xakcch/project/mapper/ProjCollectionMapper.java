@@ -46,4 +46,20 @@ public interface ProjCollectionMapper
      * 批量删除催收记录（逻辑删除）
      */
     public int deleteLogByIds(@Param("ids") Long[] ids, @Param("updateBy") String updateBy);
+
+    /**
+     * 逻辑删除某项目的全部催收记录（删除项目时级联清理）
+     *
+     * @param projectId 项目ID
+     * @return 结果
+     */
+    public int deleteLogsByProjectId(Long projectId);
+
+    /**
+     * 逻辑删除指定项目ID数组下的全部催收记录（批量删除项目时级联清理）
+     *
+     * @param projectIds 项目ID数组
+     * @return 结果
+     */
+    public int deleteLogsByProjectIds(@Param("projectIds") Long[] projectIds);
 }
