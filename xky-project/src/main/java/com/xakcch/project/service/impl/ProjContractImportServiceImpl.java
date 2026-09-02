@@ -40,13 +40,11 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
     // ====================== 会话缓存（参考 ProjImportServiceImpl） ======================
     static class SessionEntry {
         final ContractImportPreviewResponse resp;
-        /** 计费方式列表（commit 时反查 categoryId 用） */
-        final List<ProjCategoryBilling> billingRecords;
         final long createAt;
         final AtomicBoolean committing = new AtomicBoolean(false);
         volatile ImportCommitResult commitResult;
-        SessionEntry(ContractImportPreviewResponse r, List<ProjCategoryBilling> b) {
-            this.resp = r; this.billingRecords = b; this.createAt = System.currentTimeMillis();
+        SessionEntry(ContractImportPreviewResponse r) {
+            this.resp = r; this.createAt = System.currentTimeMillis();
         }
         boolean expired() { return System.currentTimeMillis() - createAt > 2 * 3600 * 1000L; }
     }
@@ -63,8 +61,6 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
 
     // ====================== 依赖注入 ======================
     @Autowired private ProjContractMapper contractMapper;
-    @Autowired private ProjContractPriceMapper contractPriceMapper;
-    @Autowired private ProjCategoryBillingMapper billingMapper;
     @Autowired private ProjImportLogMapper importLogMapper;
     @Autowired private PlatformTransactionManager txManager;
 
@@ -81,8 +77,6 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
 
     private ObjectMapper om = new ObjectMapper();
 
-    // 单价行解析正则：类别+数字+/+单位  例 "导线2976/km"
-    private static final Pattern PRICE_LINE_PATTERN = Pattern.compile("^(.+?)(\\d+(?:\\.\\d+)?)/(.+)$");
     // 合同金额中提取数字
     private static final Pattern AMOUNT_NUMBER_PATTERN = Pattern.compile("(\\d+(?:\\.\\d+)?)");
     // 签订日期  例 "2024.9.29" / "2024-12-04"
@@ -91,22 +85,16 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
     // ====================== 预览 ======================
     @Override
     public ContractImportPreviewResponse previewContract(MultipartFile file) throws Exception {
-        // 1. 加载外部计费方式
-        ProjCategoryBilling bq = new ProjCategoryBilling();
-        bq.setBillingType("external");
-        bq.setStatus("0");
-        List<ProjCategoryBilling> billings = billingMapper.selectBillingList(bq);
-
-        // 2. 读取 Excel（所有 sheet 页）
+        // 1. 读取 Excel（所有 sheet 页）
         List<List<List<Object>>> allSheets = readAllSheets(file);
 
-        // 3. 逐 sheet 解析
+        // 2. 逐 sheet 解析
         ContractImportPreviewResponse fullResp = new ContractImportPreviewResponse();
         for (List<List<Object>> sheetRows : allSheets) {
-            parseSheet(sheetRows, billings, fullResp.getRows());
+            parseSheet(sheetRows, fullResp.getRows());
         }
 
-        // 4. 合同编号重复检查
+        // 3. 合同编号重复检查
         for (ContractImportPreviewResponse.ContractImportRow row : fullResp.getRows()) {
             if (StringUtils.isBlank(row.getContractNo())) continue;
             ProjContract dup = contractMapper.checkContractNoUnique(
@@ -117,7 +105,7 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
             }
         }
 
-        // 5. 分类：ready / problem
+        // 4. 分类：ready / problem
         List<ContractImportPreviewResponse.ContractImportRow> readyRows = new ArrayList<>();
         List<ContractImportPreviewResponse.ContractImportRow> problemRows = new ArrayList<>();
         for (ContractImportPreviewResponse.ContractImportRow r : fullResp.getRows()) {
@@ -130,7 +118,7 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
             readyRows.add(r);
         }
 
-        // 6. 统计
+        // 5. 统计
         fullResp.setTotalRows(fullResp.getRows().size());
         int dupCnt = 0, errCnt = 0;
         for (ContractImportPreviewResponse.ContractImportRow r : problemRows) {
@@ -141,18 +129,18 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
         fullResp.setErrorCount(errCnt);
         fullResp.setReadyCount(readyRows.size());
 
-        // 7. 问题摘要
+        // 6. 问题摘要
         ContractImportPreviewResponse.ProblemSummary ps = new ContractImportPreviewResponse.ProblemSummary();
         if (dupCnt > 0) ps.setDuplicateDesc(dupCnt + " 行的合同编号已存在于系统中，重复导入将自动跳过");
         if (errCnt > 0) ps.setErrorDesc(errCnt + " 行缺少关键字段，无法导入");
         fullResp.setProblemSummary(ps);
 
-        // 8. 生成 token，缓存全量数据
+        // 7. 生成 token，缓存全量数据
         String token = UUID.randomUUID().toString().replace("-", "");
         fullResp.setToken(token);
-        SESSION.put(token, new SessionEntry(fullResp, billings));
+        SESSION.put(token, new SessionEntry(fullResp));
 
-        // 9. 构建轻量响应（仅含可导入行 + 问题行）
+        // 8. 构建轻量响应（仅含可导入行 + 问题行）
         ContractImportPreviewResponse lightResp = new ContractImportPreviewResponse();
         lightResp.setToken(token);
         lightResp.setTotalRows(fullResp.getTotalRows());
@@ -181,7 +169,6 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
             throw new RuntimeException("正在导入中，请稍后到导入日志查看结果");
         }
         ContractImportPreviewResponse cached = entry.resp;
-        List<ProjCategoryBilling> billings = entry.billingRecords;
         // 合同导入不使用前端回传的 rows（ImportCommitRequest.rows 类型为 ImportPreviewRow），
         // 始终使用预览缓存中的 ContractImportRow
         List<ContractImportPreviewResponse.ContractImportRow> rows = cached.getRows();
@@ -230,7 +217,7 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
                     Throwable[] err = {null};
                     runInNewTx(() -> {
                         try {
-                            writeOneRow(row, billings, user);
+                            writeOneRow(row, user);
                         } catch (Throwable t) { err[0] = t; throw t; }
                     });
                     if (err[0] != null) throw new RuntimeException(err[0].getMessage(), err[0]);
@@ -305,8 +292,7 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
     }
 
     /** 单行写入（必须运行在独立事务中） */
-    private void writeOneRow(ContractImportPreviewResponse.ContractImportRow row,
-                              List<ProjCategoryBilling> billings, String user) {
+    private void writeOneRow(ContractImportPreviewResponse.ContractImportRow row, String user) {
         if (StringUtils.isBlank(row.getContractNo())) throw new RuntimeException("合同编号为空");
         // 再次校验唯一性（防止 preview 到 commit 期间被新增）
         ProjContract dup = contractMapper.checkContractNoUnique(
@@ -324,25 +310,14 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
         c.setIsSettled("0");
         c.setRemark(row.getRemark());
         c.setCreateBy(user);
-        contractMapper.insertContract(c);
-
-        // 写入单价明细（仅有 matchedBillingId 的才写入）
-        if (row.getPriceItems() != null && billings != null) {
-            Map<Long, ProjCategoryBilling> billingMap = new HashMap<>();
-            for (ProjCategoryBilling b : billings) billingMap.put(b.getId(), b);
-            for (ContractImportPreviewResponse.ContractPriceItem item : row.getPriceItems()) {
-                if (item.getMatchedBillingId() == null) continue;
-                ProjCategoryBilling b = billingMap.get(item.getMatchedBillingId());
-                if (b == null || b.getCategoryId() == null) continue;
-                ProjContractPrice p = new ProjContractPrice();
-                p.setContractId(c.getId());
-                p.setCategoryId(b.getCategoryId());
-                p.setBillingId(item.getMatchedBillingId());
-                p.setPrice(item.getUnitPrice());
-                p.setCreateBy(user);
-                contractPriceMapper.insertPrice(p);
-            }
+        // 动态字段：项目类型、测绘地址 → extra_data JSONB
+        Map<String, Object> extra = new HashMap<>();
+        if (StringUtils.isNotBlank(row.getProjectType())) extra.put("projectType", row.getProjectType());
+        if (StringUtils.isNotBlank(row.getSurveyAddress())) extra.put("surveyAddress", row.getSurveyAddress());
+        if (!extra.isEmpty()) {
+            try { c.setExtraData(om.writeValueAsString(extra)); } catch (Exception ignore) {}
         }
+        contractMapper.insertContract(c);
     }
 
     // ====================== 获取问题行明细（下载Excel用） ======================
@@ -377,16 +352,8 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
             suggestions.add("请补全Excel中缺失的关键字段");
         } else {
             probType = "待修正";
-            for (ContractImportPreviewResponse.ContractPriceItem item : r.getPriceItems()) {
-                if (item.getMatchedBillingId() == null) {
-                    problems.add("计费类别「" + item.getBillingCategory() + "」无法匹配");
-                    suggestions.add("请在系统中确认计费类别配置");
-                }
-            }
-            if (problems.isEmpty()) {
-                problems.add("数据待确认");
-                suggestions.add("请检查数据后重新上传");
-            }
+            problems.add("数据待确认");
+            suggestions.add("请检查数据后重新上传");
         }
         ProblemRowDetail d = new ProblemRowDetail();
         d.setExcelRow(r.getExcelRow());
@@ -467,7 +434,7 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
     }
 
     // ====================== 解析单个 sheet ======================
-    private void parseSheet(List<List<Object>> rows, List<ProjCategoryBilling> billings,
+    private void parseSheet(List<List<Object>> rows,
                              List<ContractImportPreviewResponse.ContractImportRow> outRows) {
         if (rows == null || rows.isEmpty()) return;
         // 找表头行（含"合同编号"）
@@ -497,6 +464,8 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
         int colContractAmt   = firstMatch(colMap, "合同金额|合同总价");
         int colPrice         = firstMatch(colMap, "单价");
         int colRemark        = firstMatch(colMap, "备注");
+        int colProjectType   = firstMatch(colMap, "项目类型");
+        int colSurveyAddress = firstMatch(colMap, "测绘地址|测绘地点");
 
         for (int r = headerRowIdx + 1; r < rows.size(); r++) {
             List<Object> row = rows.get(r);
@@ -514,97 +483,26 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
             cr.setContractName(strCell(row, colContractName));
             cr.setSignDate(parseSignDate(getCell(row, colSignDate)));
             cr.setContractAmount(parseContractAmount(getCell(row, colContractAmt)));
-            cr.setRemark(strCell(row, colRemark));
+            cr.setProjectType(strCell(row, colProjectType));
+            cr.setSurveyAddress(strCell(row, colSurveyAddress));
 
-            // 解析单价列
-            List<ContractImportPreviewResponse.ContractPriceItem> priceItems =
-                parsePriceItems(getCell(row, colPrice), billings);
-            cr.getPriceItems().addAll(priceItems);
+            // 单价列：读取原始文本，不再解析
+            String priceText = strCell(row, colPrice);
 
-            // 合同类型：有单价行 → 单价合同，无 → 总价合同
-            cr.setContractType(priceItems.isEmpty() ? "总价合同" : "单价合同");
+            // 备注拼接：备注列 + 换行 + 单价列原文
+            String remark = strCell(row, colRemark);
+            if (StringUtils.isNotBlank(remark) && StringUtils.isNotBlank(priceText)) {
+                remark = remark + "\n" + priceText;
+            } else if (StringUtils.isNotBlank(priceText)) {
+                remark = priceText;
+            }
+            cr.setRemark(remark);
+
+            // 合同类型：单价列有值 → 单价合同，否则 → 总价合同
+            cr.setContractType(StringUtils.isNotBlank(priceText) ? "单价合同" : "总价合同");
 
             outRows.add(cr);
         }
-    }
-
-    // ====================== 解析单价列 ======================
-    private List<ContractImportPreviewResponse.ContractPriceItem> parsePriceItems(
-            Object v, List<ProjCategoryBilling> billings) {
-        List<ContractImportPreviewResponse.ContractPriceItem> items = new ArrayList<>();
-        if (v == null) return items;
-        String s = v.toString().trim();
-        if (s.isEmpty()) return items;
-        // 按换行分割（\n 或 \r\n）
-        String[] lines = s.split("\\r?\\n");
-        for (String line : lines) {
-            if (line == null) continue;
-            line = line.trim();
-            if (line.isEmpty()) continue;
-            Matcher m = PRICE_LINE_PATTERN.matcher(line);
-            if (!m.matches()) continue;
-            ContractImportPreviewResponse.ContractPriceItem item = new ContractImportPreviewResponse.ContractPriceItem();
-            item.setBillingCategory(m.group(1).trim());
-            try {
-                item.setUnitPrice(new BigDecimal(m.group(2)));
-            } catch (Exception e) {
-                continue;
-            }
-            item.setPriceUnit(m.group(3).trim());
-            // 模糊匹配计费类别
-            matchBillingCategory(item, billings);
-            items.add(item);
-        }
-        return items;
-    }
-
-    // ====================== 计费类别模糊匹配（Jaccard 相似度） ======================
-    private void matchBillingCategory(ContractImportPreviewResponse.ContractPriceItem item,
-                                        List<ProjCategoryBilling> billings) {
-        if (billings == null || billings.isEmpty()) {
-            item.setWarning("系统中无外部计费类别配置");
-            return;
-        }
-        String query = item.getBillingCategory();
-        if (query == null || query.isEmpty()) {
-            item.setWarning("计费类别为空");
-            return;
-        }
-        ProjCategoryBilling best = null;
-        double bestScore = 0;
-        for (ProjCategoryBilling b : billings) {
-            String dbCat = b.getBillingCategory() == null ? "" : b.getBillingCategory().trim();
-            double sc = similarity(query, dbCat);
-            if (best == null || sc > bestScore) {
-                best = b; bestScore = sc;
-            }
-        }
-        if (best != null && bestScore >= 0.5) {
-            item.setMatchedBillingId(best.getId());
-            item.setMatchedBillingCategory(best.getBillingCategory());
-            if (bestScore < 1.0) {
-                item.setWarning("计费类别「" + query + "」匹配度" + String.format("%.2f", bestScore)
-                    + "，匹配到「" + best.getBillingCategory() + "」");
-            }
-        } else if (best != null) {
-            item.setWarning("计费类别「" + query + "」匹配度" + String.format("%.2f", bestScore)
-                + "，未达到阈值，请手动选择");
-        } else {
-            item.setWarning("未匹配到计费类别「" + query + "」");
-        }
-    }
-
-    private double similarity(String a, String b) {
-        if (a == null) a = ""; if (b == null) b = "";
-        if (a.equals(b)) return 1.0;
-        if (a.isEmpty() || b.isEmpty()) return 0.0;
-        Set<Character> sa = new HashSet<>(); for (char c : a.toCharArray()) sa.add(c);
-        Set<Character> sb = new HashSet<>(); for (char c : b.toCharArray()) sb.add(c);
-        Set<Character> inter = new HashSet<>(sa); inter.retainAll(sb);
-        Set<Character> uni = new HashSet<>(sa); uni.addAll(sb);
-        double jaccard = uni.isEmpty() ? 0 : (double) inter.size() / uni.size();
-        double contain = (a.contains(b) || b.contains(a)) ? 0.8 : 0.0;
-        return Math.max(jaccard, contain);
     }
 
     // ====================== 合同金额解析 ======================

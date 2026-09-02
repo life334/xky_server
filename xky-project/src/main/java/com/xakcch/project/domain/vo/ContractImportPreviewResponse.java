@@ -94,14 +94,17 @@ public class ContractImportPreviewResponse implements Serializable
         /** 备注 */
         private String remark;
 
+        /** 项目类型（自由文本，写入 extra_data） */
+        private String projectType;
+
+        /** 测绘地址（自由文本，写入 extra_data） */
+        private String surveyAddress;
+
         /** 是否重复（合同编号已存在） */
         private boolean duplicate;
 
         /** 错误信息 */
         private List<String> errors = new ArrayList<>();
-
-        /** 单价明细 */
-        private List<ContractPriceItem> priceItems = new ArrayList<>();
 
         public Integer getExcelRow() { return excelRow; }
         public void setExcelRow(Integer excelRow) { this.excelRow = excelRow; }
@@ -119,47 +122,13 @@ public class ContractImportPreviewResponse implements Serializable
         public void setContractType(String contractType) { this.contractType = contractType; }
         public String getRemark() { return remark; }
         public void setRemark(String remark) { this.remark = remark; }
+        public String getProjectType() { return projectType; }
+        public void setProjectType(String projectType) { this.projectType = projectType; }
+        public String getSurveyAddress() { return surveyAddress; }
+        public void setSurveyAddress(String surveyAddress) { this.surveyAddress = surveyAddress; }
         public boolean isDuplicate() { return duplicate; }
         public void setDuplicate(boolean duplicate) { this.duplicate = duplicate; }
         public List<String> getErrors() { return errors; }
         public void setErrors(List<String> errors) { this.errors = errors; }
-        public List<ContractPriceItem> getPriceItems() { return priceItems; }
-        public void setPriceItems(List<ContractPriceItem> priceItems) { this.priceItems = priceItems; }
-    }
-
-    /** 合同单价项 */
-    public static class ContractPriceItem implements Serializable {
-        private static final long serialVersionUID = 1L;
-
-        /** Excel 解析的计费类别原文 */
-        private String billingCategory;
-
-        /** 单价 */
-        private BigDecimal unitPrice;
-
-        /** 计价单位 */
-        private String priceUnit;
-
-        /** 模糊匹配到的 proj_category_billing.id */
-        private Long matchedBillingId;
-
-        /** 匹配到的计费类别名称 */
-        private String matchedBillingCategory;
-
-        /** 警告信息（匹配度不足等） */
-        private String warning;
-
-        public String getBillingCategory() { return billingCategory; }
-        public void setBillingCategory(String billingCategory) { this.billingCategory = billingCategory; }
-        public BigDecimal getUnitPrice() { return unitPrice; }
-        public void setUnitPrice(BigDecimal unitPrice) { this.unitPrice = unitPrice; }
-        public String getPriceUnit() { return priceUnit; }
-        public void setPriceUnit(String priceUnit) { this.priceUnit = priceUnit; }
-        public Long getMatchedBillingId() { return matchedBillingId; }
-        public void setMatchedBillingId(Long matchedBillingId) { this.matchedBillingId = matchedBillingId; }
-        public String getMatchedBillingCategory() { return matchedBillingCategory; }
-        public void setMatchedBillingCategory(String matchedBillingCategory) { this.matchedBillingCategory = matchedBillingCategory; }
-        public String getWarning() { return warning; }
-        public void setWarning(String warning) { this.warning = warning; }
     }
 }
