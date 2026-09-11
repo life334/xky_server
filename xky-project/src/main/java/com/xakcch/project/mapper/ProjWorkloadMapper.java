@@ -106,4 +106,21 @@ public interface ProjWorkloadMapper
      * @return 结果
      */
     public int insertWorkloadBatch(@Param("list") List<ProjWorkload> list);
+
+    /**
+     * 单价重算专用：按 id 更新单价/外部产值/来源/备份价（仅外部工作量重算调用）
+     * extraData 为 null 时不覆盖原值。
+     *
+     * @param id             工作量ID
+     * @param unitPrice      新的单价（同时写入 unit_price 与 external_price）
+     * @param externalOutput 新的外部产值（单价 × 工作量）
+     * @param priceSource    单价来源（manual=手改价 contract=合同价 imported=导入推导价 dict=字典价）
+     * @param extraData      extra_data JSON（如 origin_price 备份），可为 null
+     * @return 结果
+     */
+    public int updatePriceById(@Param("id") Long id,
+                               @Param("unitPrice") java.math.BigDecimal unitPrice,
+                               @Param("externalOutput") java.math.BigDecimal externalOutput,
+                               @Param("priceSource") String priceSource,
+                               @Param("extraData") String extraData);
 }

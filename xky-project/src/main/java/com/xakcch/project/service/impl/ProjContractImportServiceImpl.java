@@ -498,8 +498,8 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
             }
             cr.setRemark(remark);
 
-            // 合同类型：单价列有值 → 单价合同，否则 → 总价合同
-            cr.setContractType(StringUtils.isNotBlank(priceText) ? "单价合同" : "总价合同");
+            // 合同类型：单价列有值 → 单价合同(unit)，否则 → 总价合同(total)——落库用字典值，与 proj_contract_type 字典对齐
+            cr.setContractType(StringUtils.isNotBlank(priceText) ? "unit" : "total");
 
             outRows.add(cr);
         }

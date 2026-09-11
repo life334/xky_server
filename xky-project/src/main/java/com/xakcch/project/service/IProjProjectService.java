@@ -28,6 +28,15 @@ public interface IProjProjectService
     public List<ProjProject> selectProjectList(ProjProject project);
 
     /**
+     * 统计费用结算页「录入状态」全局数量（工作量/到账/发票胶囊数字）
+     * 忽略录入状态筛选本身，保留项目状态与高级筛选条件
+     *
+     * @param project 查询条件
+     * @return Map: workloadDone / workloadUndone / paymentDone / paymentUndone / invoiceUnpaid
+     */
+    public Map<String, Object> selectEntryStatusCounts(ProjProject project);
+
+    /**
      * 校验工程编号是否唯一
      *
      * @param project 项目信息
@@ -102,6 +111,16 @@ public interface IProjProjectService
      * @return 成功数量
      */
     public int batchInsertProject(List<ProjProject> projectList, String operName);
+
+    /**
+     * 批量新增项目（区域粘贴），并返回本次新写入记录的 ID 列表。
+     * 用于前端在只新增 1 条时自动打开编辑弹窗。
+     *
+     * @param projectList 项目列表
+     * @param operName 操作人
+     * @return 新写入项目的 ID 列表（顺序与入参中成功写入的记录一致）
+     */
+    public List<Long> batchInsertProjectReturnIds(List<ProjProject> projectList, String operName);
 
     /**
      * 统计各状态下的项目数量

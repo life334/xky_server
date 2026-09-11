@@ -41,4 +41,13 @@ public interface ProjCategoryBillingMapper
      * @return 结果
      */
     public int deleteBillingByCategoryId(@Param("categoryId") Long categoryId);
+
+    /**
+     * 单价重算用：查询类别下的计费方式字典价（含 id/billingType/billingCategory/unitPrice/priceUnit/minQuantity）。
+     * 返回全部计费行，由服务层按 (categoryId, billingType, billingCategory) 匹配。
+     *
+     * @param categoryIds 类别ID集合
+     * @return 计费方式列表
+     */
+    public List<ProjCategoryBilling> selectBillingByCategoryIds(@Param("categoryIds") List<Long> categoryIds);
 }

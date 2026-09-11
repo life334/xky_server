@@ -164,6 +164,7 @@ CREATE TABLE proj_project (
     update_by               VARCHAR(64)     DEFAULT '',
     update_time             TIMESTAMP,
     remark                  VARCHAR(500)    DEFAULT NULL,
+    data_source             VARCHAR(20)     DEFAULT 'manual',
     PRIMARY KEY (id)
 );
 
@@ -187,6 +188,7 @@ COMMENT ON COLUMN proj_project.duration_require IS '工期要求（天）';
 COMMENT ON COLUMN proj_project.total_duration IS '总时长（天）';
 COMMENT ON COLUMN proj_project.del_flag IS '删除标志（0正常 2删除）';
 COMMENT ON COLUMN proj_project.remark IS '备注';
+COMMENT on column proj_project.data_source is '项目来源（import=导入 manual=手动新增/粘贴）';
 
 CREATE INDEX idx_proj_project_code ON proj_project(project_code);
 CREATE INDEX idx_proj_project_category ON proj_project(project_category_id);
@@ -194,6 +196,7 @@ CREATE INDEX idx_proj_project_contract ON proj_project(contract_id);
 CREATE INDEX idx_proj_project_status ON proj_project(status);
 CREATE INDEX idx_proj_project_assign_date ON proj_project(assign_date);
 CREATE INDEX idx_proj_project_extra ON proj_project USING GIN (extra_data);
+CREATE INDEX if not exists idx_proj_project_data_source on proj_project(data_source);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_proj_project_code ON proj_project(project_code) WHERE del_flag = '0';
 
 
@@ -330,7 +333,9 @@ CREATE INDEX idx_proj_workload_category ON proj_workload(category_id);
 CREATE INDEX idx_proj_workload_extra ON proj_workload USING GIN (extra_data);
 -- 唯一性由 uk_workload_billing 保证（含 billing_type/billing_category/sub_item_no）
 CREATE UNIQUE INDEX IF NOT EXISTS uk_workload_billing ON proj_workload (project_id, user_id, category_id, billing_type, billing_category, sub_item_no) WHERE del_flag = '0';
-
+create index if not exists idx_proj_workload_proj_billing
+    on proj_workload(project_id, billing_type, billing_category)
+    where del_flag = '0';
 
 -- ----------------------------
 -- 8、付款记录表

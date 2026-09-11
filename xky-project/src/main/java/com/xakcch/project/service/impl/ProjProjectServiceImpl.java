@@ -32,6 +32,7 @@ import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.mapper.ProjTaskMapper;
 import com.xakcch.project.mapper.ProjWorkloadMapper;
 import com.xakcch.project.service.IProjProjectService;
+import com.xakcch.project.service.IProjPriceRecalcService;
 import com.xakcch.system.mapper.SysUserMapper;
 import com.xakcch.system.service.ISysWorkdayCalendarService;
 import com.xakcch.common.core.domain.entity.SysUser;
@@ -89,6 +90,9 @@ public class ProjProjectServiceImpl implements IProjProjectService
     @Autowired
     private ISysWorkdayCalendarService workdayCalendarService;
 
+    @Autowired
+    private IProjPriceRecalcService priceRecalcService;
+
     /**
      * 查询项目详情
      */
@@ -113,6 +117,15 @@ public class ProjProjectServiceImpl implements IProjProjectService
     public List<ProjProject> selectProjectList(ProjProject project)
     {
         return projectMapper.selectProjectList(project);
+    }
+
+    /**
+     * 统计费用结算页录入状态全局数量
+     */
+    @Override
+    public Map<String, Object> selectEntryStatusCounts(ProjProject project)
+    {
+        return projectMapper.selectEntryStatusCounts(project);
     }
 
     /**
@@ -141,6 +154,11 @@ public class ProjProjectServiceImpl implements IProjProjectService
         if (project.getStatus() == null || project.getStatus().isEmpty())
         {
             project.setStatus("ongoing");
+        }
+        // 项目来源（手动新增）
+        if (project.getDataSource() == null || project.getDataSource().isEmpty())
+        {
+            project.setDataSource("manual");
         }
         // 总时长自动计算（安排日期 → 今天，仅工作日；未办结时保存即重算）
         recalcTotalDuration(project);
@@ -171,6 +189,24 @@ public class ProjProjectServiceImpl implements IProjProjectService
     @Transactional(rollbackFor = Exception.class)
     public int updateProject(ProjProject project)
     {
+        // 查询变更前的项目（用于来源保持 + 合同关联变化判定）
+        ProjProject before = projectMapper.selectProjectById(project.getId());
+
+        // 项目来源（编辑不改来源；若前端未传则保持原值）
+        if (project.getDataSource() == null || project.getDataSource().isEmpty())
+        {
+            if (before != null)
+            {
+                project.setDataSource(before.getDataSource());
+            }
+        }
+
+        // 重算触发点一：合同关联是否发生变化（0→A / A→B / A→0）
+        Long oldContractId = (before != null) ? before.getContractId() : null;
+        Long newContractId = project.getContractId();
+        boolean contractChanged = (oldContractId == null && newContractId != null)
+            || (oldContractId != null && !oldContractId.equals(newContractId));
+
         // 总时长自动计算（安排日期 → 今天，仅工作日；已办结/已归档保持冻结值）
         recalcTotalDuration(project);
         int rows = projectMapper.updateProject(project);
@@ -189,6 +225,12 @@ public class ProjProjectServiceImpl implements IProjProjectService
 
         // 保存首笔付款（如有）
         saveFirstPayment(project);
+
+        // 合同关联变化 → 全量重算该项目所有外部工作量单价（先恢复所有单价再按原则重算，含历史手改价）
+        if (contractChanged)
+        {
+            priceRecalcService.recalcExternalPrices(project.getId(), null, true);
+        }
 
         return rows;
     }
@@ -457,11 +499,21 @@ public class ProjProjectServiceImpl implements IProjProjectService
     @Transactional(rollbackFor = Exception.class)
     public int batchInsertProject(List<ProjProject> projectList, String operName)
     {
+        return batchInsertProjectReturnIds(projectList, operName).size();
+    }
+
+    /**
+     * 批量新增项目（区域粘贴），并返回新写入记录的 ID 列表。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<Long> batchInsertProjectReturnIds(List<ProjProject> projectList, String operName)
+    {
         if (projectList == null || projectList.isEmpty())
         {
             throw new ServiceException("批量数据不能为空");
         }
-        int count = 0;
+        List<Long> insertedIds = new ArrayList<>();
         for (ProjProject project : projectList)
         {
             if (project.getProjectCode() == null || project.getProjectCode().isEmpty())
@@ -476,6 +528,10 @@ public class ProjProjectServiceImpl implements IProjProjectService
             }
             project.setStatus("ongoing");
             project.setCreateBy(operName);
+            if (project.getDataSource() == null || project.getDataSource().isEmpty())
+            {
+                project.setDataSource("manual");
+            }
             resolveCategoryAndLeaders(project);
             recalcTotalDuration(project);
             projectMapper.insertProject(project);
@@ -486,9 +542,9 @@ public class ProjProjectServiceImpl implements IProjProjectService
                 leaderMapper.insertProjectLeaders(project.getId(), leaderIds, operName);
                 createTasksForLeaders(project, Arrays.asList(leaderIds), operName);
             }
-            count++;
+            insertedIds.add(project.getId());
         }
-        return count;
+        return insertedIds;
     }
 
     /**

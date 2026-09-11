@@ -78,4 +78,18 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where category_id = #{categoryId} and del_flag = '0'
     </update>
 
+    <!-- 单价重算用：按类别ID集合查询计费方式（含字典价） -->
+    <select id="selectBillingByCategoryIds" resultMap="ProjCategoryBillingResult">
+        select b.id, b.category_id, b.billing_type, b.billing_category, b.unit_price,
+               b.price_unit, b.min_quantity, b.sort_order, b.status, b.del_flag,
+               b.create_by, b.create_time, b.update_by, b.update_time
+        from proj_category_billing b
+        where b.del_flag = '0'
+          and b.category_id in
+        <foreach collection="categoryIds" item="cid" open="(" separator="," close=")">
+            #{cid}
+        </foreach>
+        order by b.category_id, b.sort_order, b.id
+    </select>
+
 </mapper>

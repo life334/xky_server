@@ -54,6 +54,9 @@ public class ProjProject extends BaseEntity
     /** 合同ID，关联 proj_contract.id */
     private Long contractId;
 
+    /** 项目来源（import=历史数据导入 manual=手动新增/粘贴） */
+    private String dataSource;
+
     /** 项目状态 */
     private String status;
 
@@ -90,6 +93,9 @@ public class ProjProject extends BaseEntity
 
     /** 合同名称（JOIN proj_contract） */
     private String contractName;
+
+    /** 合同编号（JOIN proj_contract） */
+    private String contractNo;
 
     /** 关联定线项目工程编号（JOIN proj_project，仅展示用） */
     private String relatedProjectCode;
@@ -147,6 +153,15 @@ public class ProjProject extends BaseEntity
 
     /** 安排日期范围结束 */
     private String assignDateEnd;
+
+    /** 录入状态筛选-工作量：done=已录入（有工作量记录）/ undone=未录入 / null 或 all=不限 */
+    private String workloadEntry;
+
+    /** 录入状态筛选-到账：done=已录入（有预付款或尾款）/ undone=未录入 / null 或 all=不限 */
+    private String paymentEntry;
+
+    /** 录入状态筛选-发票：true=只看「已开未付」/ 其他=不限 */
+    private String invoiceUnpaid;
 
     public Long getId()
     {
@@ -248,6 +263,16 @@ public class ProjProject extends BaseEntity
         this.contractId = contractId;
     }
 
+    public String getDataSource()
+    {
+        return dataSource;
+    }
+
+    public void setDataSource(String dataSource)
+    {
+        this.dataSource = dataSource;
+    }
+
     public String getStatus()
     {
         return status;
@@ -316,6 +341,16 @@ public class ProjProject extends BaseEntity
     public void setContractName(String contractName)
     {
         this.contractName = contractName;
+    }
+
+    public String getContractNo()
+    {
+        return contractNo;
+    }
+
+    public void setContractNo(String contractNo)
+    {
+        this.contractNo = contractNo;
     }
 
     public String getLeaderNames()
@@ -467,6 +502,36 @@ public class ProjProject extends BaseEntity
         this.assignDateEnd = assignDateEnd;
     }
 
+    public String getWorkloadEntry()
+    {
+        return workloadEntry;
+    }
+
+    public void setWorkloadEntry(String workloadEntry)
+    {
+        this.workloadEntry = workloadEntry;
+    }
+
+    public String getPaymentEntry()
+    {
+        return paymentEntry;
+    }
+
+    public void setPaymentEntry(String paymentEntry)
+    {
+        this.paymentEntry = paymentEntry;
+    }
+
+    public String getInvoiceUnpaid()
+    {
+        return invoiceUnpaid;
+    }
+
+    public void setInvoiceUnpaid(String invoiceUnpaid)
+    {
+        this.invoiceUnpaid = invoiceUnpaid;
+    }
+
     @Override
     public String toString() {
         return new ToStringBuilder(this, ToStringStyle.MULTI_LINE_STYLE)
@@ -480,6 +545,7 @@ public class ProjProject extends BaseEntity
             .append("contactPhone", getContactPhone())
             .append("projectLocation", getProjectLocation())
             .append("contractId", getContractId())
+            .append("dataSource", getDataSource())
             .append("status", getStatus())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())

@@ -181,8 +181,19 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where id = #{id}
     </update>
 
-    <delete id="deleteWorkloadByIds" parameterType="Long">
-        update proj_workload set del_flag = '2' where id in
+    <!-- 单价重算：按 id 批量更新单价/产值/来源/备份价（仅外部工作量重算使用） -->
+    <update id="updatePriceById">
+        update proj_workload
+        set unit_price = #{unitPrice},
+            external_price = #{unitPrice},
+            external_output = #{externalOutput},
+            price_source = #{priceSource},
+            <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
+            update_time = now()
+        where id = #{id}
+    </update>
+
+    <delete id="deleteWorkloadByIds" parameterType="Long">        update proj_workload set del_flag = '2' where id in
         <foreach collection="array" item="id" open="(" separator="," close=")">
             #{id}
         </foreach>
@@ -357,7 +368,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             price_unit = EXCLUDED.price_unit,
             min_quantity = EXCLUDED.min_quantity,
             unit_price = EXCLUDED.unit_price,
-            extra_data = EXCLUDED.extra_data,
+            extra_data = coalesce(EXCLUDED.extra_data, proj_workload.extra_data),
             remark = EXCLUDED.remark,
             update_by = EXCLUDED.create_by,
             update_time = now()

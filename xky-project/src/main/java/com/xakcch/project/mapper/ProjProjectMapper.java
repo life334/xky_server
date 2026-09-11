@@ -119,6 +119,15 @@ public interface ProjProjectMapper
     public List<Map<String, Object>> selectProjectStatusCounts();
 
     /**
+     * 统计费用结算页「录入状态」全体口径数量（工作量已录/未录、到账已录/未录、已开未付）
+     * 只应用项目状态 + 高级筛选条件，忽略录入状态本身（胶囊数字需为全库口径）
+     *
+     * @param project 查询条件（statusList/高级筛选）——workloadEntry/paymentEntry/invoiceUnpaid 会被忽略
+     * @return Map: workloadDone / workloadUndone / paymentDone / paymentUndone / invoiceUnpaid
+     */
+    public Map<String, Object> selectEntryStatusCounts(ProjProject project);
+
+    /**
      * 查询某字段的去重值列表（高级筛选下拉选项用）
      *
      * @param field 数据库列名（仅限白名单：client_unit, engineering_project）

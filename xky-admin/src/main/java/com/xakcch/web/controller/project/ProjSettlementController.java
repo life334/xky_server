@@ -10,9 +10,13 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import com.github.pagehelper.PageHelper;
+import com.github.pagehelper.PageInfo;
 import com.xakcch.common.annotation.Log;
+import com.xakcch.common.constant.HttpStatus;
 import com.xakcch.common.core.controller.BaseController;
 import com.xakcch.common.core.domain.AjaxResult;
+import com.xakcch.common.core.page.TableDataInfo;
 import com.xakcch.common.enums.BusinessType;
 import com.xakcch.project.domain.ProjContractPrice;
 import com.xakcch.project.domain.ProjPayment;
@@ -50,6 +54,9 @@ public class ProjSettlementController extends BaseController
 
     private static final SimpleDateFormat DATE_FMT = new SimpleDateFormat("yyyy-MM-dd");
 
+    /** 「全部」量级阈值：pageSize 达到该值时不分页（与前端 Pagination 组件 ALL_SIZE 一致） */
+    private static final int ALL_SIZE = 100000;
+
     /**
      * 查询费用结算列表可显隐列的元数据（显隐列面板 + 表格动态渲染用）
      * 树形表格由 Controller 组装三级节点（项目级/人员级/叶子级），此处返回固定列清单
@@ -67,7 +74,9 @@ public class ProjSettlementController extends BaseController
         addColumn(columns, "leaderNames", "负责人", "text", false, "leaderNames");
         addColumn(columns, "userName", "人员", "text", false, "userName");
         addColumn(columns, "categoryName", "项目类别", "text", false, "categoryName");
-        addColumn(columns, "workload", "工作量", "number", true, "workload");
+        addColumn(columns, "internalWorkload", "内部工作量", "number", true, "internalWorkload");
+        addColumn(columns, "externalWorkload", "外部工作量", "number", true, "externalWorkload");
+        addColumn(columns, "workload", "工作量", "number", false, "workload");
         addColumn(columns, "internalPrice", "内部单价", "money", false, "internalPrice");
         addColumn(columns, "externalPrice", "外部单价", "money", false, "externalPrice");
         addColumn(columns, "internalOutput", "内部产值", "money", true, "internalOutput");
@@ -102,12 +111,16 @@ public class ProjSettlementController extends BaseController
     }
 
     /**
-     * 查询费用结算树形列表
+     * 查询费用结算树形列表（后端分页）
      * @param projectStatus 项目状态过滤，多个逗号分隔；默认"已办结,已归档"，传"all"显示全部
+     * @param pageNum 页码（默认 1）
+     * @param pageSize 每页条数；传 100000 表示「全部」（不分页）
      */
     @GetMapping("/treeList")
-    public AjaxResult treeList(ProjProject project,
-        @RequestParam(required = false) String projectStatus)
+    public TableDataInfo treeList(ProjProject project,
+        @RequestParam(required = false) String projectStatus,
+        @RequestParam(required = false) Integer pageNum,
+        @RequestParam(required = false) Integer pageSize)
     {
         if (projectStatus == null || projectStatus.isEmpty())
         {
@@ -118,9 +131,27 @@ public class ProjSettlementController extends BaseController
             List<String> statusList = Arrays.asList(projectStatus.split(","));
             project.getParams().put("statusList", statusList);
         }
-        List<ProjProject> projects = projectService.selectProjectList(project);
 
-        // 一次性批量查询所有项目的工作量与付款，避免逐项目 N+1 查询
+        int num = pageNum == null || pageNum < 1 ? 1 : pageNum;
+        int size = pageSize == null || pageSize < 1 ? 10 : pageSize;
+        // 「全部」量级（与前端 Pagination 组件 ALL_SIZE 约定一致）→ 不做分页，一次返回全部
+        boolean paginate = size < ALL_SIZE;
+
+        List<ProjProject> projects;
+        long total;
+        if (paginate)
+        {
+            PageHelper.startPage(num, size);
+            projects = projectService.selectProjectList(project);
+            total = new PageInfo<>(projects).getTotal();
+        }
+        else
+        {
+            projects = projectService.selectProjectList(project);
+            total = projects.size();
+        }
+
+        // 一次性批量查询本页项目的工作量与付款，避免逐项目 N+1 查询
         Long[] projectIds = projects.stream().map(ProjProject::getId).toArray(Long[]::new);
         Map<Long, List<ProjWorkload>> workloadMap = projectIds.length == 0 ? Collections.emptyMap()
             : workloadMapper.selectWorkloadsByProjectIds(projectIds).stream()
@@ -129,63 +160,106 @@ public class ProjSettlementController extends BaseController
             : paymentMapper.selectPaymentsByProjectIds(projectIds).stream()
                 .collect(Collectors.groupingBy(ProjPayment::getProjectId));
 
-        List<Map<String, Object>> tree = new ArrayList<>();
+        List<Map<String, Object>> rows = new ArrayList<>();
         for (ProjProject p : projects)
         {
-            Map<String, Object> projectNode = buildProjectNode(p);
-            // 从批量查询结果中取该项目的工作量与付款
-            List<ProjWorkload> workloads = workloadMap.getOrDefault(p.getId(), Collections.emptyList());
-            List<ProjPayment> payments = paymentMap.getOrDefault(p.getId(), Collections.emptyList());
-
-            // 填充付款信息到项目节点
-            fillPaymentInfo(projectNode, payments, p.getId());
-
-            // 按人员分组构建工作量树（保留 children 字段，兼容旧接口调用方；前端平表模式不再使用）
-            List<Map<String, Object>> userChildren = buildUserChildren(workloads, p.getId());
-
-            // 汇总项目级工作量
-            BigDecimal totalWorkload = BigDecimal.ZERO;
-            BigDecimal totalExternalOutput = BigDecimal.ZERO;
-            for (ProjWorkload w : workloads)
-            {
-                if (w.getWorkload() != null) totalWorkload = totalWorkload.add(w.getWorkload());
-                if (w.getExternalOutput() != null) totalExternalOutput = totalExternalOutput.add(w.getExternalOutput());
-            }
-            // 内部产值合计（含「管线新测 + 管线修测」保底 6000）
-            BigDecimal totalInternalOutput = calcInternalOutputTotal(workloads);
-
-            projectNode.put("workload", totalWorkload);
-            projectNode.put("internalOutput", totalInternalOutput);
-            projectNode.put("externalOutput", totalExternalOutput);
-            // 录入状态计数（供前端胶囊筛选：工作量记录数 / 到账记录数）
-            projectNode.put("workloadCount", workloads.size());
-            int paymentCnt = 0;
-            for (ProjPayment pm : payments)
-            {
-                if ("advance".equals(pm.getPaymentType()) || "final".equals(pm.getPaymentType())) paymentCnt++;
-            }
-            projectNode.put("paymentCount", paymentCnt);
-            // 结算状态 + 已收/待收差额（结算总额 = 外部产值合计，与编辑页面口径一致）
-            fillSettlementSummary(projectNode, payments, totalExternalOutput);
-            // 开票/付款组合状态：not_invoiced 未开未付 / invoiced_unpaid 已开未付 / invoiced_paid 已开已付 / voided 已作废
-            String invStatus = (String) projectNode.get("invoiceStatus");
-            BigDecimal invAmt = (BigDecimal) projectNode.get("invoiceAmount");
-            String invDate = (String) projectNode.get("invoiceDate");
-            boolean hasInvoice = (invDate != null && !invDate.isEmpty())
-                || (invAmt != null && invAmt.compareTo(BigDecimal.ZERO) > 0);
-            boolean isVoided = "已作废".equals(invStatus);
-            BigDecimal recv = (BigDecimal) projectNode.get("receivedAmount");
-            boolean hasPaid = recv != null && recv.compareTo(BigDecimal.ZERO) > 0;
-            String invoicePaymentStatus;
-            if (isVoided) invoicePaymentStatus = "voided";
-            else if (hasInvoice && !hasPaid) invoicePaymentStatus = "invoiced_unpaid";
-            else if (hasInvoice && hasPaid) invoicePaymentStatus = "invoiced_paid";
-            else invoicePaymentStatus = "not_invoiced";
-            projectNode.put("invoicePaymentStatus", invoicePaymentStatus);
-            projectNode.put("children", userChildren);
-            tree.add(projectNode);
+            rows.add(buildSettlementNode(p, workloadMap, paymentMap));
         }
-        return success(tree);
+
+        TableDataInfo rspData = new TableDataInfo();
+        rspData.setCode(HttpStatus.SUCCESS);
+        rspData.setMsg("查询成功");
+        rspData.setRows(rows);
+        rspData.setTotal(total);
+        return rspData;
+    }
+
+    /** 录入状态胶囊的全局计数（工作量/到账/发票），忽略录入状态筛选本身 */
+    @GetMapping("/entryStatusCounts")
+    public AjaxResult entryStatusCounts(ProjProject project,
+        @RequestParam(required = false) String projectStatus)
+    {
+        if (projectStatus == null || projectStatus.isEmpty())
+        {
+            projectStatus = "closed,archived";
+        }
+        if (!"all".equals(projectStatus))
+        {
+            project.getParams().put("statusList", Arrays.asList(projectStatus.split(",")));
+        }
+        // 计数为全库（当前筛选）口径，不受录入状态筛选影响
+        project.setWorkloadEntry(null);
+        project.setPaymentEntry(null);
+        project.setInvoiceUnpaid(null);
+        Map<String, Object> counts = projectService.selectEntryStatusCounts(project);
+        return success(counts == null ? new HashMap<>() : counts);
+    }
+
+    /** 组装单个项目结算节点（付款信息 + 工作量汇总 + 结算状态 + 发票付款状态） */
+    private Map<String, Object> buildSettlementNode(ProjProject p,
+        Map<Long, List<ProjWorkload>> workloadMap, Map<Long, List<ProjPayment>> paymentMap)
+    {
+        Map<String, Object> projectNode = buildProjectNode(p);
+        // 从批量查询结果中取该项目的工作量与付款
+        List<ProjWorkload> workloads = workloadMap.getOrDefault(p.getId(), Collections.emptyList());
+        List<ProjPayment> payments = paymentMap.getOrDefault(p.getId(), Collections.emptyList());
+
+        // 填充付款信息到项目节点
+        fillPaymentInfo(projectNode, payments, p.getId());
+
+        // 汇总项目级工作量（内部工作量 / 外部工作量分别独立汇总，不相加：
+        // 内外工作量单位不同（公里/宗/平方公里），相加无业务含义，仅作参考值保留统一字段 workload）
+        BigDecimal totalWorkload = BigDecimal.ZERO;
+        BigDecimal totalInternalWorkload = BigDecimal.ZERO;
+        BigDecimal totalExternalWorkload = BigDecimal.ZERO;
+        BigDecimal totalExternalOutput = BigDecimal.ZERO;
+        for (ProjWorkload w : workloads)
+        {
+            if (w.getWorkload() != null) totalWorkload = totalWorkload.add(w.getWorkload());
+            if (w.getWorkload() != null)
+            {
+                if ("internal".equals(w.getBillingType())) totalInternalWorkload = totalInternalWorkload.add(w.getWorkload());
+                else if ("external".equals(w.getBillingType())) totalExternalWorkload = totalExternalWorkload.add(w.getWorkload());
+            }
+            if (w.getExternalOutput() != null) totalExternalOutput = totalExternalOutput.add(w.getExternalOutput());
+        }
+        // 内部产值合计（含「管线新测 + 管线修测」保底 6000）
+        BigDecimal totalInternalOutput = calcInternalOutputTotal(workloads);
+
+        projectNode.put("workload", totalWorkload);
+        projectNode.put("internalWorkload", totalInternalWorkload);
+        projectNode.put("externalWorkload", totalExternalWorkload);
+        // 工作量明细（按计费类别 + 计价单位聚合，供列表悬浮展示内部/外部构成）
+        projectNode.put("internalWorkloadDetail", groupWorkloadDetail(workloads, "internal"));
+        projectNode.put("externalWorkloadDetail", groupWorkloadDetail(workloads, "external"));
+        projectNode.put("internalOutput", totalInternalOutput);
+        projectNode.put("externalOutput", totalExternalOutput);
+        // 录入状态计数（供前端胶囊筛选：工作量记录数 / 到账记录数）
+        projectNode.put("workloadCount", workloads.size());
+        int paymentCnt = 0;
+        for (ProjPayment pm : payments)
+        {
+            if ("advance".equals(pm.getPaymentType()) || "final".equals(pm.getPaymentType())) paymentCnt++;
+        }
+        projectNode.put("paymentCount", paymentCnt);
+        // 结算状态 + 已收/待收差额（结算总额 = 外部产值合计，与编辑页面口径一致）
+        fillSettlementSummary(projectNode, payments, totalExternalOutput);
+        // 开票/付款组合状态：not_invoiced 未开未付 / invoiced_unpaid 已开未付 / invoiced_paid 已开已付 / voided 已作废
+        String invStatus = (String) projectNode.get("invoiceStatus");
+        BigDecimal invAmt = (BigDecimal) projectNode.get("invoiceAmount");
+        String invDate = (String) projectNode.get("invoiceDate");
+        boolean hasInvoice = (invDate != null && !invDate.isEmpty())
+            || (invAmt != null && invAmt.compareTo(BigDecimal.ZERO) > 0);
+        boolean isVoided = "已作废".equals(invStatus);
+        BigDecimal recv = (BigDecimal) projectNode.get("receivedAmount");
+        boolean hasPaid = recv != null && recv.compareTo(BigDecimal.ZERO) > 0;
+        String invoicePaymentStatus;
+        if (isVoided) invoicePaymentStatus = "voided";
+        else if (hasInvoice && !hasPaid) invoicePaymentStatus = "invoiced_unpaid";
+        else if (hasInvoice && hasPaid) invoicePaymentStatus = "invoiced_paid";
+        else invoicePaymentStatus = "not_invoiced";
+        projectNode.put("invoicePaymentStatus", invoicePaymentStatus);
+        return projectNode;
     }
 
     /**
@@ -487,6 +561,55 @@ public class ProjSettlementController extends BaseController
         return total;
     }
 
+    /**
+     * 按计费类别 + 计价单位聚合工作量明细（供列表「内部/外部工作量」列悬浮展示构成）
+     * 返回结构：[{ category, unit, unitPrice, value, count }]，按 value 降序、类别名升序
+     *
+     * @param workloads  该项目全部工作量
+     * @param billingType internal=内部 / external=外部
+     * @return 聚合明细列表（无匹配则为空列表）
+     */
+    private List<Map<String, Object>> groupWorkloadDetail(List<ProjWorkload> workloads, String billingType)
+    {
+        // key = 计费类别 + "\u0001" + 计价单位，保证同类别同单位合并、同类别不同单位分开
+        Map<String, Map<String, Object>> agg = new LinkedHashMap<>();
+        for (ProjWorkload w : workloads)
+        {
+            if (!billingType.equals(w.getBillingType())) continue;
+            if (w.getWorkload() == null) continue;
+            String category = w.getBillingCategory() == null || w.getBillingCategory().isEmpty()
+                ? "未分类" : w.getBillingCategory();
+            String unit = w.getPriceUnit() == null ? "" : w.getPriceUnit();
+            String key = category + "\u0001" + unit;
+            Map<String, Object> item = agg.get(key);
+            if (item == null)
+            {
+                item = new LinkedHashMap<>();
+                item.put("category", category);
+                item.put("unit", unit);
+                item.put("unitPrice", null);
+                item.put("value", BigDecimal.ZERO);
+                item.put("count", 0);
+                agg.put(key, item);
+            }
+            // 单价：取该组首个非空值（同类别同单位的单价一致，仅作展示）
+            if (item.get("unitPrice") == null && w.getUnitPrice() != null)
+            {
+                item.put("unitPrice", w.getUnitPrice());
+            }
+            item.put("value", ((BigDecimal) item.get("value")).add(w.getWorkload()));
+            item.put("count", ((Integer) item.get("count")) + 1);
+        }
+        List<Map<String, Object>> list = new ArrayList<>(agg.values());
+        // 值降序；值相同时按类别名升序，保证展示顺序稳定
+        list.sort((a, b) -> {
+            int cmp = ((BigDecimal) b.get("value")).compareTo((BigDecimal) a.get("value"));
+            if (cmp != 0) return cmp;
+            return ((String) a.get("category")).compareTo((String) b.get("category"));
+        });
+        return list;
+    }
+
     /** 构建项目级树节点 */
     private Map<String, Object> buildProjectNode(ProjProject p)
     {
@@ -586,56 +709,6 @@ public class ProjSettlementController extends BaseController
         node.put("receivedAmount", receivedAmount);
         node.put("pendingAmount", pendingAmount);
         node.put("settlementStatus", settlementStatus);
-    }
-
-    /** 按人员分组构建二级树节点 */
-    private List<Map<String, Object>> buildUserChildren(List<ProjWorkload> workloads, Long projectId)
-    {
-        Map<Long, List<ProjWorkload>> grouped = workloads.stream()
-            .collect(Collectors.groupingBy(ProjWorkload::getUserId, LinkedHashMap::new, Collectors.toList()));
-
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Map.Entry<Long, List<ProjWorkload>> entry : grouped.entrySet())
-        {
-            Long userId = entry.getKey();
-            List<ProjWorkload> wList = entry.getValue();
-            String userName = wList.get(0).getUserName();
-
-            Map<String, Object> userNode = new LinkedHashMap<>();
-            userNode.put("id", "p" + projectId + "_u" + userId);
-            userNode.put("userName", userName);
-
-            // 汇总该人员的工作量
-            BigDecimal uWorkload = BigDecimal.ZERO;
-            BigDecimal uInternalOutput = BigDecimal.ZERO;
-            BigDecimal uExternalOutput = BigDecimal.ZERO;
-            List<Map<String, Object>> leafChildren = new ArrayList<>();
-
-            for (ProjWorkload w : wList)
-            {
-                if (w.getWorkload() != null) uWorkload = uWorkload.add(w.getWorkload());
-                if (w.getInternalOutput() != null) uInternalOutput = uInternalOutput.add(w.getInternalOutput());
-                if (w.getExternalOutput() != null) uExternalOutput = uExternalOutput.add(w.getExternalOutput());
-
-                Map<String, Object> leaf = new LinkedHashMap<>();
-                leaf.put("id", "w" + w.getId());
-                leaf.put("categoryName", w.getCategoryName());
-                leaf.put("categoryId", w.getCategoryId());
-                leaf.put("workload", w.getWorkload());
-                leaf.put("internalPrice", w.getInternalPrice());
-                leaf.put("externalPrice", w.getExternalPrice());
-                leaf.put("internalOutput", w.getInternalOutput());
-                leaf.put("externalOutput", w.getExternalOutput());
-                leafChildren.add(leaf);
-            }
-
-            userNode.put("workload", uWorkload);
-            userNode.put("internalOutput", uInternalOutput);
-            userNode.put("externalOutput", uExternalOutput);
-            userNode.put("children", leafChildren);
-            result.add(userNode);
-        }
-        return result;
     }
 
     /** 保存单条付款记录（upsert） */

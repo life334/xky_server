@@ -458,9 +458,16 @@ public class ProjImportServiceImpl implements IProjImportService
                     pr.setLeaderScore(1.0);
                 }
             }
+            // 产值只读合计：内部产值合计(O)、外部产值合计(T)
+            // 注意：外部产值合计需在解析工作量之前读取，用于判定「外部产值空/0 → 不导入外部工作量」
+            BigDecimal internalTotal = numCell(row, colInternalTot);
+            BigDecimal externalTotal = numCell(row, colExternalTot);
+            boolean externalOutputEmpty = (externalTotal == null || externalTotal.signum() == 0);
+
             // 解析工作量（billingCol: 一级表头属于工作量组的列）
             // 历史数据存在跨类型填列（如「管线实测」行填了图组工作量），经与客户确认同样应当导入，
             // 因此不再做「委托任务 × 表头组」匹配校验，只要填了非空非 0 的值即导入。
+            // 例外：外部产值合计为空或 0 时，外部工作量不读取、不导入（内部工作量照常）。
             for (Map.Entry<Integer, String> me : billingCol.entrySet()) {
                 int col = me.getKey();
                 String rawHeader = me.getValue();
@@ -468,6 +475,7 @@ public class ProjImportServiceImpl implements IProjImportService
                 if (wl == null || wl.signum() == 0) continue;
                 // 内/外判定：优先显式(内部)/(外部)；其次"水准"/"管线"特殊规则（包含即触发）
                 boolean isInt = isInternalWorkload(rawHeader, pr.getEngineeringProject());
+                if (!isInt && externalOutputEmpty) continue;   // 外部产值空/0 → 丢弃外部工作量
                 ImportPreviewWorkload w = new ImportPreviewWorkload();
                 w.setBillingCategoryRaw(rawHeader);
                 w.setWorkload(wl);
@@ -490,9 +498,6 @@ public class ProjImportServiceImpl implements IProjImportService
                 }
                 pr.getWorkloads().add(w);
             }
-            // 产值只读合计：内部产值合计(O)、外部产值合计(T)
-            BigDecimal internalTotal = numCell(row, colInternalTot);
-            BigDecimal externalTotal = numCell(row, colExternalTot);
             if (internalTotal != null && internalTotal.signum() > 0) pr.setInternalTotalFromExcel(internalTotal);
             if (externalTotal != null && externalTotal.signum() > 0) pr.setExternalTotalFromExcel(externalTotal);
             resp.getRows().add(pr);
@@ -997,6 +1002,7 @@ public class ProjImportServiceImpl implements IProjImportService
             pj.setProjectCategoryId(categoryId);
             pj.setClientUnit(clientUnit);
             pj.setProjectLocation(projectLocation);
+            pj.setDataSource("import");
             pj.setStatus("closed");
             pj.setCloseTime(closeTime);
             pj.setAssignDate(closeTime);
@@ -1114,7 +1120,14 @@ public class ProjImportServiceImpl implements IProjImportService
             wl.setPriceUnit(w.getPriceUnit());
             wl.setMinQuantity(w.getMinQuantity());
             wl.setUnitPrice(w.getUnitPrice());
-            wl.setPriceSource("manual");
+            // 导入项目的工作量单价为「导入推导价」，来源标记 imported；
+            // 同时把推导价备份到 extra_data.origin_price，便于取消合同关联时精确还原
+            wl.setPriceSource("imported");
+            if (w.getUnitPrice() != null) {
+                java.util.Map<String, Object> extra = new java.util.LinkedHashMap<>();
+                extra.put("origin_price", w.getUnitPrice());
+                wl.setExtraData(com.alibaba.fastjson2.JSON.toJSONString(extra));
+            }
             if ("internal".equals(w.getBillingType())) {
                 wl.setInternalPrice(w.getUnitPrice());
                 wl.setInternalOutput(w.getOutput());

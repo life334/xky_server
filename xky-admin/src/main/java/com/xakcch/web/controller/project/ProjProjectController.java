@@ -1,5 +1,6 @@
 package com.xakcch.web.controller.project;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import jakarta.servlet.http.HttpServletResponse;
@@ -233,14 +234,20 @@ public class ProjProjectController extends BaseController
 
     /**
      * 批量新增项目（区域粘贴）
+     * data 返回 { count: 成功条数, ids: 新写入记录ID列表 }
      */
     @PreAuthorize("@ss.hasPermi('project:project:add')")
     @Log(title = "项目信息", businessType = BusinessType.INSERT)
     @PostMapping("/batchAdd")
     public AjaxResult batchAdd(@RequestBody List<ProjProject> projectList)
     {
-        int count = projectService.batchInsertProject(projectList, getUsername());
-        return AjaxResult.success("成功导入 " + count + " 条数据");
+        List<Long> insertedIds = projectService.batchInsertProjectReturnIds(projectList, getUsername());
+        AjaxResult result = AjaxResult.success("成功导入 " + insertedIds.size() + " 条数据");
+        Map<String, Object> data = new HashMap<>();
+        data.put("count", insertedIds.size());
+        data.put("ids", insertedIds);
+        result.put("data", data);
+        return result;
     }
 
     /**
