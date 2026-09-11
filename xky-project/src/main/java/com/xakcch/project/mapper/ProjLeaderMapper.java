@@ -54,6 +54,14 @@ public interface ProjLeaderMapper
     public SysUser selectUserByNickName(@Param("nickName") String nickName);
 
     /**
+     * 按昵称集合批量查询用户（导入前预解析负责人，避免逐行查库；在职优先）
+     *
+     * @param nickNames 昵称集合
+     * @return 命中用户列表（昵称可能重复命中多条，service 端去重）
+     */
+    public List<SysUser> selectUsersByNickNames(@Param("nickNames") List<String> nickNames);
+
+    /**
      * 查询项目表已出现过的全部负责人（去重，join sys_user，含停用用户）
      * 用于负责人下拉"已有记录"数据源
      *

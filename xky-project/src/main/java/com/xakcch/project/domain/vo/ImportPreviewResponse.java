@@ -13,6 +13,10 @@ public class ImportPreviewResponse implements Serializable
     private Integer readyCount;
     private Integer warningCount;
     private Integer errorCount;
+    /** 工程编号已存在、导入时将整组跳过的行数（不计入 readyCount） */
+    private Integer existsCount = 0;
+    /** 涉及的已存在工程编号（去重） */
+    private List<String> existsCodes = new ArrayList<>();
 
     private ProblemSummary problemSummary;
 
@@ -35,6 +39,10 @@ public class ImportPreviewResponse implements Serializable
     public void setWarningCount(Integer n) { this.warningCount = n; }
     public Integer getErrorCount() { return errorCount; }
     public void setErrorCount(Integer n) { this.errorCount = n; }
+    public Integer getExistsCount() { return existsCount; }
+    public void setExistsCount(Integer n) { this.existsCount = n; }
+    public List<String> getExistsCodes() { return existsCodes; }
+    public void setExistsCodes(List<String> c) { this.existsCodes = c; }
     public ProblemSummary getProblemSummary() { return problemSummary; }
     public void setProblemSummary(ProblemSummary ps) { this.problemSummary = ps; }
     public List<CategoryOption> getCategoryOptions() { return categoryOptions; }

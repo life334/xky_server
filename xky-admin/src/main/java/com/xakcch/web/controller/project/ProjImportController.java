@@ -39,15 +39,27 @@ public class ProjImportController extends BaseController
         return success(resp);
     }
 
-    /** 步骤2：提交确认后的数据落库 */
+    /** 步骤2：提交确认后的数据落库（异步：立即返回 running + logId，前端轮询 status） */
     @PostMapping("/commit")
     public AjaxResult commit(@RequestBody ImportCommitRequest req) {
         ImportCommitResult r = importService.commit(req);
-        log.info("[proj-import] commit finished logId={} succ={} skip={} fail={} failedDetailsSize={} skippedDetailsSize={}",
-            r.getLogId(), r.getSuccessCount(), r.getSkippedCount(), r.getFailedCount(),
-            r.getFailedDetails() == null ? 0 : r.getFailedDetails().size(),
-            r.getSkippedDetails() == null ? 0 : r.getSkippedDetails().size());
+        if (r != null && "running".equals(r.getStatus())) {
+            log.info("[proj-import] commit accepted, async running logId={}", r.getLogId());
+        } else {
+            log.info("[proj-import] commit finished logId={} status={} succ={} skip={} fail={}",
+                r == null ? null : r.getLogId(),
+                r == null ? null : r.getStatus(),
+                r == null ? null : r.getSuccessCount(),
+                r == null ? null : r.getSkippedCount(),
+                r == null ? null : r.getFailedCount());
+        }
         return success(r);
+    }
+
+    /** 步骤3：查询导入状态（done 时返回完整结果；running 供轮询；expired 表示会话过期） */
+    @GetMapping("/status")
+    public AjaxResult status(@RequestParam String token) {
+        return success(importService.getCommitStatus(token));
     }
 
     /** 下载预览问题行明细（type=warning|duplicate|error） */

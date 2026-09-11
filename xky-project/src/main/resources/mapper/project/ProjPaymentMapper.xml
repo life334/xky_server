@@ -206,6 +206,46 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             update_time = now()
     </insert>
 
+    <!-- 批量 Upsert 付款记录（一次 SQL 多值 ON CONFLICT，导入提速用） -->
+    <insert id="batchUpsertPayment">
+        insert into proj_payment(
+            project_id, payment_type, amount,
+            pay_time, pay_unit, pay_method,
+            invoice_no, invoice_date, invoice_amount, invoice_status,
+            received_status,
+            extra_data, remark,
+            create_by, create_time
+        )values
+        <foreach item="p" collection="list" separator=",">
+        (
+            #{p.projectId}, #{p.paymentType}, #{p.amount},
+            #{p.payTime}, #{p.payUnit}, #{p.payMethod},
+            #{p.invoiceNo}, #{p.invoiceDate}, #{p.invoiceAmount}, #{p.invoiceStatus},
+            <if test="p.receivedStatus != null and p.receivedStatus != ''">#{p.receivedStatus},</if>
+            <if test="p.receivedStatus == null or p.receivedStatus == ''">'pending',</if>
+            <if test="p.extraData != null and p.extraData != ''">#{p.extraData}::jsonb,</if>
+            <if test="p.extraData == null or p.extraData == ''">null,</if>
+            #{p.remark},
+            #{p.createBy}, now()
+        )
+        </foreach>
+        on conflict (project_id, payment_type) where del_flag = '0' and payment_type &lt;&gt; 'refund'
+        do update set
+            amount = EXCLUDED.amount,
+            pay_time = EXCLUDED.pay_time,
+            pay_unit = EXCLUDED.pay_unit,
+            pay_method = EXCLUDED.pay_method,
+            invoice_no = EXCLUDED.invoice_no,
+            invoice_date = EXCLUDED.invoice_date,
+            invoice_amount = EXCLUDED.invoice_amount,
+            invoice_status = EXCLUDED.invoice_status,
+            received_status = COALESCE(EXCLUDED.received_status, proj_payment.received_status, 'pending'),
+            extra_data = EXCLUDED.extra_data,
+            remark = EXCLUDED.remark,
+            update_by = EXCLUDED.create_by,
+            update_time = now()
+    </insert>
+
     <!-- ========== 项目收款总览（按项目维度聚合付款） ========== -->
     <sql id="overviewBase">
         SELECT

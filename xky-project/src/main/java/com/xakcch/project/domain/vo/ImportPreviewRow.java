@@ -49,6 +49,11 @@ public class ImportPreviewRow
     /** 警告 */
     private List<String> warnings = new ArrayList<>();
 
+    /** 该工程编号在库中已存在（导入时整组跳过，不写入） */
+    private Boolean existsInDb = false;
+    /** 已存在项目的 id（仅 existsInDb=true 时有值，供提示用） */
+    private Long existingProjectId;
+
     public Integer getExcelRow() { return excelRow; }
     public void setExcelRow(Integer excelRow) { this.excelRow = excelRow; }
     public String getProjectCode() { return projectCode; }
@@ -91,4 +96,8 @@ public class ImportPreviewRow
     public void setErrors(List<String> errors) { this.errors = errors; }
     public List<String> getWarnings() { return warnings; }
     public void setWarnings(List<String> warnings) { this.warnings = warnings; }
+    public Boolean getExistsInDb() { return existsInDb; }
+    public void setExistsInDb(Boolean existsInDb) { this.existsInDb = existsInDb; }
+    public Long getExistingProjectId() { return existingProjectId; }
+    public void setExistingProjectId(Long existingProjectId) { this.existingProjectId = existingProjectId; }
 }

@@ -38,6 +38,14 @@ public interface ProjProjectMapper
     public ProjProject checkProjectCodeUnique(ProjProject project);
 
     /**
+     * 按工程编号集合批量查询已存在项目（导入前预取，避免逐组查重）
+     *
+     * @param codes 工程编号集合
+     * @return [{ id, project_code }]
+     */
+    public List<Map<String, Object>> selectProjectIdsByCodes(@Param("codes") List<String> codes);
+
+    /**
      * 新增项目
      *
      * @param project 项目

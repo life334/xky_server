@@ -369,4 +369,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by p.create_time desc
     </select>
 
+    <!-- 按工程编号集合批量查询已存在项目（导入前预取） -->
+    <select id="selectProjectIdsByCodes" resultType="java.util.LinkedHashMap">
+        select id, project_code
+        from proj_project
+        where del_flag = '0' and project_code in
+        <foreach item="code" collection="codes" open="(" separator="," close=")">
+            #{code}
+        </foreach>
+    </select>
+
 </mapper>

@@ -15,6 +15,8 @@ public class ImportCommitResult implements Serializable
     private Integer skippedCount;
     private Integer failedCount;
     private Long costMs;
+    /** 状态：running（后台导入中）/ done（已完成）/ expired（会话过期） */
+    private String status;
     private List<RowDetail> failedDetails = new ArrayList<>();
     private List<RowDetail> skippedDetails = new ArrayList<>();
 
@@ -28,6 +30,8 @@ public class ImportCommitResult implements Serializable
     public void setFailedCount(Integer v) { this.failedCount = v; }
     public Long getCostMs() { return costMs; }
     public void setCostMs(Long v) { this.costMs = v; }
+    public String getStatus() { return status; }
+    public void setStatus(String v) { this.status = v; }
     public List<RowDetail> getFailedDetails() { return failedDetails; }
     public void setFailedDetails(List<RowDetail> v) { this.failedDetails = v; }
     public List<RowDetail> getSkippedDetails() { return skippedDetails; }

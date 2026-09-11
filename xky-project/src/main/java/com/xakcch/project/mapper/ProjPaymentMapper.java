@@ -62,6 +62,14 @@ public interface ProjPaymentMapper
     public int upsertPayment(ProjPayment payment);
 
     /**
+     * 批量 Upsert 付款记录（一次 SQL 多值 ON CONFLICT，导入提速用）
+     *
+     * @param list 付款记录列表
+     * @return 结果
+     */
+    public int batchUpsertPayment(@org.apache.ibatis.annotations.Param("list") List<ProjPayment> list);
+
+    /**
      * 项目收款总览列表（按项目维度聚合付款：合同额、已收、未收、进度、状态）
      *
      * @param params 查询参数（projectName, paymentStatus）

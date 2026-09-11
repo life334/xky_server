@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +37,7 @@ public class ProjImportServiceImpl implements IProjImportService
         final ImportPreviewResponse resp;
         final long createAt;
         final AtomicBoolean committing = new AtomicBoolean(false);
+        volatile Long logId;            // 最近一次提交的导入日志ID
         volatile ImportCommitResult commitResult; // 已提交完成时缓存结果
         SessionEntry(ImportPreviewResponse r) { this.resp = r; this.createAt = System.currentTimeMillis(); }
         boolean expired() { return System.currentTimeMillis() - createAt > 2 * 3600 * 1000L; }
@@ -50,6 +52,13 @@ public class ProjImportServiceImpl implements IProjImportService
             catch (Throwable ignore) { /* ignore */ }
         }, 10, 10, TimeUnit.MINUTES);
     }
+
+    /** 导入落库后台线程池：单线程串行执行，避免同库并发写连接争用 */
+    private static final ExecutorService IMPORT_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "proj-import-worker"); t.setDaemon(true); return t;
+    });
+    /** 事务批大小：每批 TX_BATCH_SIZE 个工程编号组共用一次事务提交（减少 WAL fsync） */
+    private static final int TX_BATCH_SIZE = 20;
 
     @Autowired private ProjProjectMapper projectMapper;
     @Autowired private ProjCategoryMapper categoryMapper;
@@ -88,6 +97,26 @@ public class ProjImportServiceImpl implements IProjImportService
         // 分类
         List<ImportPreviewRow> readyRows = new ArrayList<>();
         List<ImportPreviewRow> problemRows = new ArrayList<>();
+        // 已存在工程编号预取：命中者导入时整组跳过（预览阶段即提示用户）
+        Map<String, Long> existingIdByCode = new HashMap<>();
+        List<String> allCodes = fullResp.getRows().stream()
+            .map(ImportPreviewRow::getProjectCode)
+            .filter(StringUtils::isNotBlank)
+            .map(String::trim)
+            .distinct()
+            .collect(Collectors.toList());
+        if (!allCodes.isEmpty()) {
+            List<Map<String, Object>> hits = projectMapper.selectProjectIdsByCodes(allCodes);
+            for (Map<String, Object> m : hits) {
+                Object codeObj = m.get("project_code");
+                Object idObj = m.get("id");
+                if (codeObj != null && idObj != null) {
+                    existingIdByCode.put(String.valueOf(codeObj), ((Number) idObj).longValue());
+                }
+            }
+        }
+        int existsCnt = 0;
+        List<String> existsCodes = new ArrayList<>();
         for (ImportPreviewRow r : fullResp.getRows()) {
             if (r.getErrors() != null && !r.getErrors().isEmpty()) { problemRows.add(r); continue; }
             if (StringUtils.isBlank(r.getProjectCode())) {
@@ -107,6 +136,15 @@ public class ProjImportServiceImpl implements IProjImportService
                 problemRows.add(r); continue;
             }
             readyRows.add(r);
+            // 工程编号已存在 → 标记（导入时整组跳过，不计入可写入行数）
+            Long existedId = existingIdByCode.get(r.getProjectCode().trim());
+            if (existedId != null) {
+                r.setExistsInDb(true);
+                r.setExistingProjectId(existedId);
+                existsCnt++;
+                String code = r.getProjectCode().trim();
+                if (!existsCodes.contains(code)) existsCodes.add(code);
+            }
         }
         fullResp.setTotalRows(fullResp.getRows().size());
         // 统计问题行分类
@@ -117,7 +155,10 @@ public class ProjImportServiceImpl implements IProjImportService
         }
         fullResp.setErrorCount(errCnt);
         fullResp.setWarningCount(warnCnt);
-        fullResp.setReadyCount(readyRows.size());
+        // readyCount = 实际将写入的行数（已存在的编号不写入）
+        fullResp.setReadyCount(readyRows.size() - existsCnt);
+        fullResp.setExistsCount(existsCnt);
+        fullResp.setExistsCodes(existsCodes);
         // 问题摘要
         ImportPreviewResponse.ProblemSummary ps = new ImportPreviewResponse.ProblemSummary();
         if (warnCnt > 0) ps.setWarningDesc(warnCnt + " 行数据存在未匹配字段（项目类别/负责人/计费类别等），请查看下方明细，修正Excel后重新上传");
@@ -134,6 +175,8 @@ public class ProjImportServiceImpl implements IProjImportService
         lightResp.setReadyCount(fullResp.getReadyCount());
         lightResp.setWarningCount(warnCnt);
         lightResp.setErrorCount(errCnt);
+        lightResp.setExistsCount(existsCnt);
+        lightResp.setExistsCodes(existsCodes);
         lightResp.setProblemSummary(ps);
         lightResp.getCategoryOptions().addAll(fullResp.getCategoryOptions());
         lightResp.getBillingOptions().addAll(fullResp.getBillingOptions());
@@ -326,7 +369,7 @@ public class ProjImportServiceImpl implements IProjImportService
             if (s.isEmpty()) continue;
             colMap.put(s, c);
         }
-        // 工作量列：只从顶层表头含"工作量"的组中找（管线定验线实测工作量/管线图工作量/其它工作量）
+        // 工作量列：一级表头需属于（管线定验线、实测工作量 / 管线图工作量 / 其它工作量）三类之一
         if (headerL2 != null) {
             for (int c = 0; c < headerL2.size(); c++) {
                 if (headerL2.get(c) == null) continue;
@@ -334,8 +377,9 @@ public class ProjImportServiceImpl implements IProjImportService
                 if (top.isEmpty() || top.contains("合计")) continue;
                 String sub = (c < headerL1.size() && headerL1.get(c) != null) ? headerL1.get(c).toString().trim() : "";
                 if (sub.isEmpty()) continue;
-                if (top.contains("工作量") && !sub.equals("秦华外部")) {
-                    // 工作量列：子表头含(内部)的是内部工作量，否则是外部工作量
+                // 历史文件图组内的「秦华外部」列不是工作量项，保持排除
+                if (sub.equals("秦华外部")) continue;
+                if (isWorkloadTopHeader(top)) {
                     billingCol.put(c, sub);
                 }
             }
@@ -414,17 +458,19 @@ public class ProjImportServiceImpl implements IProjImportService
                     pr.setLeaderScore(1.0);
                 }
             }
-            // 解析工作量（billingCol: 顶层"工作量"组的列）
+            // 解析工作量（billingCol: 一级表头属于工作量组的列）
+            // 历史数据存在跨类型填列（如「管线实测」行填了图组工作量），经与客户确认同样应当导入，
+            // 因此不再做「委托任务 × 表头组」匹配校验，只要填了非空非 0 的值即导入。
             for (Map.Entry<Integer, String> me : billingCol.entrySet()) {
                 int col = me.getKey();
                 String rawHeader = me.getValue();
                 BigDecimal wl = numCell(row, col);
                 if (wl == null || wl.signum() == 0) continue;
+                // 内/外判定：优先显式(内部)/(外部)；其次"水准"/"管线"特殊规则（包含即触发）
+                boolean isInt = isInternalWorkload(rawHeader, pr.getEngineeringProject());
                 ImportPreviewWorkload w = new ImportPreviewWorkload();
                 w.setBillingCategoryRaw(rawHeader);
                 w.setWorkload(wl);
-                // 内/外判定：优先显式(内部)/(外部)；其次"水准"/"管线"特殊规则（包含即触发）
-                boolean isInt = isInternalWorkload(rawHeader, pr.getEngineeringProject());
                 w.setBillingType(isInt ? "internal" : "external");
                 // 提取计费类别名：去掉(内部)/(外部)/(内)/(外)及空白
                 String billingCatName = rawHeader.replaceAll("[（(](内部|外部|内|外)[）)]", "").trim();
@@ -655,28 +701,44 @@ public class ProjImportServiceImpl implements IProjImportService
     public ImportCommitResult commit(ImportCommitRequest req) {
         SessionEntry entry = SESSION.get(req.getToken());
         if (entry == null || entry.expired()) throw new RuntimeException("导入会话已过期，请重新解析");
-        // 重复提交保护：同一 token 只允许一个 commit 在跑；若已跑完则直接返回缓存结果
+        // 幂等：已导入完成则直接返回缓存结果
         if (entry.commitResult != null) return entry.commitResult;
+        // 正在后台导入中：返回 running 占位，由前端轮询 status 直到 done
         if (!entry.committing.compareAndSet(false, true)) {
-            // 有并发/重试请求正在提交中，短自旋等待已有线程完成结果并返回（最多90s）
-            long start = System.currentTimeMillis();
-            while (entry.commitResult == null && entry.committing.get() && System.currentTimeMillis() - start < 90 * 1000L) {
-                try { Thread.sleep(500L); } catch (InterruptedException ignore) { Thread.currentThread().interrupt(); break; }
-            }
-            if (entry.commitResult != null) return entry.commitResult;
-            throw new RuntimeException("正在导入中，请稍后到导入日志查看结果");
+            ImportCommitResult running = new ImportCommitResult();
+            running.setLogId(entry.logId);
+            running.setStatus("running");
+            return running;
         }
         ImportPreviewResponse cached = entry.resp;
-        ImportCommitResult result = new ImportCommitResult();
         List<ImportPreviewRow> rows = req.getRows() == null ? cached.getRows() : req.getRows();
-        long t0 = System.currentTimeMillis();
-        final int[] counter = {0, 0, 0}; // succ, skip, fail
+        if (rows == null) rows = Collections.emptyList();
         final String user = SecurityUtils.getUsername();
         final ProjImportLog log = new ProjImportLog();
         log.setFileName("upload.xlsx"); log.setTotalRows(rows.size());
         log.setStatus("running"); log.setCreateBy(user);
-        // 1. log insert 独立事务（避免被后续错误牵连）
-        runInNewTx(() -> importLogMapper.insertImportLog(log));
+        // 1. 建导入日志（running）独立事务，成功后即拿到 logId 供轮询；失败复位
+        try {
+            runInNewTx(() -> importLogMapper.insertImportLog(log));
+        } catch (Exception ex) {
+            entry.committing.set(false);
+            throw new RuntimeException("导入日志初始化失败：" + ex.getMessage(), ex);
+        }
+        entry.logId = log.getId();
+        // 2. 异步落库：立即返回 running，线程池完成后写 entry.commitResult 供 status 轮询
+        final List<ImportPreviewRow> rowsRef = rows;
+        IMPORT_EXECUTOR.execute(() -> runCommitAsync(entry, rowsRef, user, log));
+        ImportCommitResult running = new ImportCommitResult();
+        running.setLogId(log.getId());
+        running.setStatus("running");
+        return running;
+    }
+
+    /** 后台线程执行主体：分组 → 预解析 → 按批事务写库 → 收尾。异常不外抛，全部落到 log 与缓存结果。 */
+    private void runCommitAsync(SessionEntry entry, List<ImportPreviewRow> rows, String user, ProjImportLog log) {
+        long t0 = System.currentTimeMillis();
+        ImportCommitResult result = new ImportCommitResult();
+        final int[] counter = {0, 0, 0}; // succ, skip, fail
         try {
             // 按工程编号分组（保持 Excel 顺序）：同编号多条记录 = 同一父项目的多个子项
             LinkedHashMap<String, List<ImportPreviewRow>> groups = new LinkedHashMap<>();
@@ -699,34 +761,72 @@ public class ProjImportServiceImpl implements IProjImportService
                 }
                 groups.computeIfAbsent(row.getProjectCode().trim(), k -> new ArrayList<>()).add(row);
             }
-            for (Map.Entry<String, List<ImportPreviewRow>> g : groups.entrySet()) {
-                List<ImportPreviewRow> group = g.getValue();
-                // 一组 = 一个父项目 + 若干子项，单事务写入，任何 DB 错误只回滚本组
-                try {
-                    Throwable[] err = {null};
-                    runInNewTx(() -> {
-                        try {
-                            writeOneGroup(group, user);
-                        } catch (Throwable t) { err[0] = t; throw t; }
-                    });
-                    if (err[0] != null) throw new RuntimeException(err[0].getMessage(), err[0]);
-                    counter[0] += group.size();
-                } catch (Exception ex) {
-                    counter[2] += group.size();
-                    String msg = ex.getCause() != null && ex.getCause().getMessage() != null
-                        ? ex.getCause().getMessage() : ex.getMessage();
-                    // 去掉可能超长的 PSQLException 堆栈前缀(只留第一行)
-                    if (msg != null && msg.contains("\n")) msg = msg.split("\n")[0];
-                    for (ImportPreviewRow row : group) {
-                        ImportCommitResult.RowDetail d = new ImportCommitResult.RowDetail();
-                        d.setExcelRow(row.getExcelRow()); d.setProjectCode(row.getProjectCode());
-                        d.setReason(msg);
-                        result.getFailedDetails().add(d);
+            // 档1：写库前一次性预解析（负责人建档 + 已存在编号预取），把组内逐行/逐组查询降为批前各一次
+            Map<String, com.xakcch.common.core.domain.entity.SysUser> leaderByName = prefetchLeaders(rows, user);
+            Map<String, Long> existingIdByCode = new HashMap<>();
+            if (!groups.isEmpty()) {
+                List<Map<String, Object>> hits = projectMapper.selectProjectIdsByCodes(new ArrayList<>(groups.keySet()));
+                for (Map<String, Object> m : hits) {
+                    Object codeObj = m.get("project_code");
+                    Object idObj = m.get("id");
+                    if (codeObj != null && idObj != null) {
+                        existingIdByCode.put(String.valueOf(codeObj), ((Number) idObj).longValue());
                     }
                 }
             }
-        } catch (Exception ex) {
-            throw new RuntimeException("导入失败：" + ex.getMessage(), ex);
+            // 策略：工程编号已存在 → 整组跳过（不写入、不合并、不覆盖），计入跳过明细，避免重复导入产生重复子项/任务与付款金额翻倍
+            List<Map.Entry<String, List<ImportPreviewRow>>> groupList = new ArrayList<>();
+            for (Map.Entry<String, List<ImportPreviewRow>> g : groups.entrySet()) {
+                Long existedId = existingIdByCode.get(g.getKey());
+                if (existedId != null) {
+                    counter[1] += g.getValue().size();
+                    for (ImportPreviewRow row : g.getValue()) {
+                        ImportCommitResult.RowDetail d = new ImportCommitResult.RowDetail();
+                        d.setExcelRow(row.getExcelRow());
+                        d.setProjectCode(row.getProjectCode());
+                        d.setReason("工程编号已存在（项目ID=" + existedId + "），整组跳过未写入");
+                        result.getSkippedDetails().add(d);
+                    }
+                    continue;
+                }
+                groupList.add(g);
+            }
+            // 档3a：按批事务写库（TX_BATCH_SIZE 组一批），批内任何 DB 错误 → 整批回滚并标记批内全部组
+            for (int i = 0; i < groupList.size(); i += TX_BATCH_SIZE) {
+                int end = Math.min(i + TX_BATCH_SIZE, groupList.size());
+                List<Map.Entry<String, List<ImportPreviewRow>>> batch = groupList.subList(i, end);
+                try {
+                    runInNewTx(() -> {
+                        for (Map.Entry<String, List<ImportPreviewRow>> g : batch) {
+                            writeOneGroup(g.getValue(), user, null, leaderByName);
+                        }
+                    });
+                    for (Map.Entry<String, List<ImportPreviewRow>> g : batch) counter[0] += g.getValue().size();
+                } catch (Exception ex) {
+                    String msg = ex.getCause() != null && ex.getCause().getMessage() != null
+                        ? ex.getCause().getMessage() : ex.getMessage();
+                    if (msg != null && msg.contains("\n")) msg = msg.split("\n")[0];
+                    for (Map.Entry<String, List<ImportPreviewRow>> g : batch) {
+                        counter[2] += g.getValue().size();
+                        for (ImportPreviewRow row : g.getValue()) {
+                            ImportCommitResult.RowDetail d = new ImportCommitResult.RowDetail();
+                            d.setExcelRow(row.getExcelRow()); d.setProjectCode(row.getProjectCode());
+                            d.setReason(msg + "（该行所在批次已整体回滚，未写入数据）");
+                            result.getFailedDetails().add(d);
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            // 结构性异常（理论上只在预解析阶段）→ 全部行记失败，避免静默
+            String msg = t.getMessage();
+            if (msg != null && msg.contains("\n")) msg = msg.split("\n")[0];
+            ImportCommitResult.RowDetail d = new ImportCommitResult.RowDetail();
+            d.setReason("导入流程异常：" + (msg == null ? t.getClass().getSimpleName() : msg));
+            result.getFailedDetails().add(d);
+            counter[2] = Math.max(counter[2], rows.size() - counter[0] - counter[1]);
+            System.err.println("[proj-import] async commit FATAL: " + t.getMessage());
+            t.printStackTrace();
         } finally {
             long cost = System.currentTimeMillis() - t0;
             log.setCostMs(cost);
@@ -739,44 +839,72 @@ public class ProjImportServiceImpl implements IProjImportService
             } catch (Exception ignore) {}
             log.setStatus("done");
             log.setUpdateBy(user);
-            // 3. log update 独立事务（无论之前多少行DB报错，这一步不受影响）
             try {
                 runInNewTx(() -> importLogMapper.updateImportLog(log));
                 System.out.println("[proj-import] log updated id=" + log.getId()
-                    + " failChars=" + (log.getFailDetails() == null ? 0 : log.getFailDetails().length())
-                    + " skipChars=" + (log.getSkipDetails() == null ? 0 : log.getSkipDetails().length()));
+                    + " succ=" + counter[0] + " skip=" + counter[1] + " fail=" + counter[2]);
             } catch (Exception ignoreLog) {
                 System.err.println("[proj-import] log update FAILED id=" + log.getId() + " -> " + ignoreLog.getMessage());
-                ignoreLog.printStackTrace();
             }
-            // 4. 缓存结果供重试/重入请求读取（2小时 TTL，不清空 token）
-            ImportCommitResult cachedResult = new ImportCommitResult();
-            cachedResult.setLogId(log.getId());
-            cachedResult.setSuccessCount(counter[0]);
-            cachedResult.setSkippedCount(counter[1]);
-            cachedResult.setFailedCount(counter[2]);
-            cachedResult.setCostMs(System.currentTimeMillis() - t0);
-            try {
-                cachedResult.setSkippedDetails(om.readValue(om.writeValueAsString(result.getSkippedDetails()),
-                    com.fasterxml.jackson.databind.type.TypeFactory.defaultInstance().constructCollectionType(List.class, ImportCommitResult.RowDetail.class)));
-                cachedResult.setFailedDetails(om.readValue(om.writeValueAsString(result.getFailedDetails()),
-                    com.fasterxml.jackson.databind.type.TypeFactory.defaultInstance().constructCollectionType(List.class, ImportCommitResult.RowDetail.class)));
-            } catch (Exception ignore) {}
-            entry.commitResult = cachedResult;
+            // 缓存结果供 status 轮询 / 幂等重入读取（与落库 JSON 同源）
+            result.setLogId(log.getId());
+            result.setStatus("done");
+            result.setCostMs(cost);
+            result.setSuccessCount(counter[0]);
+            result.setSkippedCount(counter[1]);
+            result.setFailedCount(counter[2]);
+            if (result.getFailedDetails() == null) result.setFailedDetails(new ArrayList<>());
+            if (result.getSkippedDetails() == null) result.setSkippedDetails(new ArrayList<>());
+            entry.commitResult = result;
             entry.committing.set(false);
         }
-        result.setLogId(log.getId());
-        result.setSuccessCount(counter[0]);
-        result.setSkippedCount(counter[1]);
-        result.setFailedCount(counter[2]);
-        result.setCostMs(System.currentTimeMillis() - t0);
-        // 保证前端收到明细，便于结果页直接展示
-        if (result.getFailedDetails() == null) result.setFailedDetails(new ArrayList<>());
-        if (result.getSkippedDetails() == null) result.setSkippedDetails(new ArrayList<>());
-        // 与DB中写入的日志保持一致：把cachedResult里序列化后的JSON再读回（与落库内容完全一致）
-        if (entry.commitResult != null) {
-            result.setFailedDetails(entry.commitResult.getFailedDetails() == null ? new ArrayList<>() : entry.commitResult.getFailedDetails());
-            result.setSkippedDetails(entry.commitResult.getSkippedDetails() == null ? new ArrayList<>() : entry.commitResult.getSkippedDetails());
+    }
+
+    /** 查询导入状态（轮询用）：done 携带完整结果；running 仅有 logId；expired 表示会话已失效 */
+    @Override
+    public ImportCommitResult getCommitStatus(String token) {
+        SessionEntry entry = SESSION.get(token);
+        if (entry == null || entry.expired()) {
+            ImportCommitResult r = new ImportCommitResult();
+            r.setStatus("expired");
+            return r;
+        }
+        if (entry.commitResult != null) return entry.commitResult;
+        ImportCommitResult running = new ImportCommitResult();
+        running.setLogId(entry.logId);
+        running.setStatus("running");
+        return running;
+    }
+
+    /**
+     * 档1·预解析负责人：对全量行中「无 leaderId 但有姓名」的行统一处理——
+     * 先一次批量查库命中已有用户，缺失的才建档（影子用户），随后回填 leaderId。
+     * 消除 writeOneGroup 组内对每行重复 selectUserByNickName 的 N+1。
+     */
+    private Map<String, com.xakcch.common.core.domain.entity.SysUser> prefetchLeaders(List<ImportPreviewRow> rows, String user) {
+        Map<String, com.xakcch.common.core.domain.entity.SysUser> result = new HashMap<>();
+        Set<String> names = new LinkedHashSet<>();
+        for (ImportPreviewRow row : rows) {
+            if (row.getLeaderId() == null && StringUtils.isNotBlank(row.getLeaderName())) {
+                names.add(row.getLeaderName().trim());
+            }
+        }
+        if (names.isEmpty()) return result;
+        Map<String, com.xakcch.common.core.domain.entity.SysUser> existByName = new HashMap<>();
+        for (com.xakcch.common.core.domain.entity.SysUser u : leaderMapper.selectUsersByNickNames(new ArrayList<>(names))) {
+            if (u.getNickName() != null) existByName.putIfAbsent(u.getNickName().trim(), u);
+        }
+        for (String name : names) {
+            com.xakcch.common.core.domain.entity.SysUser u = existByName.get(name);
+            if (u == null) u = projectService.ensureLeaderByName(name, user);
+            if (u != null) result.put(name, u);
+        }
+        // 回填 leaderId：后续 writeOneGroup 不再触发 DB 建档
+        for (ImportPreviewRow row : rows) {
+            if (row.getLeaderId() == null && StringUtils.isNotBlank(row.getLeaderName())) {
+                com.xakcch.common.core.domain.entity.SysUser u = result.get(row.getLeaderName().trim());
+                if (u != null) row.setLeaderId(u.getUserId());
+            }
         }
         return result;
     }
@@ -790,16 +918,25 @@ public class ProjImportServiceImpl implements IProjImportService
     }
 
     /**
-     * 一组写入（同一工程编号的所有行 = 一个父项目 + 若干子项；必须运行在独立事务中）。
+     * 一组写入（同一工程编号的所有行 = 一个父项目 + 若干子项；运行在批事务中）。
      * 父项目字段合并：close_time 取最晚、负责人取并集、其余文本取第一条非空；
      * 子项体现在 proj_workload.sub_item_no / sub_item_name 上。
+     * 档1优化：负责人由批前预解析回填；新建项目跳过「查旧负责人/查最大子项号/查旧付款」三个冗余 select。
+     *
+     * @param group              同工程编号的行
+     * @param user               操作人
+     * @param existingProjectId  已存在项目ID；当前策略为「已存在编号整组跳过」，调用处恒传 null（即全部走新建）。
+     *                           复用分支（合并追加）保留代码，以备策略切换时启用。
+     * @param leaderByName       批前预解析的 负责人姓名→SysUser 映射（可能为 null 表示未预解析）
      */
-    private void writeOneGroup(List<ImportPreviewRow> group, String user) {
+    private void writeOneGroup(List<ImportPreviewRow> group, String user,
+                               Long existingProjectId,
+                               Map<String, com.xakcch.common.core.domain.entity.SysUser> leaderByName) {
         if (group == null || group.isEmpty()) return;
         String code = group.get(0).getProjectCode() == null ? "" : group.get(0).getProjectCode().trim();
         if (code.isEmpty()) throw new RuntimeException("工程编号为空");
 
-        // 1. 解析负责人（未匹配则自动建档影子用户）并合并父项目字段
+        // 1. 负责人锚定（批前预解析已回填 leaderId；此处仅兜底）并合并父项目字段
         String projectName = null, engineeringProject = null, clientUnit = null, projectLocation = null;
         Long categoryId = null;
         Date closeTime = null;
@@ -808,8 +945,9 @@ public class ProjImportServiceImpl implements IProjImportService
         for (ImportPreviewRow row : group) {
             if (row.getLeaderId() == null && StringUtils.isNotBlank(row.getLeaderName())) {
                 com.xakcch.common.core.domain.entity.SysUser shadow =
-                        projectService.ensureLeaderByName(row.getLeaderName(), user);
-                row.setLeaderId(shadow.getUserId());
+                        leaderByName == null ? null : leaderByName.get(row.getLeaderName().trim());
+                if (shadow == null) shadow = projectService.ensureLeaderByName(row.getLeaderName(), user);
+                if (shadow != null) row.setLeaderId(shadow.getUserId());
             }
             if (row.getLeaderId() != null) leaderIds.add(row.getLeaderId());
             if (projectName == null && StringUtils.isNotBlank(row.getEngineeringProject())) {
@@ -849,10 +987,10 @@ public class ProjImportServiceImpl implements IProjImportService
             }
         }
 
-        // 3. 确定父项目：不存在则新建，存在则复用并合并办结时间（取更晚）
-        ProjProject pj = projectMapper.checkProjectCodeUnique(new ProjProject() {{ setProjectCode(code); }});
-        if (pj == null) {
-            pj = new ProjProject();
+        // 3. 确定父项目：批前预取判定新建/复用（复用则合并办结时间，取更晚）
+        boolean isNew = (existingProjectId == null);
+        ProjProject pj = new ProjProject();
+        if (isNew) {
             pj.setProjectCode(code);
             pj.setProjectName(projectName);
             pj.setEngineeringProject(engineeringProject);
@@ -864,16 +1002,21 @@ public class ProjImportServiceImpl implements IProjImportService
             pj.setAssignDate(closeTime);
             pj.setCreateBy(user);
             projectMapper.insertProject(pj);
-        } else if (closeTime != null) {
-            projectMapper.updateProjectCloseTime(pj.getId(), closeTime);
+        } else {
+            pj.setId(existingProjectId);
+            if (closeTime != null) {
+                projectMapper.updateProjectCloseTime(existingProjectId, closeTime);
+            }
         }
 
-        // 4. 负责人并集（已有项目保留原负责人，仅插入新增，避免唯一索引冲突）
-        Long[] existingLeaderIds = leaderMapper.selectLeaderIdsByProjectId(pj.getId());
-        Set<Long> existingSet = new HashSet<>();
-        if (existingLeaderIds != null) existingSet.addAll(Arrays.asList(existingLeaderIds));
-        List<Long> toInsert = new ArrayList<>();
-        for (Long lid : leaderIds) if (!existingSet.contains(lid)) toInsert.add(lid);
+        // 4. 负责人并集（新建项目无需查旧负责人；复用项目保留原负责人，仅插新增，避免唯一索引冲突）
+        List<Long> toInsert = new ArrayList<>(leaderIds);
+        if (!isNew) {
+            Long[] existingLeaderIds = leaderMapper.selectLeaderIdsByProjectId(pj.getId());
+            Set<Long> existingSet = new HashSet<>();
+            if (existingLeaderIds != null) existingSet.addAll(Arrays.asList(existingLeaderIds));
+            toInsert.removeIf(existingSet::contains);
+        }
         if (!toInsert.isEmpty()) {
             leaderMapper.insertProjectLeaders(pj.getId(), toInsert.toArray(new Long[0]), user);
         }
@@ -904,8 +1047,8 @@ public class ProjImportServiceImpl implements IProjImportService
         }
         if (!allWorkloads.isEmpty()) workloadMapper.insertWorkloadBatch(allWorkloads);
 
-        // 7. 付款合并（同类型金额累加成一条）
-        writeMergedPayments(pj, group, user);
+        // 7. 付款合并（同类型金额累加成一条；新建项目免查旧付款）
+        writeMergedPayments(pj, group, user, isNew);
 
         // 8. 资料提交合并为一条（取首个非空领取时间）
         if (materialTime != null) {
@@ -985,8 +1128,8 @@ public class ProjImportServiceImpl implements IProjImportService
         return result;
     }
 
-    /** 付款合并：同类型金额累加成一条，并与已有项目付款累加后 upsert */
-    private void writeMergedPayments(ProjProject pj, List<ImportPreviewRow> group, String user) {
+    /** 付款合并：同类型金额累加成一条；复用项目时与库内已有付款累加；最终一次批量 upsert */
+    private void writeMergedPayments(ProjProject pj, List<ImportPreviewRow> group, String user, boolean isNew) {
         Map<String, ImportPreviewPayment> merged = new LinkedHashMap<>();
         for (ImportPreviewRow row : group) {
             for (ImportPreviewPayment pm : row.getPayments()) {
@@ -1012,15 +1155,18 @@ public class ProjImportServiceImpl implements IProjImportService
             }
         }
         if (merged.isEmpty()) return;
-        // 复用已有项目时，同类型付款与库内累加
-        List<ProjPayment> existing = paymentMapper.selectPaymentsByProjectId(pj.getId());
-        for (ProjPayment ep : existing) {
-            String key = ep.getPaymentType() == null ? "" : ep.getPaymentType();
-            ImportPreviewPayment m = merged.get(key);
-            if (m != null && ep.getAmount() != null) {
-                m.setAmount(m.getAmount().add(ep.getAmount()));
+        // 复用已有项目时，同类型付款与库内累加（新建项目免查旧付款）
+        if (!isNew) {
+            List<ProjPayment> existing = paymentMapper.selectPaymentsByProjectId(pj.getId());
+            for (ProjPayment ep : existing) {
+                String key = ep.getPaymentType() == null ? "" : ep.getPaymentType();
+                ImportPreviewPayment m = merged.get(key);
+                if (m != null && ep.getAmount() != null) {
+                    m.setAmount(m.getAmount().add(ep.getAmount()));
+                }
             }
         }
+        List<ProjPayment> toSave = new ArrayList<>();
         for (ImportPreviewPayment pm : merged.values()) {
             ProjPayment pp = new ProjPayment();
             pp.setProjectId(pj.getId());
@@ -1033,8 +1179,9 @@ public class ProjImportServiceImpl implements IProjImportService
             pp.setInvoiceStatus("pending");
             pp.setRemark(pm.getRemark());
             pp.setCreateBy(user);
-            paymentMapper.upsertPayment(pp);
+            toSave.add(pp);
         }
+        if (!toSave.isEmpty()) paymentMapper.batchUpsertPayment(toSave);
     }
 
     // ================ 工具函数 ================
@@ -1119,6 +1266,24 @@ public class ProjImportServiceImpl implements IProjImportService
             return eng.contains("验线");
         }
         return false;
+    }
+
+    // ====================== 工作量列识别 ======================
+
+    /**
+     * 一级表头是否为工作量列（含「工作量」字样，且属于管线定验线/实测、管线图、其它三类语义组）。
+     * 注意：二级表头逐年在变（2024 图组=管线探测/管线核查/秦华外部/图格，2026 图组=管线新测/…/图格(内部)），
+     * 因此只能按一级表头语义识别，绝不能依赖二级表头名。
+     *
+     * 历史口径说明：曾按「一级表头组 × 委托任务」白名单过滤「外部」工作量，后经与客户确认为历史数据遗留问题——
+     * 跨类型填列的数据同样应当导入，故已取消该过滤，现在一律按实际填写的值导入。
+     */
+    private static boolean isWorkloadTopHeader(String topHeader) {
+        if (topHeader == null) return false;
+        String t = topHeader.replace(" ", "").replace("\u3000", "");
+        if (!t.contains("工作量")) return false;
+        return t.contains("管线图") || t.contains("定验线") || t.contains("实测")
+                || t.contains("其它") || t.contains("其他");
     }
 
     static class FuzzyResult<T> { T item; double score; }
