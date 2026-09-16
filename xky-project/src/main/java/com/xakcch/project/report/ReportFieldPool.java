@@ -98,8 +98,14 @@ public class ReportFieldPool
         addField("verifySystemNo", "系统编号(验线占位)", "agg", "管线验线", "string", false, null);
         addField("verifyReportTime", "上报时间(验线占位)", "agg", "管线验线", "date", false, null);
         // 管线定线上报领导时间（年-月）：内置模板「只定未验及补之前扣除项目」col4 专用，
-        // 已上报取 proj_report_submit_log 锁定时间（yyyy-MM）；未上报固定显示当前年月
+        // 三档派生：上报记录锁定时间 > 尾款到账时间 > 预付款到账时间；都没有则为空
+        // （不回退「当前年月」，避免导出表格里出现编造的上报时间）
         addField("submitTimeYm", "上报时间", "subject", "管线定线", "date", false, null);
+        // 上报状态（已上报 / 未上报）：判定依据与「上报时间」列严格同源
+        //   （有上报记录 或 有尾款到账时间 或 有预付款到账时间 = 已上报，见 ReportDataMapper.xml#reportSubmitExpr）
+        // filterable=true ⇒ 报表页「筛选设置」可勾选它按状态过滤，预览 / 导出 / 上报批次三处同口径
+        addField("submitStatus", "上报状态", "subject", "管线定线", "select", true,
+                toOptions(new String[][]{{"submitted", "已上报"}, {"unsubmitted", "未上报"}}));
         // 兼容旧自定义模板：基于创建时间的上报时间占位
         addField("createTimeYm", "上报时间(年-月)", "agg", "管线定线", "date", false, null);
         // 补验线报表（byx_report）专用字段：关联工程编号 / 关联工程上报领导时间
@@ -415,6 +421,17 @@ public class ReportFieldPool
             }
             return submit == null ? null : new java.text.SimpleDateFormat("yyyy-MM").format(submit);
         }
+        // 上报状态：直接取 SQL 计算列 submitStatus（与「上报时间」列同一表达式，不可能不一致）
+        // 该字段也可被勾为导出列，故返回中文取值而非 submitted/unsubmitted
+        if ("submitStatus".equals(key))
+        {
+            String v = str(row.get("submitStatus"));
+            if (v == null || v.isEmpty())
+            {
+                return null;
+            }
+            return "submitted".equals(v) ? "已上报" : "未上报";
+        }
         // 管线定线上报时间（年-月）：取创建时间格式化为 yyyy-MM（如 2026-08）
         if ("createTimeYm".equals(key))
         {
@@ -478,6 +495,17 @@ public class ReportFieldPool
         {
             String v = str(row.get(key));
             return v == null ? null : PROJECT_STATUS.getOrDefault(v, v);
+        }
+
+        // 是否结算（字符标志位 0/1，非字典字段）：必须转中文，否则导出/预览会直接显示 0 或 1
+        if ("isSettled".equals(key))
+        {
+            String v = str(row.get(key));
+            if (v == null || v.isEmpty())
+            {
+                return null;
+            }
+            return "1".equals(v.trim()) ? "已结算" : "未结算";
         }
 
         // 固定值字段

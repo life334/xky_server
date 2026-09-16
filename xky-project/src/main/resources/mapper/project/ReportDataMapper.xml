@@ -5,6 +5,16 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 <mapper namespace="com.xakcch.project.mapper.ReportDataMapper">
 
     <!--
+      「上报状态」判定表达式（唯一真相源，两处复用）：
+        已上报 = 有上报记录(proj_report_submit_log.submit_time) 或 有尾款到账时间 或 有预付款到账时间
+      与报表「上报时间」列（ReportFieldPool.resolveValue 的 submitTimeYm 三档派生）严格同源，
+      因此不会出现「列显示已上报、筛选却说不符」的自相矛盾。
+      复用点：① select 中算出 submitStatus 供导出列取值；② where 中做「已上报/未上报」筛选。
+      禁止在两处各写一份表达式，修改时必须同步（用 refid 引用即可）。
+    -->
+    <sql id="reportSubmitExpr">(sl.submit_time is not null or pay_sum.final_pay_time is not null or pay_sum.advance_pay_time is not null)</sql>
+
+    <!--
       项目台账行查询：一行一项目
       JOIN 合同（p.contract_id） / 付款汇总（子查询） / 负责人（子查询，取第一人）
       筛选 key 来自前端 filter_config.values，与 ReportFieldPool 字段 key 对应
@@ -33,6 +43,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             rp.project_code as "relatedProjectCode",
             sl.submit_time as "submitTime",
             sl2.submit_time as "relatedLastSubmitTime",
+            <!-- 「上报状态」计算列：供导出/预览取值（判定见 reportSubmitExpr，与「上报时间」列同源） -->
+            case when <include refid="reportSubmitExpr"/> then 'submitted' else 'unsubmitted' end as "submitStatus",
             c.contract_no as "contractNo",
             c.contract_name as "contractName",
             c.contract_amount as "contractAmount",
@@ -327,6 +339,17 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
         <if test="f.isSettled != null and f.isSettled != ''">
             and c.is_settled = #{f.isSettled}
+        </if>
+        <!-- 上报状态筛选（前端「筛选设置」勾选「上报状态」后传入；预览/导出/上报三处同口径） -->
+        <if test="f.submitStatus != null and f.submitStatus != ''">
+            <choose>
+                <when test="f.submitStatus == 'submitted'.toString()">
+                    and <include refid="reportSubmitExpr"/>
+                </when>
+                <when test="f.submitStatus == 'unsubmitted'.toString()">
+                    and not <include refid="reportSubmitExpr"/>
+                </when>
+            </choose>
         </if>
         <if test="f.keyword != null and f.keyword != ''">
             and (p.project_code like concat('%', #{f.keyword}, '%')

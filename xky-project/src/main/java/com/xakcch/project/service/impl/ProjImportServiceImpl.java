@@ -61,6 +61,13 @@ public class ProjImportServiceImpl implements IProjImportService
     /** 事务批大小：每批 TX_BATCH_SIZE 个工程编号组共用一次事务提交（减少 WAL fsync） */
     private static final int TX_BATCH_SIZE = 20;
 
+    /**
+     * 历史上报补录行的 {@code submit_by} 标识。
+     * <p>约定：库里的码值/标识一律用英文，中文只在前端做展示映射
+     * （前端 {@code utils/projStatus.js#submitByText} 把 import →「历史导入」）。</p>
+     */
+    private static final String SUBMIT_BY_IMPORT = "import";
+
     @Autowired private ProjProjectMapper projectMapper;
     @Autowired private ProjCategoryMapper categoryMapper;
     @Autowired private ProjCategoryBillingMapper billingMapper;
@@ -68,6 +75,7 @@ public class ProjImportServiceImpl implements IProjImportService
     @Autowired private ProjTaskMapper taskMapper;
     @Autowired private ProjWorkloadMapper workloadMapper;
     @Autowired private ProjPaymentMapper paymentMapper;
+    @Autowired private ProjReportSubmitMapper reportSubmitMapper;
     @Autowired private ProjMaterialMapper materialMapper;
     @Autowired private ProjMaterialFlowMapper materialFlowMapper;
     @Autowired private ProjImportLogMapper importLogMapper;
@@ -1035,7 +1043,7 @@ public class ProjImportServiceImpl implements IProjImportService
             task.setProjectId(pj.getId());
             task.setUserId(lid);
             task.setTaskName(projectName);
-            task.setStatus("finished");
+            task.setStatus("completed");
             task.setActualFinishDate(closeTime);
             task.setRequiredFinishDate(closeTime);
             task.setAssignDate(closeTime);
@@ -1056,6 +1064,12 @@ public class ProjImportServiceImpl implements IProjImportService
 
         // 7. 付款合并（同类型金额累加成一条；新建项目免查旧付款）
         writeMergedPayments(pj, group, user, isNew);
+
+        // 7.1 历史上报补录（仅导入项目）：导入的是历史数据，这些定线项目在线下就已上报过，
+        //     故按「有尾款取尾款到账时间、无尾款取预付款到账时间」把上报时间固化进上报记录表，
+        //     作为追溯依据与统计来源（业务规则：一个定线项目只允许上报一次，故只写、不覆盖、不重报）。
+        //     注意：复用已有项目时 pj 只带 id，编号/名称/单位必须取本方法局部变量，不能读 pj。
+        backfillReportSubmitLog(pj, code, projectName, clientUnit);
 
         // 8. 资料提交（每个导入项目必须生成一条资料记录，保证已办结项目在资料管理可见）：
         //    有「资料领取」日期 → 已领取 + 领取流转；无日期/无该列 → 待领取、待提交（与手工办结 completeProject 的兜底口径一致），
@@ -1082,6 +1096,52 @@ public class ProjImportServiceImpl implements IProjImportService
             mat.setSubmitStatus("pending");
             materialMapper.insertMaterial(mat);
         }
+    }
+
+    /**
+     * 历史上报补录：把导入项目按规则推导出的上报时间写入 proj_report_submit_log。
+     *
+     * <p>取值优先级：尾款(final) 最大到账时间 → 无尾款取预付款(advance) 最大到账时间 → 两者都没有则不写
+     * （不编造上报时间）。写入 {@code submit_by='import'}、{@code batch_id=null}，与真实上报行区分；
+     * 该工程若已有记录（真实上报或已补录过），由 {@code on conflict do nothing} 跳过、不覆盖。</p>
+     *
+     * @param pj          项目实体（可能只带 id，故编号/名称/单位由参数传入）
+     * @param projectCode 工程编号（写入上报记录的业务主键，同 UNIQUE 索引列）
+     * @param projectName 工程名称（冗余展示）
+     * @param clientUnit  委托单位（冗余展示）
+     */
+    private void backfillReportSubmitLog(ProjProject pj, String projectCode, String projectName, String clientUnit) {
+        if (pj == null || pj.getId() == null) return;
+        String code = projectCode == null ? null : projectCode.trim();
+        if (StringUtils.isBlank(code)) return;
+        Date time = null;
+        List<ProjPayment> payments = paymentMapper.selectPaymentsByProjectId(pj.getId());
+        if (payments != null && !payments.isEmpty()) {
+            time = maxPayTime(payments, "final");
+            if (time == null) time = maxPayTime(payments, "advance");
+        }
+        if (time == null) return;
+        ProjReportSubmitLog log = new ProjReportSubmitLog();
+        log.setProjectCode(code);
+        log.setProjectName(projectName);
+        log.setUnitName(clientUnit);
+        log.setSubmitTime(time);
+        // 写入者标识用英文（库里统一存码值，不写中文）；前端 utils/projStatus.js#submitByText
+        // 把 import 映射为「历史导入」。真实上报行存的是操作人账号。
+        log.setSubmitBy(SUBMIT_BY_IMPORT);
+        log.setBatchId(null);
+        reportSubmitMapper.insertLogIgnoreWithTime(log);
+    }
+
+    /** 取某付款类型中最大的到账时间（无该类型或无时间则返回 null） */
+    private Date maxPayTime(List<ProjPayment> payments, String paymentType) {
+        Date max = null;
+        for (ProjPayment p : payments) {
+            if (!paymentType.equals(p.getPaymentType())) continue;
+            Date t = p.getPayTime();
+            if (t != null && (max == null || t.after(max))) max = t;
+        }
+        return max;
     }
 
     /** 构造单个子项的工作量列表（按组合键聚合同类项，打上 sub_item_no / sub_item_name），由调用方统一批量插入 */
@@ -1197,6 +1257,9 @@ public class ProjImportServiceImpl implements IProjImportService
             pp.setPayUnit(pm.getPayUnit());
             pp.setPayMethod(pm.getPayMethod());
             pp.setReceivedStatus("received");
+            // 开票状态写英文码值 pending（未开）—— 库里统一存码值，中文由前端
+            // utils/projStatus.js#invoiceStatusText 映射（pending→未开 / invoiced→已开 / voided→已作废）。
+            // ⚠️ 不要在这里写中文标签，否则库内会出现中英两套取值。
             pp.setInvoiceStatus("pending");
             pp.setRemark(pm.getRemark());
             pp.setCreateBy(user);

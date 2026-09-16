@@ -117,6 +117,24 @@ public interface IProjReportService
     /** 删除批次（逻辑删，同时逻辑删批次内记录；仅超管） */
     int deleteSubmitBatch(Long id);
 
-    /** 删除单条上报记录（仅超管；删除后该工程编号可重新上报） */
+    /**
+     * 修改历史补录记录的上报时间（仅超管；仅 batch_id 为空的历史补录行可改）
+     *
+     * <p>背景：历史数据导入时已按规则（有尾款取尾款到账时间、无尾款取预付款到账时间）
+     * 补录过上报时间。业务规则是「一个定线项目只允许上报一次」，故不存在重新上报的路径，
+     * 若导入时取错（如到账年份录错），只能在此处修正该历史行的上报时间。</p>
+     *
+     * @param submitTime 形如 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss
+     * @return 1 表示已修改；0 表示记录不存在或不是历史补录行
+     */
+    int updateSubmitLogTime(Long id, String submitTime);
+
+    /**
+     * 删除单条上报记录（仅超管）
+     *
+     * <p>⚠️ 本系统实际不允许「删除后重新上报」：唯一索引 uk_submit_log_code 为整表唯一
+     * （不含 del_flag 谓词），软删后该工程编号仍占位，重报会被 on conflict do nothing 静默跳过。
+     * 即「一个定线项目只允许上报一次」由库层强制，删除只抹掉记录、不释放编号。</p>
+     */
     int deleteSubmitLog(Long id);
 }

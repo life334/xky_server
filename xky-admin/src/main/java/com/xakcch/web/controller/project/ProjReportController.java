@@ -302,7 +302,29 @@ public class ProjReportController extends BaseController
         return AjaxResult.success(reportService.listSubmittedStatus(projectCodes));
     }
 
-    /** 删除单条上报记录（仅管理员；删除后该工程编号可重新上报） */
+    /**
+     * 修改历史补录记录的上报时间（仅管理员；仅 batch_id 为空的历史补录行可改）
+     *
+     * <p>业务规则：一个定线项目只允许上报一次，历史导入项目在线下已上报过，导入时已按规则
+     * （有尾款取尾款到账时间、无尾款取预付款到账时间）补录，故不存在重新上报的路径；
+     * 若导入时取错（如到账年份录错），在此修正该历史行的上报时间。</p>
+     */
+    @PreAuthorize("@ss.hasPermi('report:report:log')")
+    @Log(title = "报表上报", businessType = BusinessType.UPDATE)
+    @PutMapping("/submit/log/{id}/time")
+    public AjaxResult updateSubmitLogTime(@PathVariable Long id, @RequestBody Map<String, Object> body)
+    {
+        String submitTime = body.get("submitTime") == null ? null : body.get("submitTime").toString();
+        return AjaxResult.success(reportService.updateSubmitLogTime(id, submitTime));
+    }
+
+    /**
+     * 删除单条上报记录（仅管理员）
+     *
+     * <p>⚠️ 删除不等于可重新上报：唯一索引 uk_submit_log_code 为整表唯一（不含 del_flag 谓词），
+     * 软删后该工程编号仍占位，重报会被 on conflict do nothing 静默跳过。
+     * 「一个定线项目只允许上报一次」由库层强制。</p>
+     */
     @PreAuthorize("@ss.hasPermi('report:report:log')")
     @Log(title = "报表上报", businessType = BusinessType.DELETE)
     @DeleteMapping("/submit/log/{id}")

@@ -250,7 +250,7 @@ public class ProjSettlementController extends BaseController
         String invDate = (String) projectNode.get("invoiceDate");
         boolean hasInvoice = (invDate != null && !invDate.isEmpty())
             || (invAmt != null && invAmt.compareTo(BigDecimal.ZERO) > 0);
-        boolean isVoided = "已作废".equals(invStatus);
+        boolean isVoided = isVoidedStatus(invStatus);
         BigDecimal recv = (BigDecimal) projectNode.get("receivedAmount");
         boolean hasPaid = recv != null && recv.compareTo(BigDecimal.ZERO) > 0;
         String invoicePaymentStatus;
@@ -725,27 +725,42 @@ public class ProjSettlementController extends BaseController
         pm.setInvoiceNo((String) payMap.get("invoiceNo"));
         pm.setInvoiceDate(toDate(payMap.get("invoiceDate")));
         pm.setInvoiceAmount(toBigDecimal(payMap.get("invoiceAmount")));
-        // 开票状态自动推断：勾选作废→已作废；有发票信息→已开；否则 null（未开，不再手选）
+        // 开票状态自动推断（库里统一存英文码值，中文由前端 utils/projStatus.js 映射）：
+        //   勾选作废 → voided；有发票信息 → invoiced；否则 → pending（不再手选）
         String invoiceStatus = (String) payMap.get("invoiceStatus");
+        boolean voided = isVoidedStatus(invoiceStatus);
         boolean hasInvoice = pm.getInvoiceNo() != null || pm.getInvoiceDate() != null
             || (pm.getInvoiceAmount() != null && pm.getInvoiceAmount().compareTo(BigDecimal.ZERO) > 0);
-        if ("已作废".equals(invoiceStatus))
+        if (voided)
         {
-            pm.setInvoiceStatus("已作废");
+            pm.setInvoiceStatus("voided");
         }
         else if (hasInvoice)
         {
-            pm.setInvoiceStatus("已开");
+            pm.setInvoiceStatus("invoiced");
         }
         else
         {
-            pm.setInvoiceStatus(null);
+            // 显式写 pending 而非 null：一是与导入口径一致，二是清空发票信息时能把状态正确回退。
+            // ⚠️ 不要写中文「未开」，库里一律存码值。
+            pm.setInvoiceStatus("pending");
         }
         // 空值防御：付款金额、付款日期、发票信息均为空且未标记作废时不插入记录
-        if (pm.getAmount() == null && pm.getPayTime() == null && !hasInvoice && !"已作废".equals(invoiceStatus)) return;
+        if (pm.getAmount() == null && pm.getPayTime() == null && !hasInvoice && !voided) return;
         pm.setRemark(remark);
         pm.setCreateBy(username);
         paymentMapper.upsertPayment(pm);
+    }
+
+    /**
+     * 是否「已作废」开票状态。
+     *
+     * <p>库里统一存英文码值 {@code voided}（开票状态值域：pending 未开 / invoiced 已开 / voided 已作废），
+     * 中文只是前端的展示映射。此处额外兼容历史存量里的中文值「已作废」，保证过渡期回显与再保存一致。</p>
+     */
+    private static boolean isVoidedStatus(String status)
+    {
+        return "voided".equals(status) || "已作废".equals(status);
     }
 
     /** 保存退款记录（多笔，整组替换：先逻辑删该项目旧退款行，再逐笔插入 payment_type='refund'）

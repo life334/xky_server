@@ -122,10 +122,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         limit 1
     </select>
 
-    <!-- 统计时间区间内的上报记录数（按月上报控制：当月已上报则不允许再报） -->
+    <!-- 统计时间区间内的「真实上报」记录数（按月上报控制：当月已上报则不允许再报）
+         batch_id is not null ⇒ 只算真实上报；历史导入补录行不计入（否则补录时间落在当月会误置灰） -->
     <select id="countLogsBetween" resultType="int">
         select count(*) from proj_report_submit_log
         where del_flag = '0'
+          and batch_id is not null
           and submit_time &gt;= #{begin}
           and submit_time &lt; #{end}
     </select>
@@ -152,6 +154,26 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         )
         on conflict (project_code) do nothing
     </insert>
+
+    <!-- 历史数据导入补录：submit_time 由调用方传入（按到账时间派生：有尾款取尾款、无尾款取预付款），
+         其余与 insertLogIgnore 相同；冲突（该工程已上报过）时跳过不覆盖 -->
+    <insert id="insertLogIgnoreWithTime" parameterType="ProjReportSubmitLog">
+        insert into proj_report_submit_log (
+            project_code, project_name, unit_name, submit_time, submit_by, batch_id, create_time
+        ) values (
+            #{projectCode}, #{projectName}, #{unitName}, #{submitTime}, #{submitBy}, #{batchId}, now()
+        )
+        on conflict (project_code) do nothing
+    </insert>
+
+    <!-- 仅允许修改历史补录行（batch_id 为空）；真实上报行 batch_id 非空，条件天然拦住 -->
+    <update id="updateLogSubmitTime">
+        update proj_report_submit_log
+           set submit_time = #{submitTime}
+         where id = #{id}
+           and batch_id is null
+           and del_flag = '0'
+    </update>
 
     <update id="deleteLogById" parameterType="Long">
         update proj_report_submit_log set del_flag = '2' where id = #{id}

@@ -828,7 +828,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
         addColumn(columns, "totalDuration", "总时长", "total", "business", true, "totalDuration");
         addColumn(columns, "projectName", "项目名称", "text", "business", false, "projectName");
         addColumn(columns, "relatedProjectCode", "关联工程编号", "text", "business", true, "relatedProjectCode");
-        addColumn(columns, "dataSource", "项目来源", "text", "business", false, "dataSource");
+        addColumn(columns, "dataSource", "项目来源", "dict", "business", false, "dataSource");
         addColumn(columns, "remark", "备注", "text", "business", false, "remark");
 
         // ---- 物理表新增列自动发现（不在固定清单中的列 → 业务组末尾，默认隐藏） ----

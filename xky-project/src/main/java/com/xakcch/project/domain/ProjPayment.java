@@ -48,7 +48,7 @@ public class ProjPayment extends BaseEntity
     /** 开票金额 */
     private BigDecimal invoiceAmount;
 
-    /** 开票状态：未开/已开/已作废 */
+    /** 开票状态（英文码值）：pending 未开 / invoiced 已开 / voided 已作废 —— 中文由前端映射 */
     private String invoiceStatus;
 
     /** 到账状态（字典 proj_payment_received_status） */

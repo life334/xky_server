@@ -369,14 +369,34 @@ public class ProjReportServiceImpl implements IProjReportService
                 queryCodes.add(code);
             }
         }
+        // 上报状态来源 { projectCode: 'log' | 'history' }：
+        //   log     = 真实上报（proj_report_submit_log 有记录且 batch_id 非空，即走过「导出并上报领导」）
+        //   history = 历史导入补录（有记录但 batch_id 为空）或未落库的派生兜底（时间列有值）
+        // 口径说明：只按「有无上报记录」判定会出现「上报时间有值、上报状态却显示未上报」的自相矛盾，
+        //          故状态与「上报时间」列同源（有上报时间即已上报），同时保留来源供前端区分展示。
+        Map<String, Object> submitSource = new HashMap<>();
         if (!queryCodes.isEmpty())
         {
             for (ProjReportSubmitLog sl : submitMapper.selectLogsByCodes(queryCodes))
             {
                 submitted.put(sl.getProjectCode(), sl.getSubmitTime());
+                submitSource.put(sl.getProjectCode(), sl.getBatchId() == null ? "history" : "log");
             }
         }
         result.put("submitted", submitted);
+        for (Map<String, Object> row : rows)
+        {
+            String code = toStr(row.get("projectCode"));
+            if (code == null || code.isEmpty() || submitSource.containsKey(code))
+            {
+                continue;
+            }
+            if (hasReportTimeValue(fields, row))
+            {
+                submitSource.put(code, "history");
+            }
+        }
+        result.put("submitSource", submitSource);
         // 当月是否已上报过（按月上报控制：当月已上报则前端置灰上报复选框）
         result.put("monthSubmitted", countMonthSubmittedLogs() > 0);
         fields = enrichHeaderGroupFromSource(template, fields);
@@ -895,6 +915,36 @@ public class ProjReportServiceImpl implements IProjReportService
         }
     }
 
+    /** 模板中「上报时间」类字段（与报表列同源；用于「上报状态」判定，保证两列口径一致） */
+    private static final Set<String> REPORT_TIME_FIELD_KEYS =
+            Set.of("submitTimeYm", "relatedLastSubmitTime", "createTimeYm");
+
+    /**
+     * 该行在本模板的「上报时间」列是否有值。
+     * 取值走与预览/导出完全相同的出口（ReportFieldPool.resolveValue），
+     * 因此「上报状态」与「上报时间」列不可能出现一列有值、另一列说未上报的矛盾。
+     */
+    private boolean hasReportTimeValue(List<ProjReportField> fields, Map<String, Object> row)
+    {
+        if (fields == null)
+        {
+            return false;
+        }
+        for (ProjReportField f : fields)
+        {
+            if (!REPORT_TIME_FIELD_KEYS.contains(f.getFieldKey()))
+            {
+                continue;
+            }
+            Object v = ReportFieldPool.resolveValue(f, row);
+            if (v != null && !v.toString().trim().isEmpty())
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private String toStr(Object o)
     {
         return o == null ? null : o.toString();
@@ -1190,6 +1240,58 @@ public class ProjReportServiceImpl implements IProjReportService
             throw new ServiceException("仅管理员可删除上报记录");
         }
         return submitMapper.deleteLogById(id);
+    }
+
+    @Override
+    public int updateSubmitLogTime(Long id, String submitTime)
+    {
+        if (!SecurityUtils.isAdmin())
+        {
+            throw new ServiceException("仅管理员可修改历史补录的上报时间");
+        }
+        if (id == null)
+        {
+            throw new ServiceException("记录ID不能为空");
+        }
+        String text = submitTime == null ? "" : submitTime.trim();
+        if (text.isEmpty())
+        {
+            throw new ServiceException("上报时间不能为空");
+        }
+        Date time = parseReportTime(text);
+        if (time == null)
+        {
+            throw new ServiceException("上报时间格式不正确，应为 yyyy-MM-dd");
+        }
+        // SQL 内以 batch_id is null 守卫：真实上报行不会被命中（上报时间锁定不可改）
+        int n = submitMapper.updateLogSubmitTime(id, time);
+        if (n == 0)
+        {
+            throw new ServiceException("修改失败：该记录不存在，或不是历史导入补录记录（真实上报时间不可修改）");
+        }
+        return n;
+    }
+
+    /** 解析上报时间：支持 yyyy-MM-dd 与 yyyy-MM-dd HH:mm[:ss]（补录值是历史事实，按天粒度足够） */
+    private Date parseReportTime(String text)
+    {
+        String s = text.replace('T', ' ').trim();
+        try
+        {
+            if (s.length() > 10)
+            {
+                if (s.length() == 16)
+                {
+                    s = s + ":00";
+                }
+                return java.sql.Timestamp.valueOf(s.substring(0, 19));
+            }
+            return java.sql.Timestamp.valueOf(java.time.LocalDate.parse(s).atStartOfDay());
+        }
+        catch (Exception e)
+        {
+            return null;
+        }
     }
 
     // ==================== 上报辅助 ====================
