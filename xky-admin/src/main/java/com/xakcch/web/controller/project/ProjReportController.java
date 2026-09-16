@@ -162,6 +162,7 @@ public class ProjReportController extends BaseController
         Long templateId = Long.valueOf(String.valueOf(body.get("templateId")));
         @SuppressWarnings("unchecked")
         Map<String, Object> filter = (Map<String, Object>) body.get("filter");
+        injectMergeUnitCells(body, filter);
         return AjaxResult.success(reportService.preview(templateId, filter));
     }
 
@@ -176,7 +177,18 @@ public class ProjReportController extends BaseController
         Map<String, Object> filter = (Map<String, Object>) body.get("filter");
         @SuppressWarnings("unchecked")
         List<String> projectCodes = (List<String>) body.get("projectCodes");
+        injectMergeUnitCells(body, filter);
         reportService.exportReport(templateId, filter, projectCodes, response);
+    }
+
+    /** 单位合并开关（默认不合并）：请求体 mergeUnitCells → filter 约定键 _mergeUnitCells，Service/导出器按此判定 */
+    private void injectMergeUnitCells(Map<String, Object> body, Map<String, Object> filter)
+    {
+        Object mergeUnitCells = body.get("mergeUnitCells");
+        if (mergeUnitCells != null && filter != null)
+        {
+            filter.put("_mergeUnitCells", mergeUnitCells);
+        }
     }
 
     /** 按配置直接导出（不保存模板，临时使用） */

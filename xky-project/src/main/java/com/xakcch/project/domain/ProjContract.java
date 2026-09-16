@@ -93,6 +93,13 @@ public class ProjContract extends BaseEntity
     /** 关联项目数（非数据库字段，列表查询时填充） */
     private Integer projectCount;
 
+    /**
+     * 关联附件数量（非数据库字段，列表查询时由子查询填充）。
+     * 列表页需要展示「N 个附件」，但绝不能按行逐个调附件接口（N+1 会把后端和浏览器一起压死），
+     * 因此统一在 selectContractList 里用一条子查询带出。
+     */
+    private Integer attachmentCount;
+
     // ===== 以下为 transient 查询参数（不入库） =====
 
     /** 全局搜索关键词 */
@@ -369,6 +376,16 @@ public class ProjContract extends BaseEntity
     public void setProjectCount(Integer projectCount)
     {
         this.projectCount = projectCount;
+    }
+
+    public Integer getAttachmentCount()
+    {
+        return attachmentCount;
+    }
+
+    public void setAttachmentCount(Integer attachmentCount)
+    {
+        this.attachmentCount = attachmentCount;
     }
 
     public String getKeyword() { return keyword; }

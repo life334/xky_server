@@ -396,12 +396,24 @@ public class ReportFieldPool
         {
             return null;
         }
-        // 管线定线上报领导时间（年-月）：已上报取锁定时间；未上报固定显示当前年月
-        // （月度上报节奏：本月导出即上报，上报时间=当前月，故未上报记录预显当前月）
+        // 管线定线「上报时间」（年-月），三档优先级：
+        //   1) 已通过「导出并上报领导」上报 → 取 proj_report_submit_log 锁定时间（终身上报一次，不可改）
+        //   2) 未上报但有到账记录 → 有尾款取尾款到账时间，无尾款取预付款到账时间
+        //      （历史导入项目的上报时间依据：导入不写上报记录，只能由到账时间反推；
+        //        同一类型多笔时 SQL 取最后一笔 max(pay_time)）
+        //   3) 都没有 → 空（不回退"当前年月"，避免导出表格里出现编造的上报时间）
         if ("submitTimeYm".equals(key))
         {
             Date submit = date(row.get("submitTime"));
-            return new java.text.SimpleDateFormat("yyyy-MM").format(submit == null ? new Date() : submit);
+            if (submit == null)
+            {
+                submit = date(row.get("finalPayTime"));
+            }
+            if (submit == null)
+            {
+                submit = date(row.get("advancePayTime"));
+            }
+            return submit == null ? null : new java.text.SimpleDateFormat("yyyy-MM").format(submit);
         }
         // 管线定线上报时间（年-月）：取创建时间格式化为 yyyy-MM（如 2026-08）
         if ("createTimeYm".equals(key))

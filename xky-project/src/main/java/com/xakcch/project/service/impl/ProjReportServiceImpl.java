@@ -316,13 +316,15 @@ public class ProjReportServiceImpl implements IProjReportService
     {
         ProjReportTemplate template = getTemplate(templateId);
         List<Map<String, Object>> rows = queryRows(filter);
-        // 单位合并模板：预览与导出一致，同样按单位名称排序
-        if (isUnitMergeTemplate(template))
+        // 单位合并模板：仅当用户勾选「按单位合并显示」时才按单位名称排序（默认不合并，保持原始顺序，与默认导出一致）
+        if (isUnitMergeTemplate(template) && isMergeUnitCells(filter))
         {
             prepareUnitMergeRows(rows);
         }
         // 按模板字段顺序解析展示值（与导出一致，所见即所得）
         List<ProjReportField> fields = template.getFieldList();
+        // 合并模式且为「只定未验」（zdyw）模板：到账时间列显示单位汇总描述（与导出 Excel 一致）
+        boolean paySummary = isMergeUnitCells(filter) && isPayTimeSummaryKeyword(template);
         List<List<Object>> displayRows = new ArrayList<>();
         for (Map<String, Object> row : rows)
         {
@@ -331,7 +333,16 @@ public class ProjReportServiceImpl implements IProjReportService
             {
                 for (ProjReportField f : fields)
                 {
-                    d.add(ReportFieldPool.resolveValue(f, row));
+                    Object v;
+                    if (paySummary && "lastPayTime".equals(f.getFieldKey()) && row.get("_unitSummary") != null)
+                    {
+                        v = row.get("_unitSummary");
+                    }
+                    else
+                    {
+                        v = ReportFieldPool.resolveValue(f, row);
+                    }
+                    d.add(v);
                 }
             }
             displayRows.add(d);
@@ -509,8 +520,9 @@ public class ProjReportServiceImpl implements IProjReportService
             rows = filterRowsByCodes(rows, projectCodes);
         }
         fields = enrichHeaderGroupFromSource(template, fields);
-        // 单位合并模板：按单位名称排序 + 计算到账汇总描述（供 Excel 合并单元格）
-        if (isUnitMergeTemplate(template))
+        // 单位合并模板：仅当用户勾选「按单位合并显示」（默认不合并）时才按单位排序 + 计算到账汇总描述
+        boolean mergeUnitCells = isMergeUnitCells(filter);
+        if (isUnitMergeTemplate(template) && mergeUnitCells)
         {
             prepareUnitMergeRows(rows);
         }
@@ -548,7 +560,7 @@ public class ProjReportServiceImpl implements IProjReportService
             }
             else
             {
-                ReportExcelExporter.exportBuiltin(out, template, fields, rows, yearMonth);
+                ReportExcelExporter.exportBuiltin(out, template, fields, rows, yearMonth, mergeUnitCells);
             }
             out.flush();
         }
@@ -777,6 +789,20 @@ public class ProjReportServiceImpl implements IProjReportService
                         .contains(ReportExcelExporter.UNIT_MERGE_NO_PAY_SUMMARY_KEYWORD)
                     || template.getTemplateFile().toLowerCase()
                         .contains(ReportExcelExporter.UNIT_MERGE_CONTRACT_AMOUNT_KEYWORD));
+    }
+
+    /** 用户是否勾选「按单位合并显示」（请求体 mergeUnitCells → filter 约定键 _mergeUnitCells；默认不合并） */
+    private boolean isMergeUnitCells(Map<String, Object> filter)
+    {
+        return filter != null && Boolean.TRUE.equals(filter.get("_mergeUnitCells"));
+    }
+
+    /** 是否「只定未验」（zdyw）模板：合并时到账时间列显示单位汇总描述 */
+    private boolean isPayTimeSummaryKeyword(ProjReportTemplate template)
+    {
+        return template != null && template.getTemplateFile() != null
+                && template.getTemplateFile().toLowerCase()
+                        .contains(ReportExcelExporter.UNIT_MERGE_TEMPLATE_KEYWORD);
     }
 
     /**
@@ -1017,7 +1043,8 @@ public class ProjReportServiceImpl implements IProjReportService
         try (FileOutputStream fos = new FileOutputStream(snapshotPath))
         {
             String[] yearMonth = exportYearMonth(template, filter);
-            ReportExcelExporter.exportBuiltin(fos, template, fields, rows, yearMonth);
+            // 上报快照为官方留档格式：始终按单位合并（与历史快照口径一致），不受导出开关影响
+            ReportExcelExporter.exportBuiltin(fos, template, fields, rows, yearMonth, true);
         }
         catch (ServiceException e)
         {

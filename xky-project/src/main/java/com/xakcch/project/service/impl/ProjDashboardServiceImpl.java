@@ -44,7 +44,8 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
                 ? Math.round(activeCount * 1000.0 / allProjects) / 10.0 : 0);
 
         // 预警计数（超期任务 + 待领取资料）
-        int overdueCount = dashboardMapper.overdueTaskAlerts().size();
+        // 注意：overdueTaskAlerts() 带 LIMIT 10，仅用于列表展示；计数必须走独立 count
+        int overdueCount = dashboardMapper.countOverdueTasks();
         int pendingMaterial = 0;
         for (Map<String, Object> m : dashboardMapper.materialFlowStats())
         {
@@ -66,8 +67,8 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         BigDecimal annualOutput = toBig(dashboardMapper.sumAnnualOutput().get("amount"));
 
         Map<String, Object> contractSummary = dashboardMapper.contractPaymentSummary();
-        BigDecimal contractTotal = toBig(contractSummary.get("totalamount"));
-        BigDecimal receivedAmount = toBig(contractSummary.get("receivedamount"));
+        BigDecimal contractTotal = toBig(contractSummary.get("totalAmount"));
+        BigDecimal receivedAmount = toBig(contractSummary.get("receivedAmount"));
         BigDecimal pendingPayment = contractTotal.subtract(receivedAmount);
         int contractCount = dashboardMapper.countContracts();
 
@@ -96,6 +97,8 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         result.put("outputCumulativeTrend", dashboardMapper.outputCumulativeTrend(beginDate, endDate));
         result.put("projectDynamicTrend", dashboardMapper.projectDynamicTrend(beginDate, endDate));
         result.put("contractPaymentList", dashboardMapper.contractPaymentList());
+        // 项目产值排行 TOP10（累计外部产值，全周期，替代原「合同收款进度」）
+        result.put("projectOutputTop", dashboardMapper.projectOutputTop());
 
         return result;
     }

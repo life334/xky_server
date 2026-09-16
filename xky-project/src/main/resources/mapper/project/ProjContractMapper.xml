@@ -28,6 +28,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="extraData"       column="extra_data"       />
         <result property="delFlag"         column="del_flag"         />
         <result property="projectCount"   column="project_count"   />
+        <result property="attachmentCount" column="attachment_count" />
         <result property="paidCount"      column="paid_count"      />
         <result property="paidTotal"      column="paid_total"      />
         <result property="createBy"        column="create_by"        />
@@ -46,9 +47,18 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         from proj_contract
     </sql>
 
+    <!--
+      合同列表分页查询。
+
+      附件数量 attachment_count 必须在这里一次带出，不能由前端按行逐个调附件接口：
+      那会产生 N+1 个并发 HTTP 请求，数据量大时直接拖死页面与后端。
+      子查询命中索引 idx_att_contract(contract_id, del_flag)，且外层子查询只对当页行执行。
+    -->
     <select id="selectContractList" parameterType="ProjContract" resultMap="ProjContractResult">
         select t.*,
                (select count(1) from proj_project p where p.contract_id = t.id and p.del_flag = '0') as project_count,
+               (select count(1) from proj_contract_attachment a
+                  where a.contract_id = t.id and a.del_flag = '0') as attachment_count,
                (select count(1) from proj_payment pay
                   inner join proj_project pj on pj.id = pay.project_id and pj.del_flag = '0'
                   where pj.contract_id = t.id and pay.del_flag = '0') as paid_count,

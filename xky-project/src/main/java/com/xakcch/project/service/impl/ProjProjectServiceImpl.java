@@ -819,6 +819,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
         addColumn(columns, "engineeringProject", "工程项目", "text", "business", true, "engineeringProject");
         addColumn(columns, "projectLocation", "工程地点", "text", "business", true, "projectLocation");
         addColumn(columns, "status", "状态", "dict", "business", true, "status");
+        addColumn(columns, "closeTime", "办结日期", "date", "business", true, "closeTime");
         addColumn(columns, "categoryName", "项目类别", "text", "business", false, "categoryName");
         addColumn(columns, "contractName", "合同", "text", "business", false, "contractName");
         addColumn(columns, "leaderNames", "负责人", "text", "business", true, "leaderNames");
@@ -827,6 +828,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
         addColumn(columns, "totalDuration", "总时长", "total", "business", true, "totalDuration");
         addColumn(columns, "projectName", "项目名称", "text", "business", false, "projectName");
         addColumn(columns, "relatedProjectCode", "关联工程编号", "text", "business", true, "relatedProjectCode");
+        addColumn(columns, "dataSource", "项目来源", "text", "business", false, "dataSource");
         addColumn(columns, "remark", "备注", "text", "business", false, "remark");
 
         // ---- 物理表新增列自动发现（不在固定清单中的列 → 业务组末尾，默认隐藏） ----
@@ -834,7 +836,8 @@ public class ProjProjectServiceImpl implements IProjProjectService
             "project_code", "client_unit", "contact_name", "contact_phone", "engineering_project",
             "project_location", "status", "assign_date", "duration_require", "total_duration",
             "project_name", "remark", "id", "create_by", "create_time", "update_by", "update_time",
-            "del_flag", "extra_data", "project_category_id", "contract_id", "related_project_id"));
+            "del_flag", "extra_data", "project_category_id", "contract_id", "related_project_id",
+            "close_time", "data_source"));
         List<Map<String, Object>> tableColumns = projectMapper.selectTableColumns("proj_project");
         if (tableColumns != null)
         {

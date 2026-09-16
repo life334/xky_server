@@ -17,6 +17,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="contractId"          column="contract_id"          />
         <result property="dataSource"          column="data_source"          />
         <result property="status"              column="status"               />
+        <result property="closeTime"           column="close_time"           />
         <result property="extraData"           column="extra_data"           />
         <result property="delFlag"             column="del_flag"             />
         <result property="relatedProjectId"    column="related_project_id"   />
@@ -41,6 +42,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select p.id, p.project_code, p.project_name, p.engineering_project,
                p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
                p.project_location, p.contract_id, p.data_source, p.status,
+               p.close_time,
                p.assign_date, p.duration_require, p.total_duration,
                p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
                p.create_by, p.create_time, p.update_by, p.update_time, p.remark
@@ -51,6 +53,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select p.id, p.project_code, p.project_name, p.engineering_project,
                p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
                p.project_location, p.contract_id, p.data_source, p.status,
+               p.close_time,
                p.assign_date, p.duration_require, p.total_duration,
                p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
                p.create_by, p.create_time, p.update_by, p.update_time, p.remark,
@@ -168,6 +171,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select p.id, p.project_code, p.project_name, p.engineering_project,
                p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
                p.project_location, p.contract_id, p.data_source, p.status,
+               p.close_time,
                p.assign_date, p.duration_require, p.total_duration,
                p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
                p.create_by, p.create_time, p.update_by, p.update_time, p.remark,
@@ -198,6 +202,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where p.project_code = #{projectCode} and p.del_flag = '0' limit 1
     </select>
 
+    <!-- 注意：close_time 必须在这里写入。
+         历史导入的项目是「已办结」状态（ProjImportServiceImpl 里 status 硬编码 closed、
+         close_time 取 Excel「验收日期/办结日期」列的最晚值），漏掉 close_time 会让导入项目
+         「状态已办结但办结时间为空」——回款管理的「办结时间」列/应收账期(now-close_time)/
+         ORDER BY close_time 排序，以及报表的「办结时间」「应收账期」筛选都会失真。 -->
     <insert id="insertProject" parameterType="ProjProject" useGeneratedKeys="true" keyProperty="id">
         insert into proj_project(
             <if test="projectCode != null and projectCode != ''">project_code,</if>
@@ -212,6 +221,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="dataSource != null and dataSource != ''">data_source,</if>
             <if test="status != null and status != ''">status,</if>
             <if test="assignDate != null">assign_date,</if>
+            <if test="closeTime != null">close_time,</if>
             <if test="durationRequire != null">duration_require,</if>
             <if test="totalDuration != null">total_duration,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
@@ -232,6 +242,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="dataSource != null and dataSource != ''">#{dataSource},</if>
             <if test="status != null and status != ''">#{status},</if>
             <if test="assignDate != null">#{assignDate},</if>
+            <if test="closeTime != null">#{closeTime},</if>
             <if test="durationRequire != null">#{durationRequire},</if>
             <if test="totalDuration != null">#{totalDuration},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>

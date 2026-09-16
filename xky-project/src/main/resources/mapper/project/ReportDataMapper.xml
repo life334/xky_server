@@ -50,6 +50,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             coalesce(pay_sum.total_received, 0) as "receivedAmount",
             coalesce(pay_sum.refund_amount, 0) as "refundAmount",
             pay_sum.max_pay_time as "lastPayTime",
+            <!-- 上报时间派生依据：尾款 / 预付款到账时间（历史导入项目无上报记录时使用） -->
+            pay_sum.final_pay_time as "finalPayTime",
+            pay_sum.advance_pay_time as "advancePayTime",
             coalesce(pay_sum.total_invoice, 0) as "totalInvoiceAmount",
             coalesce(w_sum.external_output, 0) as "projectSettleAmount",
             coalesce(w_sum.internal_output, 0) as "projectInternalOutput",
@@ -73,7 +76,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                    sum(case when payment_type = 'refund' then -coalesce(amount, 0) else coalesce(amount, 0) end) as total_received,
                    sum(case when payment_type = 'refund' then coalesce(amount, 0) else 0 end) as refund_amount,
                    max(pay_time) as max_pay_time,
-                   sum(coalesce(invoice_amount, 0)) as total_invoice
+                   sum(coalesce(invoice_amount, 0)) as total_invoice,
+                   <!-- 尾款到账时间 / 预付款到账时间（同一类型多笔取最后一笔），供「上报时间」派生 -->
+                   max(case when payment_type = 'final' then pay_time end) as final_pay_time,
+                   max(case when payment_type = 'advance' then pay_time end) as advance_pay_time
             from proj_payment
             where del_flag = '0'
             group by project_id

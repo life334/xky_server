@@ -9,6 +9,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -691,7 +692,7 @@ public class ProjImportServiceImpl implements IProjImportService
         }
     }
 
-    /** 备注 = 到账说明 + 备注 拼接（空值/日期跳过，分号分隔） */
+    /** 备注 = 到账说明 + 备注 拼接（空值 / 日期 / 数字一律跳过，分号分隔；判定见 textOf） */
     private String buildRemark(List<Object> row, int colExplain, int colRemark) {
         String explain = textOf(row, colExplain);
         String remark = textOf(row, colRemark);
@@ -1056,16 +1057,19 @@ public class ProjImportServiceImpl implements IProjImportService
         // 7. 付款合并（同类型金额累加成一条；新建项目免查旧付款）
         writeMergedPayments(pj, group, user, isNew);
 
-        // 8. 资料提交合并为一条（取首个非空领取时间）
+        // 8. 资料提交（每个导入项目必须生成一条资料记录，保证已办结项目在资料管理可见）：
+        //    有「资料领取」日期 → 已领取 + 领取流转；无日期/无该列 → 待领取、待提交（与手工办结 completeProject 的兜底口径一致），
+        //    领取时间、联系人等由用户后续在资料管理页面补录
+        ProjMaterial mat = new ProjMaterial();
+        mat.setProjectId(pj.getId());
+        mat.setGuarantorFlag("N");
+        mat.setArchiveFlag("N");
+        mat.setCreateBy(user);
         if (materialTime != null) {
-            ProjMaterial mat = new ProjMaterial();
-            mat.setProjectId(pj.getId());
             mat.setSubmitTime(materialTime);
-            mat.setStatus("已领取");
+            // 状态写字典值（proj_material_status: received=已领取），不要写中文标签
+            mat.setStatus("received");
             mat.setSubmitStatus("submitted");
-            mat.setGuarantorFlag("N");
-            mat.setArchiveFlag("N");
-            mat.setCreateBy(user);
             materialMapper.insertMaterial(mat);
             ProjMaterialFlow flow = new ProjMaterialFlow();
             flow.setMaterialId(mat.getId());
@@ -1073,6 +1077,10 @@ public class ProjImportServiceImpl implements IProjImportService
             flow.setOperateTime(materialTime);
             flow.setCreateBy(user);
             materialFlowMapper.insertFlow(flow);
+        } else {
+            mat.setStatus("pending");
+            mat.setSubmitStatus("pending");
+            materialMapper.insertMaterial(mat);
         }
     }
 
@@ -1221,11 +1229,23 @@ public class ProjImportServiceImpl implements IProjImportService
         String s = v.toString().trim();
         return s.isEmpty() ? null : s;
     }
-    /** 取单元格文本；日期类型视为无文本（返回 null，避免日期 toString 污染备注） */
+    /**
+     * 取单元格文本（用于「到账说明 / 备注」这类**纯文本列**）。
+     *
+     * 空值 → null；日期 → null（日期直接 toString 会写出 "Mon Jan 01 00:00:00 CST 2026" 这种垃圾）；
+     * 数字 → null（09-16 修复，见下）。
+     *
+     * 为什么要连数字一起忽略：Sheet2 的「到账说明 / 备注」列极易被设成日期格式或被填成
+     * 「Excel 日期序列号」（2026-07-01 的序列号就是 46204）。POI 对这种单元格可能直接给出
+     * Number，`v.toString()` 就得到 "46204.0"，再被 buildRemark 拼进备注，用户看到的现象就是
+     * 「有正常备注时末尾永远跟着一个 46204.0」。文本列里的裸数字没有任何业务含义，
+     * 一律忽略，避免污染备注。
+     */
     private String textOf(List<Object> row, int c) {
         if (row == null || c < 0 || c >= row.size()) return null;
         Object v = row.get(c); if (v == null) return null;
         if (v instanceof Date) return null;
+        if (v instanceof Number) return null;
         String s = v.toString().trim();
         return s.isEmpty() ? null : s;
     }
@@ -1239,24 +1259,55 @@ public class ProjImportServiceImpl implements IProjImportService
             return new BigDecimal(s);
         } catch (Exception e) { return null; }
     }
+    /** 日期文本：yyyy-M-d，分隔符允许 - / . 年 月 混用（2026.1.15 / 2026-01-14 / 2026年1月15日 都认） */
+    private static final Pattern DATE_TEXT = Pattern.compile(
+            "(\\d{4})\\s*[-/.年]\\s*(\\d{1,2})\\s*[-/.月]\\s*(\\d{1,2})\\s*日?");
+
+    /**
+     * 解析单元格日期。历史台账里同一个「日期」列的存法五花八门，逐一兼容：
+     * 1) POI 已按日期格式读出 → Date，直接用；
+     * 2) 数值型：Excel 日期序列号（45800 → 2025-05-10）转 Date；8 位 yyyymmdd 直接拆解；
+     * 3) 文本型：yyyy-M-d（- / . 年 月 混用）取第一个匹配；纯 8 位数字按 yyyymmdd 拆解。
+     * 为什么必须这么宽：旧实现只认 Date 和「- / 年」分隔，于是「验收日期」列写成 2026.1.15
+     * 这类文本、或单元格被清成「常规」格式（POI 读出数字序列号）时会**静默丢日期**，
+     * 表现为导入项目「状态已办结但办结时间为空」。
+     */
     private Date dateCell(List<Object> row, int c) {
         if (row == null || c < 0 || c >= row.size()) return null;
         Object v = row.get(c); if (v == null) return null;
         if (v instanceof Date) return (Date) v;
         try {
+            if (v instanceof Number) {
+                double d = ((Number) v).doubleValue();
+                // Excel 日期序列号区间：1900-01-01(=1) ~ 9999-12-31(≈2958465)
+                if (d >= 1 && d <= 2958465) return DateUtil.getJavaDate(d, false);
+                long n = (long) d;
+                if (n >= 19000101L && n <= 99991231L) {
+                    return ymd((int) (n / 10000), (int) (n / 100 % 100), (int) (n % 100));
+                }
+                return null;
+            }
             String s = v.toString().trim();
             if (s.isEmpty()) return null;
-            if (s.matches("\\d{4}[-/年]\\d{1,2}[-/月]\\d{1,2}日?.*")) {
-                String[] parts = s.split("[-/ :年月日]");
-                int y = Integer.parseInt(parts[0]);
-                int m = parts.length > 1 ? Integer.parseInt(parts[1]) : 1;
-                int d = parts.length > 2 ? (parts[2].isEmpty() ? 1 : Integer.parseInt(parts[2])) : 1;
-                Calendar cal = Calendar.getInstance(); cal.clear();
-                cal.set(y, m - 1, d);
-                return cal.getTime();
+            if (s.matches("\\d{8}")) {
+                long n = Long.parseLong(s);
+                Date r = ymd((int) (n / 10000), (int) (n / 100 % 100), (int) (n % 100));
+                if (r != null) return r;
+            }
+            Matcher m = DATE_TEXT.matcher(s);
+            if (m.find()) {
+                return ymd(Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(3)));
             }
             return null;
         } catch (Exception e) { return null; }
+    }
+
+    /** 组装 y-M-d；越界返回 null（避免 Calendar 静默滚动到相邻月份） */
+    private Date ymd(int y, int m, int d) {
+        if (y < 1900 || y > 9999 || m < 1 || m > 12 || d < 1 || d > 31) return null;
+        Calendar cal = Calendar.getInstance(); cal.clear();
+        cal.set(y, m - 1, d);
+        return cal.getTime();
     }
 
     /**

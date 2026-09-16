@@ -63,10 +63,13 @@ public class ReportExcelExporter
      * @param fields    模板字段（按 column_index 定位列）
      * @param rows      数据行
      * @param yearMonth 导出年月 [年, 月]，用于替换标题中的"20XX年X月"；为 null 则不替换
+     * @param mergeUnitCells 是否按单位合并显示（默认 false：保持原始顺序、不合并单元格、
+     *                      到账时间逐条显示；true：单位名称列合并 + 到账时间按单位汇总，
+     *                      前置的单位排序与序号重编由 Service 层 prepareUnitMergeRows 完成）
      */
     public static void exportBuiltin(OutputStream out, ProjReportTemplate template,
             List<ProjReportField> fields, List<Map<String, Object>> rows,
-            String[] yearMonth) throws Exception
+            String[] yearMonth, boolean mergeUnitCells) throws Exception
     {
         Workbook wb = openTemplate(template);
         try
@@ -75,15 +78,18 @@ public class ReportExcelExporter
             // 标题中的年月实时替换（如"地下空间工程中心2026年7月…" → 筛选年月）
             replaceTitleYearMonth(wb, template, yearMonth);
             fillDataRows(wb, sheet, template, fields, rows, false);
-            // 按委托单位合并：所有含 clientUnit 列的内置模板统一生效（同单位多条合并单位名称单元格）
+            // 按委托单位合并（仅用户勾选时生效）：同单位多条合并单位名称单元格
             // 到账时间按模板类型：zdyw（只定未验）整组合并写汇总描述，byx（补验线）逐条显示
-            int dataZeroIdx = (template.getDataStartRow() == null ? 3 : template.getDataStartRow()) - 1;
-            if (dataZeroIdx < 0)
+            if (mergeUnitCells)
             {
-                dataZeroIdx = 0;
+                int dataZeroIdx = (template.getDataStartRow() == null ? 3 : template.getDataStartRow()) - 1;
+                if (dataZeroIdx < 0)
+                {
+                    dataZeroIdx = 0;
+                }
+                applyUnitMerge(sheet, fields, rows, isPayTimeSummaryTemplate(template),
+                        isContractAmountMergeTemplate(template), dataZeroIdx);
             }
-            applyUnitMerge(sheet, fields, rows, isPayTimeSummaryTemplate(template),
-                    isContractAmountMergeTemplate(template), dataZeroIdx);
             // ★ 数据行行高自适应：按各列实际内容长度（结合列宽/合并区域宽度）估算
             // 所需行数，超长内容换行完整显示；短内容保持模板基础行高不变
             applyAutoRowHeight(wb, sheet, template, rows);

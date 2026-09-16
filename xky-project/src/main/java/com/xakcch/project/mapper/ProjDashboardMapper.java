@@ -47,8 +47,11 @@ public interface ProjDashboardMapper
 
     // ===== 预警 =====
 
-    /** 超期任务列表 */
+    /** 超期任务列表（展示用，LIMIT 10） */
     public List<Map<String, Object>> overdueTaskAlerts();
+
+    /** 超期任务总数（计数用，不受列表 LIMIT 截断影响） */
+    public int countOverdueTasks();
 
     /** 资料流转统计 */
     public List<Map<String, Object>> materialFlowStats();
@@ -69,4 +72,7 @@ public interface ProjDashboardMapper
 
     /** 合同收款进度列表 */
     public List<Map<String, Object>> contractPaymentList();
+
+    /** 项目产值排行 TOP10（累计外部产值，全周期） */
+    public List<Map<String, Object>> projectOutputTop();
 }
