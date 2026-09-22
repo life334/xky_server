@@ -27,7 +27,7 @@ public interface ProjDashboardMapper
 
     // ===== 财务KPI =====
 
-    /** 指定日期范围内到账总额（proj_payment.received_status='received'） */
+    /** 指定日期范围内到账总额（有到账流水即计入，退款负冲；不再看已废弃的 received_status） */
     public Map<String, Object> sumPeriodPayment(@Param("beginDate") String beginDate, @Param("endDate") String endDate);
 
     /** 本年累计到账 */

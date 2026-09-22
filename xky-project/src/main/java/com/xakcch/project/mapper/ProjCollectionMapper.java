@@ -33,6 +33,21 @@ public interface ProjCollectionMapper
     public List<Map<String, Object>> selectUnsettledList(Map<String, Object> params);
 
     /**
+     * 到账明细（下钻：与到账汇总同一驱动与筛选条件；dimension 默认 payTime）
+     */
+    public List<Map<String, Object>> selectReceivedDetail(Map<String, Object> params);
+
+    /**
+     * 到账合计（到账金额 / 退款金额 / 净额 / 笔数）
+     */
+    public Map<String, Object> selectPaymentSummary(Map<String, Object> params);
+
+    /**
+     * 到账分组明细（按维度分组：月/季/年/客户/负责人/付款类型/项目类别）
+     */
+    public List<Map<String, Object>> selectPaymentSummaryGroups(Map<String, Object> params);
+
+    /**
      * 按项目查询催收记录（时间倒序）
      */
     public List<ProjCollectionLog> selectLogListByProjectId(Long projectId);

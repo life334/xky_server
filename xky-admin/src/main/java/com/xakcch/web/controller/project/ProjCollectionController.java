@@ -22,6 +22,7 @@ import com.xakcch.common.enums.BusinessType;
 import com.xakcch.common.utils.poi.ExcelUtil;
 import com.xakcch.project.domain.ProjCollectionLog;
 import com.xakcch.project.domain.vo.CollectionExportVo;
+import com.xakcch.project.domain.vo.PaymentDetailExportVo;
 import com.xakcch.project.service.IProjCollectionService;
 
 /**
@@ -76,6 +77,42 @@ public class ProjCollectionController extends BaseController
         startPage();
         List<Map<String, Object>> list = collectionService.selectUnsettledList(params);
         return getDataTable(list);
+    }
+
+    /**
+     * 到账明细（下钻：与到账汇总同一驱动与筛选条件，分页）
+     */
+    @GetMapping("/receivedDetail")
+    public TableDataInfo receivedDetail(@RequestParam Map<String, Object> params)
+    {
+        startPage();
+        List<Map<String, Object>> list = collectionService.selectReceivedDetail(params);
+        return getDataTable(list);
+    }
+
+    /**
+     * 到账统计（合计 + 分组明细，不分页）
+     *
+     * dimension=payTime（按到账时间，默认）| closeTime（按办结时间）
+     * groupBy=none（默认）| month | quarter | year | clientUnit | leader | paymentType | category
+     */
+    @GetMapping("/paymentSummary")
+    public AjaxResult paymentSummary(@RequestParam Map<String, Object> params)
+    {
+        return success(collectionService.selectPaymentSummary(params));
+    }
+
+    /**
+     * 导出到账明细（与到账统计同一口径与筛选条件；忽略分组维度，导出全部命中明细）
+     */
+    @PreAuthorize("@ss.hasPermi('project:collection:export')")
+    @Log(title = "回款管理", businessType = BusinessType.EXPORT)
+    @PostMapping("/paymentExport")
+    public void paymentExport(HttpServletResponse response, @RequestParam Map<String, Object> params)
+    {
+        List<PaymentDetailExportVo> list = collectionService.selectPaymentExportList(params);
+        ExcelUtil<PaymentDetailExportVo> util = new ExcelUtil<PaymentDetailExportVo>(PaymentDetailExportVo.class);
+        util.exportExcel(response, list, "到账明细");
     }
 
     /**

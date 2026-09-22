@@ -49,7 +49,6 @@
         SELECT COALESCE(SUM(CASE WHEN payment_type = 'refund' THEN -COALESCE(amount, 0) ELSE COALESCE(amount, 0) END), 0) AS "amount"
         FROM proj_payment
         WHERE del_flag = '0'
-          AND received_status = 'received'
           AND pay_time &gt;= #{beginDate}::date
           AND pay_time &lt;  #{endDate}::date + interval '1 day'
     </select>
@@ -58,7 +57,6 @@
         SELECT COALESCE(SUM(CASE WHEN payment_type = 'refund' THEN -COALESCE(amount, 0) ELSE COALESCE(amount, 0) END), 0) AS "amount"
         FROM proj_payment
         WHERE del_flag = '0'
-          AND received_status = 'received'
           AND pay_time &gt;= date_trunc('year', CURRENT_DATE)
     </select>
 
@@ -148,7 +146,7 @@
         LEFT JOIN (
             SELECT date_trunc('month', pay_time) AS mo,
                    SUM(CASE WHEN payment_type = 'refund' THEN -COALESCE(amount, 0) ELSE COALESCE(amount, 0) END) AS total_payment
-            FROM proj_payment WHERE del_flag = '0' AND received_status = 'received'
+            FROM proj_payment WHERE del_flag = '0'
             GROUP BY date_trunc('month', pay_time)
         ) p ON p.mo = m
         GROUP BY m

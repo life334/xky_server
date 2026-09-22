@@ -73,6 +73,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="clientUnit != null and clientUnit != ''">
             AND t."clientUnit" LIKE concat('%', #{clientUnit}, '%')
         </if>
+        <!-- 全局搜索：工程编号 / 项目名称 / 客户全称 -->
+        <if test="keyword != null and keyword != ''">
+            AND (t."projectCode" LIKE concat('%', #{keyword}, '%')
+                 OR t."projectName" LIKE concat('%', #{keyword}, '%')
+                 OR t."clientUnit" LIKE concat('%', #{keyword}, '%'))
+        </if>
         <if test="collectStatus != null and collectStatus != ''">
             AND t."collectStatus" = #{collectStatus}
         </if>
@@ -87,6 +93,31 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
         <if test="closeTimeEnd != null and closeTimeEnd != ''">
             AND t."closeTime" &lt;= cast(#{closeTimeEnd} as timestamp)
+        </if>
+        <!-- 到账时间：任意一笔到账落在区间内即命中（含退款） -->
+        <if test="payTimeBegin != null and payTimeBegin != ''">
+            AND EXISTS (
+                SELECT 1 FROM proj_payment pp
+                WHERE pp.project_id = t."projectId"
+                  AND pp.del_flag = '0'
+                  AND pp.pay_time &gt;= to_date(#{payTimeBegin}, 'YYYY-MM-DD')
+            )
+        </if>
+        <if test="payTimeEnd != null and payTimeEnd != ''">
+            AND EXISTS (
+                SELECT 1 FROM proj_payment pp
+                WHERE pp.project_id = t."projectId"
+                  AND pp.del_flag = '0'
+                  AND pp.pay_time &lt; to_date(#{payTimeEnd}, 'YYYY-MM-DD') + interval '1 day'
+            )
+        </if>
+        <if test="leaderId != null and leaderId != ''">
+            AND EXISTS (
+                SELECT 1 FROM proj_leader l
+                WHERE l.project_id = t."projectId"
+                  AND l.user_id = cast(#{leaderId} as bigint)
+                  AND l.del_flag = '0'
+            )
         </if>
         ORDER BY t."debtMonths" DESC, t."clientUnit", t."projectCode"
     </select>
@@ -170,10 +201,201 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="projectName != null and projectName != ''">
             AND p.project_name LIKE concat('%', #{projectName}, '%')
         </if>
+        <if test="projectCode != null and projectCode != ''">
+            AND p.project_code LIKE concat('%', #{projectCode}, '%')
+        </if>
         <if test="clientUnit != null and clientUnit != ''">
             AND p.client_unit LIKE concat('%', #{clientUnit}, '%')
         </if>
+        <!-- 全局搜索：工程编号 / 项目名称 / 客户全称 -->
+        <if test="keyword != null and keyword != ''">
+            AND (p.project_code LIKE concat('%', #{keyword}, '%')
+                 OR p.project_name LIKE concat('%', #{keyword}, '%')
+                 OR p.client_unit LIKE concat('%', #{keyword}, '%'))
+        </if>
+        <!-- 完成时间（= 办结时间 close_time） -->
+        <if test="closeTimeBegin != null and closeTimeBegin != ''">
+            AND p.close_time &gt;= to_date(#{closeTimeBegin}, 'YYYY-MM-DD')
+        </if>
+        <if test="closeTimeEnd != null and closeTimeEnd != ''">
+            AND p.close_time &lt; to_date(#{closeTimeEnd}, 'YYYY-MM-DD') + interval '1 day'
+        </if>
+        <!-- 到账时间：任意一笔到账落在区间内即命中 -->
+        <if test="payTimeBegin != null and payTimeBegin != ''">
+            AND EXISTS (
+                SELECT 1 FROM proj_payment pp
+                WHERE pp.project_id = p.id
+                  AND pp.del_flag = '0'
+                  AND pp.pay_time &gt;= to_date(#{payTimeBegin}, 'YYYY-MM-DD')
+            )
+        </if>
+        <if test="payTimeEnd != null and payTimeEnd != ''">
+            AND EXISTS (
+                SELECT 1 FROM proj_payment pp
+                WHERE pp.project_id = p.id
+                  AND pp.del_flag = '0'
+                  AND pp.pay_time &lt; to_date(#{payTimeEnd}, 'YYYY-MM-DD') + interval '1 day'
+            )
+        </if>
+        <if test="leaderId != null and leaderId != ''">
+            AND EXISTS (
+                SELECT 1 FROM proj_leader l
+                WHERE l.project_id = p.id
+                  AND l.user_id = cast(#{leaderId} as bigint)
+                  AND l.del_flag = '0'
+            )
+        </if>
         ORDER BY p.close_time
+    </select>
+
+    <!--
+      ==================== 到账汇总（「到账统计」页签） ====================
+      口径（用户已定）：只要有到账流水（pm.del_flag='0'）即计入，退款按负值冲减；
+      不看 received_status（该列已废弃——没有任何界面能写/改它，且会被默认值污染）。
+      dimension = payTime（按到账时间，默认）| closeTime（按办结时间；取这批办结项目的累计到账，
+                  不再限制到账时间；无办结时间的项目不参与）
+      groupBy   = none | month | quarter | year | clientUnit | leader | paymentType | category
+      ⚠️ groupBy='leader' 时按 proj_leader 展开：一个项目多位负责人时，同一笔到账会在每位负责人下各计一次。
+    -->
+    <sql id="summaryTimeExpr"><choose><when test="dimension == 'closeTime'">p.close_time</when><otherwise>pm.pay_time</otherwise></choose></sql>
+
+    <sql id="paymentSummaryFrom">
+        FROM proj_payment pm
+        LEFT JOIN proj_project p ON p.id = pm.project_id AND p.del_flag = '0'
+        LEFT JOIN proj_category c ON c.id = p.project_category_id AND c.del_flag = '0'
+        <if test="leaderJoin != null and leaderJoin != ''">
+            INNER JOIN proj_leader pl ON pl.project_id = pm.project_id AND pl.del_flag = '0'
+            LEFT JOIN sys_user su ON su.user_id = pl.user_id
+        </if>
+        WHERE pm.del_flag = '0'
+        <choose>
+            <when test="dimension == 'closeTime'">
+                AND p.close_time IS NOT NULL
+                <if test="begin != null and begin != ''">
+                    AND p.close_time &gt;= to_date(#{begin}, 'YYYY-MM-DD')
+                </if>
+                <if test="end != null and end != ''">
+                    AND p.close_time &lt; to_date(#{end}, 'YYYY-MM-DD') + interval '1 day'
+                </if>
+            </when>
+            <otherwise>
+                AND pm.pay_time IS NOT NULL
+                <if test="begin != null and begin != ''">
+                    AND pm.pay_time &gt;= to_date(#{begin}, 'YYYY-MM-DD')
+                </if>
+                <if test="end != null and end != ''">
+                    AND pm.pay_time &lt; to_date(#{end}, 'YYYY-MM-DD') + interval '1 day'
+                </if>
+            </otherwise>
+        </choose>
+        <if test="keyword != null and keyword != ''">
+            AND (p.project_code LIKE concat('%', #{keyword}, '%')
+                 OR p.project_name LIKE concat('%', #{keyword}, '%')
+                 OR p.client_unit LIKE concat('%', #{keyword}, '%'))
+        </if>
+        <if test="clientUnit != null and clientUnit != ''">
+            AND p.client_unit LIKE concat('%', #{clientUnit}, '%')
+        </if>
+        <if test="projectCategoryId != null and projectCategoryId != ''">
+            AND p.project_category_id = cast(#{projectCategoryId} as bigint)
+        </if>
+        <if test="paymentType != null and paymentType != ''">
+            AND pm.payment_type = #{paymentType}
+        </if>
+        <if test="payUnit != null and payUnit != ''">
+            AND pm.pay_unit LIKE concat('%', #{payUnit}, '%')
+        </if>
+        <if test="payMethod != null and payMethod != ''">
+            AND pm.pay_method = #{payMethod}
+        </if>
+        <if test="leaderId != null and leaderId != ''">
+            AND EXISTS (
+                SELECT 1 FROM proj_leader l
+                WHERE l.project_id = pm.project_id
+                  AND l.user_id = cast(#{leaderId} as bigint)
+                  AND l.del_flag = '0'
+            )
+        </if>
+    </sql>
+
+    <!-- 到账合计：到账金额（正向）/ 退款金额 / 净额 / 笔数。⚠️ 不传 leaderJoin，避免分组展开影响合计 -->
+    <select id="selectPaymentSummary" parameterType="map" resultType="java.util.LinkedHashMap">
+        SELECT
+            COALESCE(SUM(CASE WHEN pm.payment_type = 'refund' THEN 0 ELSE COALESCE(pm.amount, 0) END), 0) AS "amount",
+            COALESCE(SUM(CASE WHEN pm.payment_type = 'refund' THEN COALESCE(pm.amount, 0) ELSE 0 END), 0) AS "refundAmount",
+            COALESCE(SUM(CASE WHEN pm.payment_type = 'refund' THEN -COALESCE(pm.amount, 0) ELSE COALESCE(pm.amount, 0) END), 0) AS "netAmount",
+            COUNT(*) AS "count"
+        <include refid="paymentSummaryFrom"/>
+    </select>
+
+    <!-- 到账分组明细：label + 金额 + 笔数（groupBy=leader 时由 Service 传 leaderJoin 展开） -->
+    <select id="selectPaymentSummaryGroups" parameterType="map" resultType="java.util.LinkedHashMap">
+        SELECT
+            <choose>
+                <when test="groupBy == 'month'">
+                    to_char(date_trunc('month', <include refid="summaryTimeExpr"/>), 'YYYY-MM')
+                </when>
+                <when test="groupBy == 'quarter'">
+                    to_char(date_trunc('quarter', <include refid="summaryTimeExpr"/>), 'YYYY') || '-Q'
+                    || (((EXTRACT(MONTH FROM <include refid="summaryTimeExpr"/>))::int - 1) / 3 + 1)
+                </when>
+                <when test="groupBy == 'year'">
+                    to_char(date_trunc('year', <include refid="summaryTimeExpr"/>), 'YYYY')
+                </when>
+                <when test="groupBy == 'clientUnit'">
+                    COALESCE(NULLIF(p.client_unit, ''), '(未知客户)')
+                </when>
+                <when test="groupBy == 'leader'">
+                    COALESCE(NULLIF(su.nick_name, ''), '(未知负责人)')
+                </when>
+                <when test="groupBy == 'paymentType'">
+                    pm.payment_type
+                </when>
+                <when test="groupBy == 'category'">
+                    COALESCE(NULLIF(c.name, ''), '(未分类)')
+                </when>
+                <otherwise>
+                    '合计'
+                </otherwise>
+            </choose> AS "label",
+            <!-- 下钻用的原始分组值（时间维度由前端按 label 推导区间，故返回空串） -->
+            <choose>
+                <when test="groupBy == 'clientUnit'">COALESCE(p.client_unit, '')</when>
+                <when test="groupBy == 'leader'">cast(pl.user_id as text)</when>
+                <when test="groupBy == 'paymentType'">pm.payment_type</when>
+                <when test="groupBy == 'category'">cast(p.project_category_id as text)</when>
+                <otherwise>''</otherwise>
+            </choose> AS "key",
+            COALESCE(SUM(CASE WHEN pm.payment_type = 'refund' THEN -COALESCE(pm.amount, 0) ELSE COALESCE(pm.amount, 0) END), 0) AS "amount",
+            COUNT(*) AS "count"
+        <include refid="paymentSummaryFrom"/>
+        GROUP BY 1, 2
+        <choose>
+            <when test="groupBy == 'month' or groupBy == 'quarter' or groupBy == 'year'">ORDER BY 1</when>
+            <otherwise>ORDER BY 3 DESC</otherwise>
+        </choose>
+    </select>
+
+    <!--
+      到账明细（下钻）：与到账汇总同一驱动与筛选条件。
+      dimension 默认 payTime（兼容原「本月已回款」卡片下钻：传 begin/end 即按到账时间区间）。
+    -->
+    <select id="selectReceivedDetail" parameterType="map" resultType="java.util.LinkedHashMap">
+        SELECT
+            pm.id AS "paymentId",
+            p.id AS "projectId",
+            p.project_code AS "projectCode",
+            p.project_name AS "projectName",
+            p.client_unit AS "clientUnit",
+            p.close_time AS "closeTime",
+            pm.payment_type AS "paymentType",
+            CASE WHEN pm.payment_type = 'refund' THEN -COALESCE(pm.amount, 0) ELSE COALESCE(pm.amount, 0) END AS "amount",
+            pm.pay_time AS "payTime",
+            pm.pay_unit AS "payUnit",
+            pm.pay_method AS "payMethod",
+            pm.remark AS "remark"
+        <include refid="paymentSummaryFrom"/>
+        ORDER BY pm.pay_time DESC NULLS LAST, pm.id DESC
     </select>
 
     <!-- 按项目查询催收记录（时间倒序） -->

@@ -16,7 +16,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="invoiceDate"       column="invoice_date"      />
         <result property="invoiceAmount"     column="invoice_amount"    />
         <result property="invoiceStatus"     column="invoice_status"    />
-        <result property="receivedStatus"   column="received_status"   />
         <result property="extraData"         column="extra_data"        />
         <result property="delFlag"           column="del_flag"          />
         <result property="createBy"          column="create_by"         />
@@ -31,7 +30,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select pm.id, pm.project_id, pm.payment_type, pm.amount,
                pm.pay_time, pm.pay_unit, pm.pay_method,
                pm.invoice_no, pm.invoice_date, pm.invoice_amount, pm.invoice_status,
-               pm.received_status,
                pm.extra_data::text as extra_data, pm.del_flag,
                pm.create_by, pm.create_time, pm.update_by, pm.update_time, pm.remark
         from proj_payment pm
@@ -41,7 +39,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select pm.id, pm.project_id, pm.payment_type, pm.amount,
                pm.pay_time, pm.pay_unit, pm.pay_method,
                pm.invoice_no, pm.invoice_date, pm.invoice_amount, pm.invoice_status,
-               pm.received_status,
                pm.extra_data::text as extra_data, pm.del_flag,
                pm.create_by, pm.create_time, pm.update_by, pm.update_time, pm.remark,
                p.project_name
@@ -64,7 +61,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select pm.id, pm.project_id, pm.payment_type, pm.amount,
                pm.pay_time, pm.pay_unit, pm.pay_method,
                pm.invoice_no, pm.invoice_date, pm.invoice_amount, pm.invoice_status,
-               pm.received_status,
                pm.extra_data::text as extra_data, pm.del_flag,
                pm.create_by, pm.create_time, pm.update_by, pm.update_time, pm.remark,
                p.project_name
@@ -85,7 +81,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="invoiceDate != null">invoice_date,</if>
             <if test="invoiceAmount != null">invoice_amount,</if>
             <if test="invoiceStatus != null and invoiceStatus != ''">invoice_status,</if>
-            <if test="receivedStatus != null and receivedStatus != ''">received_status,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
             <if test="remark != null and remark != ''">remark,</if>
             <if test="createBy != null and createBy != ''">create_by,</if>
@@ -101,7 +96,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="invoiceDate != null">#{invoiceDate},</if>
             <if test="invoiceAmount != null">#{invoiceAmount},</if>
             <if test="invoiceStatus != null and invoiceStatus != ''">#{invoiceStatus},</if>
-            <if test="receivedStatus != null and receivedStatus != ''">#{receivedStatus},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="remark != null and remark != ''">#{remark},</if>
             <if test="createBy != null and createBy != ''">#{createBy},</if>
@@ -122,7 +116,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="invoiceDate != null">invoice_date = #{invoiceDate},</if>
             <if test="invoiceAmount != null">invoice_amount = #{invoiceAmount},</if>
             <if test="invoiceStatus != null">invoice_status = #{invoiceStatus},</if>
-            <if test="receivedStatus != null and receivedStatus != ''">received_status = #{receivedStatus},</if>
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
@@ -142,7 +135,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select pm.id, pm.project_id, pm.payment_type, pm.amount,
                pm.pay_time, pm.pay_unit, pm.pay_method,
                pm.invoice_no, pm.invoice_date, pm.invoice_amount, pm.invoice_status,
-               pm.received_status,
                pm.extra_data::text as extra_data, pm.del_flag,
                pm.create_by, pm.create_time, pm.update_by, pm.update_time, pm.remark,
                p.project_name
@@ -156,7 +148,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         select pm.id, pm.project_id, pm.payment_type, pm.amount,
                pm.pay_time, pm.pay_unit, pm.pay_method,
                pm.invoice_no, pm.invoice_date, pm.invoice_amount, pm.invoice_status,
-               pm.received_status,
                pm.extra_data::text as extra_data, pm.del_flag,
                pm.create_by, pm.create_time, pm.update_by, pm.update_time, pm.remark,
                p.project_name
@@ -175,15 +166,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             project_id, payment_type, amount,
             pay_time, pay_unit, pay_method,
             invoice_no, invoice_date, invoice_amount, invoice_status,
-            received_status,
             extra_data, remark,
             create_by, create_time
         )values(
             #{projectId}, #{paymentType}, #{amount},
             #{payTime}, #{payUnit}, #{payMethod},
             #{invoiceNo}, #{invoiceDate}, #{invoiceAmount}, #{invoiceStatus},
-            <if test="receivedStatus != null and receivedStatus != ''">#{receivedStatus},</if>
-            <if test="receivedStatus == null or receivedStatus == ''">'pending',</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="extraData == null or extraData == ''">null,</if>
             #{remark},
@@ -199,7 +187,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             invoice_date = EXCLUDED.invoice_date,
             invoice_amount = EXCLUDED.invoice_amount,
             invoice_status = EXCLUDED.invoice_status,
-            received_status = COALESCE(EXCLUDED.received_status, proj_payment.received_status, 'pending'),
             extra_data = EXCLUDED.extra_data,
             remark = EXCLUDED.remark,
             update_by = EXCLUDED.create_by,
@@ -212,7 +199,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             project_id, payment_type, amount,
             pay_time, pay_unit, pay_method,
             invoice_no, invoice_date, invoice_amount, invoice_status,
-            received_status,
             extra_data, remark,
             create_by, create_time
         )values
@@ -221,8 +207,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             #{p.projectId}, #{p.paymentType}, #{p.amount},
             #{p.payTime}, #{p.payUnit}, #{p.payMethod},
             #{p.invoiceNo}, #{p.invoiceDate}, #{p.invoiceAmount}, #{p.invoiceStatus},
-            <if test="p.receivedStatus != null and p.receivedStatus != ''">#{p.receivedStatus},</if>
-            <if test="p.receivedStatus == null or p.receivedStatus == ''">'pending',</if>
             <if test="p.extraData != null and p.extraData != ''">#{p.extraData}::jsonb,</if>
             <if test="p.extraData == null or p.extraData == ''">null,</if>
             #{p.remark},
@@ -239,7 +223,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             invoice_date = EXCLUDED.invoice_date,
             invoice_amount = EXCLUDED.invoice_amount,
             invoice_status = EXCLUDED.invoice_status,
-            received_status = COALESCE(EXCLUDED.received_status, proj_payment.received_status, 'pending'),
             extra_data = EXCLUDED.extra_data,
             remark = EXCLUDED.remark,
             update_by = EXCLUDED.create_by,

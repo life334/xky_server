@@ -5,6 +5,7 @@ import java.util.Date;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.xakcch.common.core.domain.BaseEntity;
 
 /**
@@ -51,7 +52,13 @@ public class ProjPayment extends BaseEntity
     /** 开票状态（英文码值）：pending 未开 / invoiced 已开 / voided 已作废 —— 中文由前端映射 */
     private String invoiceStatus;
 
-    /** 到账状态（字典 proj_payment_received_status） */
+    /**
+     * 到账状态（字典 proj_payment_received_status）
+     *
+     * ⚠️ 已废弃（2026-09-22）：没有任何界面可写/可改该列，写入只会落到默认值 pending（语义退化为「非导入写入」）。
+     * 业务上「填了金额 + 到账时间 = 已到账」，到账判定统一看 payTime；本字段仅保留列与映射，不参与任何统计与展示。
+     */
+    @JsonIgnore
     private String receivedStatus;
 
     /** 动态字段数据（JSONB） */

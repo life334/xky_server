@@ -1454,7 +1454,7 @@ public class ProjImportServiceImpl implements IProjImportService
             pp.setPayTime(pm.getPayTime());
             pp.setPayUnit(pm.getPayUnit());
             pp.setPayMethod(pm.getPayMethod());
-            pp.setReceivedStatus("received");
+            // received_status 已废弃（无界面维护、只会落到默认值），到账判定统一看 payTime，此处不再赋值
             // 开票状态写英文码值 pending（未开）—— 库里统一存码值，中文由前端
             // utils/projStatus.js#invoiceStatusText 映射（pending→未开 / invoiced→已开 / voided→已作废）。
             // ⚠️ 不要在这里写中文标签，否则库内会出现中英两套取值。

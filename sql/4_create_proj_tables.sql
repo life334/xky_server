@@ -375,7 +375,7 @@ COMMENT ON COLUMN proj_payment.invoice_no IS '发票号';
 COMMENT ON COLUMN proj_payment.invoice_date IS '发票日期';
 COMMENT ON COLUMN proj_payment.invoice_amount IS '发票金额';
 COMMENT ON COLUMN proj_payment.invoice_status IS '发票状态';
-COMMENT ON COLUMN proj_payment.received_status IS '到账状态（字典 proj_payment_received_status）';
+COMMENT ON COLUMN proj_payment.received_status IS '到账状态（字典 proj_payment_received_status）— ⚠️ 已废弃：无界面维护，勿用于统计；到账判定看 pay_time';
 COMMENT ON COLUMN proj_payment.extra_data IS '动态字段数据（JSONB）';
 COMMENT ON COLUMN proj_payment.del_flag IS '删除标志（0正常 2删除）';
 COMMENT ON COLUMN proj_payment.remark IS '备注';
