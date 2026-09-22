@@ -54,6 +54,20 @@ public class ImportPreviewRow
     /** 已存在项目的 id（仅 existsInDb=true 时有值，供提示用） */
     private Long existingProjectId;
 
+    /**
+     * 仅补充到账：该编号未出现在本次上传的「产值计算」页，但库中已有该项目，
+     * 而「到账信息」页里带着它的到账行 —— 提交时只覆盖写入付款，
+     * 不建项目、不写工作量、不动负责人/任务。
+     */
+    private Boolean payOnly = false;
+
+    /**
+     * 该编号在库中已存在（existsInDb=true）时，本文件带上的到账与库内现值是否存在差异：
+     * 新增了库中没有的付款类型 / 金额不同 / 到账时间不同 ⇒ true（会真正被写入）；
+     * 到账与库内完全一致（重复台账行）⇒ false（提交时跳过不写，预览显示「已存在·跳过」）。
+     */
+    private Boolean payChanged = false;
+
     public Integer getExcelRow() { return excelRow; }
     public void setExcelRow(Integer excelRow) { this.excelRow = excelRow; }
     public String getProjectCode() { return projectCode; }
@@ -100,4 +114,8 @@ public class ImportPreviewRow
     public void setExistsInDb(Boolean existsInDb) { this.existsInDb = existsInDb; }
     public Long getExistingProjectId() { return existingProjectId; }
     public void setExistingProjectId(Long existingProjectId) { this.existingProjectId = existingProjectId; }
+    public Boolean getPayOnly() { return payOnly; }
+    public void setPayOnly(Boolean payOnly) { this.payOnly = payOnly; }
+    public Boolean getPayChanged() { return payChanged; }
+    public void setPayChanged(Boolean payChanged) { this.payChanged = payChanged; }
 }

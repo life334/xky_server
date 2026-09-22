@@ -18,6 +18,20 @@ public class ImportPreviewResponse implements Serializable
     /** 涉及的已存在工程编号（去重） */
     private List<String> existsCodes = new ArrayList<>();
 
+    /** 仅补充到账的条目数：不新建项目，只覆盖写入已有项目的到账信息（不计入 readyCount） */
+    private Integer payOnlyCount = 0;
+    /** 到账页中出现、但本次产值页与库中都匹配不到的工程编号（未写入，供提示，避免静默丢弃） */
+    private List<String> unmatchedPayCodes = new ArrayList<>();
+
+    /**
+     * 待补到账的「已存在项目」数（去重工程编号）：提交时这些项目的到账信息会被覆盖写入，
+     * 而项目/工作量/负责人/任务全部跳过。覆盖两种来源：
+     * ① payOnly 行（编号不在本次产值页，只有到账在别的文件里）
+     * ② 本文件产值行已存在、且该编号带到账的行
+     * 口径与 runCommitAsync 跳过分支实际写付款的范围一致（同编号多行合为一组）。
+     */
+    private Integer payWriteCount = 0;
+
     private ProblemSummary problemSummary;
 
     private List<CategoryOption> categoryOptions = new ArrayList<>();
@@ -43,6 +57,12 @@ public class ImportPreviewResponse implements Serializable
     public void setExistsCount(Integer n) { this.existsCount = n; }
     public List<String> getExistsCodes() { return existsCodes; }
     public void setExistsCodes(List<String> c) { this.existsCodes = c; }
+    public Integer getPayOnlyCount() { return payOnlyCount; }
+    public void setPayOnlyCount(Integer n) { this.payOnlyCount = n; }
+    public List<String> getUnmatchedPayCodes() { return unmatchedPayCodes; }
+    public void setUnmatchedPayCodes(List<String> c) { this.unmatchedPayCodes = c; }
+    public Integer getPayWriteCount() { return payWriteCount; }
+    public void setPayWriteCount(Integer n) { this.payWriteCount = n; }
     public ProblemSummary getProblemSummary() { return problemSummary; }
     public void setProblemSummary(ProblemSummary ps) { this.problemSummary = ps; }
     public List<CategoryOption> getCategoryOptions() { return categoryOptions; }
