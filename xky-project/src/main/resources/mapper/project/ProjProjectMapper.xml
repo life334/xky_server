@@ -118,6 +118,30 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="contractId != null">
             AND p.contract_id = #{contractId}
         </if>
+        <!-- 合同状态筛选（首页驾驶舱下钻） -->
+        <if test="contractStatus != null and contractStatus == 'bound'">
+            AND p.contract_id IS NOT NULL
+        </if>
+        <if test="contractStatus != null and contractStatus == 'unbound'">
+            AND p.contract_id IS NULL
+        </if>
+        <!-- 超期筛选（首页驾驶舱下钻；id 集合由 Service 按工作日口径算好后注入） -->
+        <if test="params.overdueIds != null">
+            AND p.id in
+            <foreach collection="params.overdueIds" item="oid" open="(" separator="," close=")">
+                #{oid}
+            </foreach>
+        </if>
+        <if test="params.overdueEmpty == true">
+            AND 1 = 0
+        </if>
+        <!-- 办结日期范围（首页驾驶舱下钻 + 列表筛选） -->
+        <if test="closeDateBegin != null and closeDateBegin != ''">
+            AND p.close_time &gt;= to_date(#{closeDateBegin}, 'YYYY-MM-DD')
+        </if>
+        <if test="closeDateEnd != null and closeDateEnd != ''">
+            AND p.close_time &lt; to_date(#{closeDateEnd}, 'YYYY-MM-DD') + interval '1 day'
+        </if>
         <if test="status != null and status != ''">
             AND p.status = #{status}
         </if>
@@ -251,6 +275,27 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="createBy != null and createBy != ''">#{createBy},</if>
             now()
         )
+    </insert>
+
+    <!-- 批量新增项目（数据导入批量落库专用）：一次多值 INSERT。
+         ⚠️ 固定列清单（不像 insertProject 走 <if> 动态列）——多值插入要求所有行列数一致；
+         这里只覆盖导入实际会赋值的列，其余列交给数据库默认值/NULL。
+         ⚠️ 刻意不带 useGeneratedKeys：多值插入的主键回填顺序依赖驱动实现，
+         调用方改为在同一事务内用 project_code 回查主键（selectProjectIdsByCodes），确定且可解释。
+         与 insertProject 的字段口径一致：close_time/assign_date/create_time 必写（导入项目都是已办结）。 -->
+    <insert id="insertProjectBatch" parameterType="java.util.List">
+        insert into proj_project(
+            project_code, project_name, engineering_project, project_category_id,
+            client_unit, project_location, data_source, status,
+            assign_date, close_time, create_by, create_time
+        ) values
+        <foreach collection="list" item="item" separator=",">
+        (
+            #{item.projectCode}, #{item.projectName}, #{item.engineeringProject}, #{item.projectCategoryId},
+            #{item.clientUnit}, #{item.projectLocation}, #{item.dataSource}, #{item.status},
+            #{item.assignDate}, #{item.closeTime}, #{item.createBy}, now()
+        )
+        </foreach>
     </insert>
 
     <update id="updateProject" parameterType="ProjProject">

@@ -166,6 +166,22 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         on conflict (project_code) do nothing
     </insert>
 
+    <!-- 批量历史补录（数据导入批量落库专用）：与 insertLogIgnoreWithTime 完全同语义，
+         一次多值 INSERT；project_code 冲突（该工程已上报/已补录过）时跳过不覆盖。
+         批内工程编号互不相同（上游按编号分组），故不存在同一条语句内自撞唯一键的情况。 -->
+    <insert id="insertLogIgnoreWithTimeBatch" parameterType="java.util.List">
+        insert into proj_report_submit_log (
+            project_code, project_name, unit_name, submit_time, submit_by, batch_id, create_time
+        ) values
+        <foreach collection="list" item="item" separator=",">
+        (
+            #{item.projectCode}, #{item.projectName}, #{item.unitName}, #{item.submitTime},
+            #{item.submitBy}, #{item.batchId}, now()
+        )
+        </foreach>
+        on conflict (project_code) do nothing
+    </insert>
+
     <!-- 仅允许修改历史补录行（batch_id 为空）；真实上报行 batch_id 非空，条件天然拦住 -->
     <update id="updateLogSubmitTime">
         update proj_report_submit_log

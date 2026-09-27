@@ -22,6 +22,14 @@ public interface ProjMaterialFlowMapper
     public int insertFlow(ProjMaterialFlow flow);
 
     /**
+     * 批量插入流转记录（数据导入批量落库用）：一次多值 INSERT。
+     *
+     * @param list 流转记录列表
+     * @return 插入行数
+     */
+    public int insertFlowBatch(List<ProjMaterialFlow> list);
+
+    /**
      * 逻辑删除某项目下所有资料的流转记录（删除项目时级联清理）
      *
      * @param projectId 项目ID

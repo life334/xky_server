@@ -501,15 +501,8 @@ public class ProjImportServiceImpl implements IProjImportService
             } else {
                 pr.getWarnings().add("委托任务为空，无法匹配项目类别");
             }
-            if (StringUtils.isNotBlank(pr.getLeaderName())) {
-                // 昵称精确匹配（含离职/影子用户）；匹配不到则预览阶段静默跳过，落库时自动建档
-                com.xakcch.common.core.domain.entity.SysUser exact =
-                        leaderMapper.selectUserByNickName(pr.getLeaderName().trim());
-                if (exact != null) {
-                    pr.setLeaderId(exact.getUserId());
-                    pr.setLeaderScore(1.0);
-                }
-            }
+            // 负责人昵称 → userId 的解析不在这里做：逐行查库在 2000 行时就是 2000 次额外网络往返
+            // （预览阶段最大的性能损失点）。改为循环结束后一次批量查，见方法末尾。
             // 产值只读合计：内部产值合计(O)、外部产值合计(T)
             // 注意：外部产值合计需在解析工作量之前读取，用于判定「外部产值空/0 → 不导入外部工作量」
             BigDecimal internalTotal = numCell(row, colInternalTot);
@@ -553,6 +546,33 @@ public class ProjImportServiceImpl implements IProjImportService
             if (internalTotal != null && internalTotal.signum() > 0) pr.setInternalTotalFromExcel(internalTotal);
             if (externalTotal != null && externalTotal.signum() > 0) pr.setExternalTotalFromExcel(externalTotal);
             resp.getRows().add(pr);
+        }
+
+        // 负责人昵称 → userId：循环结束后一次批量查（原实现逐行 selectUserByNickName）。
+        // selectUsersByNickNames 按「在职优先 + user_id 升序」返回，putIfAbsent 命中的即为
+        // 原 selectUserByNickName 的 limit 1 结果（含离职/影子用户）。匹配不到则预览阶段静默跳过，
+        // 落库时由 prefetchLeaders 自动建档（影子用户）。
+        LinkedHashSet<String> leaderNames = new LinkedHashSet<>();
+        for (ImportPreviewRow pr : resp.getRows()) {
+            if (pr.getLeaderId() == null && StringUtils.isNotBlank(pr.getLeaderName())) {
+                leaderNames.add(pr.getLeaderName().trim());
+            }
+        }
+        if (!leaderNames.isEmpty()) {
+            Map<String, Long> uidByName = new HashMap<>();
+            for (com.xakcch.common.core.domain.entity.SysUser u
+                    : leaderMapper.selectUsersByNickNames(new ArrayList<>(leaderNames))) {
+                if (u.getNickName() != null) uidByName.putIfAbsent(u.getNickName().trim(), u.getUserId());
+            }
+            for (ImportPreviewRow pr : resp.getRows()) {
+                if (pr.getLeaderId() == null && StringUtils.isNotBlank(pr.getLeaderName())) {
+                    Long uid = uidByName.get(pr.getLeaderName().trim());
+                    if (uid != null) {
+                        pr.setLeaderId(uid);
+                        pr.setLeaderScore(1.0);
+                    }
+                }
+            }
         }
     }
 
@@ -954,28 +974,38 @@ public class ProjImportServiceImpl implements IProjImportService
                 }
                 groupList.add(g);
             }
-            // 档3a：按批事务写库（TX_BATCH_SIZE 组一批），批内任何 DB 错误 → 整批回滚并标记批内全部组
+            // 档3a：按批事务写库（TX_BATCH_SIZE 组一批）。
+            // 核心提速点：批内用「10 条多值 SQL 覆盖全批」替代原「每项目 10 条独立 SQL」——
+            // 2000 行 ≈ 1900 组 ⇒ 19000 次往返 降到 95 批 × 10 = 950 次（生产实测每条 SQL 端到端 68ms，
+            // 耗时 ∝ SQL 条数 × 往返延迟，与数据内容无关）。
+            // 容错分两层：①内存可判定的错误（类别/负责人/计费类别缺失）先按组摘出，不拖垮同批其它组；
+            //            ②DB 级错误 → 整批回滚后逐组重试，把真正失败的那组隔离出来，其余照常入库。
             for (int i = 0; i < groupList.size(); i += TX_BATCH_SIZE) {
                 int end = Math.min(i + TX_BATCH_SIZE, groupList.size());
-                List<Map.Entry<String, List<ImportPreviewRow>>> batch = groupList.subList(i, end);
+                List<Map.Entry<String, List<ImportPreviewRow>>> batch =
+                    new ArrayList<>(groupList.subList(i, end));
+                List<Map.Entry<String, List<ImportPreviewRow>>> validBatch = new ArrayList<>(batch.size());
+                for (Map.Entry<String, List<ImportPreviewRow>> g : batch) {
+                    String err = validateGroup(g.getValue());
+                    if (err != null) {
+                        markGroupFailed(result, counter, g, err, false);
+                    } else {
+                        validBatch.add(g);
+                    }
+                }
+                if (validBatch.isEmpty()) continue;
                 try {
-                    runInNewTx(() -> {
-                        for (Map.Entry<String, List<ImportPreviewRow>> g : batch) {
-                            writeOneGroup(g.getValue(), user, null, leaderByName);
-                        }
-                    });
-                    for (Map.Entry<String, List<ImportPreviewRow>> g : batch) counter[0] += g.getValue().size();
+                    runInNewTx(() -> writeBatchGroups(validBatch, user, leaderByName));
+                    for (Map.Entry<String, List<ImportPreviewRow>> g : validBatch) counter[0] += g.getValue().size();
                 } catch (Exception ex) {
-                    String msg = ex.getCause() != null && ex.getCause().getMessage() != null
-                        ? ex.getCause().getMessage() : ex.getMessage();
-                    if (msg != null && msg.contains("\n")) msg = msg.split("\n")[0];
-                    for (Map.Entry<String, List<ImportPreviewRow>> g : batch) {
-                        counter[2] += g.getValue().size();
-                        for (ImportPreviewRow row : g.getValue()) {
-                            ImportCommitResult.RowDetail d = new ImportCommitResult.RowDetail();
-                            d.setExcelRow(row.getExcelRow()); d.setProjectCode(row.getProjectCode());
-                            d.setReason(msg + "（该行所在批次已整体回滚，未写入数据）");
-                            result.getFailedDetails().add(d);
+                    String msg = rootMsg(ex);
+                    System.err.println("[proj-import] 批写失败(" + validBatch.size() + " 组)，转逐组重试以隔离坏组: " + msg);
+                    for (Map.Entry<String, List<ImportPreviewRow>> g : validBatch) {
+                        try {
+                            runInNewTx(() -> writeBatchGroups(Collections.singletonList(g), user, leaderByName));
+                            counter[0] += g.getValue().size();
+                        } catch (Exception ex2) {
+                            markGroupFailed(result, counter, g, rootMsg(ex2), true);
                         }
                     }
                 }
@@ -1044,7 +1074,7 @@ public class ProjImportServiceImpl implements IProjImportService
     /**
      * 档1·预解析负责人：对全量行中「无 leaderId 但有姓名」的行统一处理——
      * 先一次批量查库命中已有用户，缺失的才建档（影子用户），随后回填 leaderId。
-     * 消除 writeOneGroup 组内对每行重复 selectUserByNickName 的 N+1。
+     * 消除写库阶段组内对每行重复 selectUserByNickName 的 N+1。
      */
     private Map<String, com.xakcch.common.core.domain.entity.SysUser> prefetchLeaders(List<ImportPreviewRow> rows, String user) {
         Map<String, com.xakcch.common.core.domain.entity.SysUser> result = new HashMap<>();
@@ -1064,7 +1094,7 @@ public class ProjImportServiceImpl implements IProjImportService
             if (u == null) u = projectService.ensureLeaderByName(name, user);
             if (u != null) result.put(name, u);
         }
-        // 回填 leaderId：后续 writeOneGroup 不再触发 DB 建档
+        // 回填 leaderId：后续批量写库不再触发 DB 建档
         for (ImportPreviewRow row : rows) {
             if (row.getLeaderId() == null && StringUtils.isNotBlank(row.getLeaderName())) {
                 com.xakcch.common.core.domain.entity.SysUser u = result.get(row.getLeaderName().trim());
@@ -1083,217 +1113,335 @@ public class ProjImportServiceImpl implements IProjImportService
     }
 
     /**
-     * 一组写入（同一工程编号的所有行 = 一个父项目 + 若干子项；运行在批事务中）。
-     * 父项目字段合并：close_time 取最晚、负责人取并集、其余文本取第一条非空；
-     * 子项体现在 proj_workload.sub_item_no / sub_item_name 上。
-     * 档1优化：负责人由批前预解析回填；新建项目跳过「查旧负责人/查最大子项号/查旧付款」三个冗余 select。
-     *
-     * @param group              同工程编号的行
-     * @param user               操作人
-     * @param existingProjectId  已存在项目ID；当前策略为「已存在编号整组跳过」，调用处恒传 null（即全部走新建）。
-     *                           复用分支（合并追加）保留代码，以备策略切换时启用。
-     * @param leaderByName       批前预解析的 负责人姓名→SysUser 映射（可能为 null 表示未预解析）
+     * 单组（同一工程编号的所有 Excel 行）父项目字段的合并结果。
+     * 批量写库前先把全批各组的字段在内存里合并好，再一次性下发多值 SQL。
      */
-    private void writeOneGroup(List<ImportPreviewRow> group, String user,
-                               Long existingProjectId,
-                               Map<String, com.xakcch.common.core.domain.entity.SysUser> leaderByName) {
-        if (group == null || group.isEmpty()) return;
-        String code = group.get(0).getProjectCode() == null ? "" : group.get(0).getProjectCode().trim();
-        if (code.isEmpty()) throw new RuntimeException("工程编号为空");
+    private static class GroupAgg {
+        String code;                 // 工程编号（同组唯一）
+        String projectName;
+        String engineeringProject;
+        String clientUnit;
+        String projectLocation;
+        Long categoryId;
+        Date closeTime;              // 办结时间 = 组内验收日期最晚值
+        Date materialTime;           // 资料领取时间 = 组内第一条非空
+        final LinkedHashSet<Long> leaderIds = new LinkedHashSet<>();
+    }
 
-        // 1. 负责人锚定（批前预解析已回填 leaderId；此处仅兜底）并合并父项目字段
-        String projectName = null, engineeringProject = null, clientUnit = null, projectLocation = null;
+    /**
+     * 组内校验（纯内存判定，不碰库）：把「项目类别 / 负责人 / 计费类别缺失」这类错误在开启事务前
+     * 按组摘出，避免一个坏组把同批其它组一起回滚掉（原实现是整批回滚）。
+     * 校验顺序与错误文案沿用原 writeOneGroup，保证前端提示口径不变。
+     *
+     * @param group 同一工程编号的所有行
+     * @return null 表示通过；否则为失败原因（写入该组全部行的失败明细）
+     */
+    private String validateGroup(List<ImportPreviewRow> group) {
+        if (group == null || group.isEmpty()) return "工程编号为空";
         Long categoryId = null;
-        Date closeTime = null;
-        Date materialTime = null;
         LinkedHashSet<Long> leaderIds = new LinkedHashSet<>();
         for (ImportPreviewRow row : group) {
+            if (row.getLeaderId() != null) leaderIds.add(row.getLeaderId());
+            if (categoryId == null && row.getProjectCategoryId() != null) categoryId = row.getProjectCategoryId();
+        }
+        if (categoryId == null) return "项目类别未选择";
+        if (leaderIds.isEmpty()) return "负责人为空且姓名缺失";
+        for (ImportPreviewRow row : group) {
+            if (row.getWorkloads() == null) continue;
+            for (ImportPreviewWorkload w : row.getWorkloads()) {
+                if (w.getBillingId() == null) {
+                    String disp = w.getBillingCategoryRaw() == null ? "" : w.getBillingCategoryRaw()
+                        .replaceAll("[（(](内部|外部)[）)]", "").trim();
+                    return "工作项未匹配计费类别：" + disp;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 合并一组（同一工程编号）的父项目字段 + 负责人锚定。
+     * 合并口径与原 writeOneGroup 完全一致：close_time 取最晚、负责人取并集、其余文本取第一条非空。
+     *
+     * @param leaderByName 档1预解析的 负责人姓名→SysUser 映射（可能为 null）
+     */
+    private GroupAgg aggregateGroup(String code, List<ImportPreviewRow> group, String user,
+                                    Map<String, com.xakcch.common.core.domain.entity.SysUser> leaderByName) {
+        GroupAgg a = new GroupAgg();
+        a.code = code;
+        for (ImportPreviewRow row : group) {
+            // 负责人锚定（档1预解析已回填 leaderId；此处仅兜底）
             if (row.getLeaderId() == null && StringUtils.isNotBlank(row.getLeaderName())) {
                 com.xakcch.common.core.domain.entity.SysUser shadow =
                         leaderByName == null ? null : leaderByName.get(row.getLeaderName().trim());
                 if (shadow == null) shadow = projectService.ensureLeaderByName(row.getLeaderName(), user);
                 if (shadow != null) row.setLeaderId(shadow.getUserId());
             }
-            if (row.getLeaderId() != null) leaderIds.add(row.getLeaderId());
-            if (projectName == null && StringUtils.isNotBlank(row.getEngineeringProject())) {
-                projectName = row.getEngineeringProject();
+            if (row.getLeaderId() != null) a.leaderIds.add(row.getLeaderId());
+            if (a.projectName == null && StringUtils.isNotBlank(row.getEngineeringProject())) {
+                a.projectName = row.getEngineeringProject();
             }
-            if (engineeringProject == null && StringUtils.isNotBlank(row.getEngineeringProject())) {
-                engineeringProject = row.getEngineeringProject();
+            if (a.engineeringProject == null && StringUtils.isNotBlank(row.getEngineeringProject())) {
+                a.engineeringProject = row.getEngineeringProject();
             }
-            if (clientUnit == null && StringUtils.isNotBlank(row.getClientUnit())) {
-                clientUnit = row.getClientUnit();
+            if (a.clientUnit == null && StringUtils.isNotBlank(row.getClientUnit())) {
+                a.clientUnit = row.getClientUnit();
             }
-            if (projectLocation == null && StringUtils.isNotBlank(row.getProjectLocation())) {
-                projectLocation = row.getProjectLocation();
+            if (a.projectLocation == null && StringUtils.isNotBlank(row.getProjectLocation())) {
+                a.projectLocation = row.getProjectLocation();
             }
-            if (categoryId == null && row.getProjectCategoryId() != null) {
-                categoryId = row.getProjectCategoryId();
+            if (a.categoryId == null && row.getProjectCategoryId() != null) {
+                a.categoryId = row.getProjectCategoryId();
             }
-            if (row.getFinishDate() != null && (closeTime == null || row.getFinishDate().after(closeTime))) {
-                closeTime = row.getFinishDate();
+            if (row.getFinishDate() != null && (a.closeTime == null || row.getFinishDate().after(a.closeTime))) {
+                a.closeTime = row.getFinishDate();
             }
-            if (materialTime == null && row.getMaterialSubmitTime() != null) {
-                materialTime = row.getMaterialSubmitTime();
-            }
-        }
-        if (categoryId == null) throw new RuntimeException("项目类别未选择");
-        if (leaderIds.isEmpty()) throw new RuntimeException("负责人为空且姓名缺失");
-        if (StringUtils.isBlank(projectName)) projectName = code;
-
-        // 2. 校验所有子项的工作量计费类别均已匹配
-        for (ImportPreviewRow row : group) {
-            for (ImportPreviewWorkload w : row.getWorkloads()) {
-                if (w.getBillingId() == null) {
-                    String disp = w.getBillingCategoryRaw() == null ? "" : w.getBillingCategoryRaw()
-                        .replaceAll("[（(](内部|外部)[）)]", "").trim();
-                    throw new RuntimeException("工作项未匹配计费类别：" + disp);
-                }
+            if (a.materialTime == null && row.getMaterialSubmitTime() != null) {
+                a.materialTime = row.getMaterialSubmitTime();
             }
         }
-
-        // 3. 确定父项目：批前预取判定新建/复用（复用则合并办结时间，取更晚）
-        boolean isNew = (existingProjectId == null);
-        ProjProject pj = new ProjProject();
-        if (isNew) {
-            pj.setProjectCode(code);
-            pj.setProjectName(projectName);
-            pj.setEngineeringProject(engineeringProject);
-            pj.setProjectCategoryId(categoryId);
-            pj.setClientUnit(clientUnit);
-            pj.setProjectLocation(projectLocation);
-            pj.setDataSource("import");
-            pj.setStatus("closed");
-            pj.setCloseTime(closeTime);
-            pj.setAssignDate(closeTime);
-            pj.setCreateBy(user);
-            projectMapper.insertProject(pj);
-        } else {
-            pj.setId(existingProjectId);
-            if (closeTime != null) {
-                projectMapper.updateProjectCloseTime(existingProjectId, closeTime);
-            }
-        }
-
-        // 4. 负责人并集（新建项目无需查旧负责人；复用项目保留原负责人，仅插新增，避免唯一索引冲突）
-        List<Long> toInsert = new ArrayList<>(leaderIds);
-        if (!isNew) {
-            Long[] existingLeaderIds = leaderMapper.selectLeaderIdsByProjectId(pj.getId());
-            Set<Long> existingSet = new HashSet<>();
-            if (existingLeaderIds != null) existingSet.addAll(Arrays.asList(existingLeaderIds));
-            toInsert.removeIf(existingSet::contains);
-        }
-        if (!toInsert.isEmpty()) {
-            leaderMapper.insertProjectLeaders(pj.getId(), toInsert.toArray(new Long[0]), user);
-        }
-
-        // 5. 任务：每个负责人一条（合并），批量插入
-        List<ProjTask> tasks = new ArrayList<>();
-        for (Long lid : leaderIds) {
-            ProjTask task = new ProjTask();
-            task.setProjectId(pj.getId());
-            task.setUserId(lid);
-            task.setTaskName(projectName);
-            task.setStatus("completed");
-            task.setActualFinishDate(closeTime);
-            task.setRequiredFinishDate(closeTime);
-            task.setAssignDate(closeTime);
-            task.setCreateBy(user);
-            tasks.add(task);
-        }
-        if (!tasks.isEmpty()) taskMapper.insertTaskBatch(tasks);
-
-        // 6. 子项写入：每个 Excel 行 = 一个子项，sub_item_no 项目内自增（续接已有最大序号）
-        Integer maxNo = workloadMapper.selectMaxSubItemNo(pj.getId());
-        int seq = maxNo == null ? 0 : maxNo;
-        List<ProjWorkload> allWorkloads = new ArrayList<>();
-        for (ImportPreviewRow row : group) {
-            seq++;
-            allWorkloads.addAll(buildSubItemWorkloads(pj, row, seq, user));
-        }
-        if (!allWorkloads.isEmpty()) workloadMapper.insertWorkloadBatch(allWorkloads);
-
-        // 7. 付款合并（同类型金额累加成一条，覆盖写入，重复导入幂等）
-        writeMergedPayments(pj, group, user);
-
-        // 7.1 历史上报补录（仅导入项目）：导入的是历史数据，这些定线项目在线下就已上报过，
-        //     故按「有尾款取尾款到账时间、无尾款取预付款到账时间」把上报时间固化进上报记录表，
-        //     作为追溯依据与统计来源（业务规则：一个定线项目只允许上报一次，故只写、不覆盖、不重报）。
-        //     注意：复用已有项目时 pj 只带 id，编号/名称/单位必须取本方法局部变量，不能读 pj。
-        backfillReportSubmitLog(pj, code, projectName, clientUnit);
-
-        // 8. 资料提交（每个导入项目必须生成一条资料记录，保证已办结项目在资料管理可见）：
-        //    有「资料领取」日期 → 已领取 + 领取流转；无日期/无该列 → 待领取、待提交（与手工办结 completeProject 的兜底口径一致），
-        //    领取时间、联系人等由用户后续在资料管理页面补录
-        ProjMaterial mat = new ProjMaterial();
-        mat.setProjectId(pj.getId());
-        mat.setGuarantorFlag("N");
-        mat.setArchiveFlag("N");
-        mat.setCreateBy(user);
-        if (materialTime != null) {
-            mat.setSubmitTime(materialTime);
-            // 状态写字典值（proj_material_status: received=已领取），不要写中文标签
-            mat.setStatus("received");
-            mat.setSubmitStatus("submitted");
-            materialMapper.insertMaterial(mat);
-            ProjMaterialFlow flow = new ProjMaterialFlow();
-            flow.setMaterialId(mat.getId());
-            flow.setFlowType("领取");
-            flow.setOperateTime(materialTime);
-            flow.setCreateBy(user);
-            materialFlowMapper.insertFlow(flow);
-        } else {
-            mat.setStatus("pending");
-            mat.setSubmitStatus("pending");
-            materialMapper.insertMaterial(mat);
-        }
+        if (StringUtils.isBlank(a.projectName)) a.projectName = code;
+        return a;
     }
 
     /**
-     * 历史上报补录：把导入项目按规则推导出的上报时间写入 proj_report_submit_log。
+     * 批量写一批「新建」项目组：全批共用 10 条多值 SQL（原实现每个项目 10 条独立 SQL）。
      *
-     * <p>取值优先级：尾款(final) 最大到账时间 → 无尾款取预付款(advance) 最大到账时间 → 两者都没有则不写
-     * （不编造上报时间）。写入 {@code submit_by='import'}、{@code batch_id=null}，与真实上报行区分；
-     * 该工程若已有记录（真实上报或已补录过），由 {@code on conflict do nothing} 跳过、不覆盖。</p>
+     * <p>语句顺序：
+     * ① {@code insertProjectBatch} 父项目
+     * ② {@code selectProjectIdsByCodes} 同事务内按工程编号回查主键（不依赖驱动的 key 回填顺序）
+     * ③ {@code insertProjectLeadersBatch} 负责人
+     * ④ {@code insertTaskBatch} 任务
+     * ⑤ {@code insertWorkloadBatch} 子项工作量
+     * ⑥ {@code batchUpsertPayment} 到账（覆盖语义 ⇒ 重复导入幂等、金额不翻倍）
+     * ⑦ {@code insertLogIgnoreWithTimeBatch} 历史上报补录（on conflict do nothing ⇒ 不重报）
+     * ⑧ {@code insertMaterialBatch} 资料记录
+     * ⑨ {@code selectMaterialIdsByProjectIds} 回查资料主键（仅当批内确有领取日期时才发）
+     * ⑩ {@code insertFlowBatch} 资料领取流转（同上，按需）</p>
      *
-     * @param pj          项目实体（可能只带 id，故编号/名称/单位由参数传入）
-     * @param projectCode 工程编号（写入上报记录的业务主键，同 UNIQUE 索引列）
-     * @param projectName 工程名称（冗余展示）
-     * @param clientUnit  委托单位（冗余展示）
+     * <p>相较原逐项目实现，另去掉两条纯冗余查询：
+     * {@code selectMaxSubItemNo}（本路径只处理新建项目，子项号恒从 1 开始）与
+     * {@code selectPaymentsByProjectId}（补录时间直接由本批内存中的到账项推导）。</p>
+     *
+     * <p>运行在调用方的事务中（整批原子提交）；任一步失败由调用方回滚后逐组重试。</p>
      */
-    private void backfillReportSubmitLog(ProjProject pj, String projectCode, String projectName, String clientUnit) {
-        if (pj == null || pj.getId() == null) return;
-        String code = projectCode == null ? null : projectCode.trim();
-        if (StringUtils.isBlank(code)) return;
-        Date time = null;
-        List<ProjPayment> payments = paymentMapper.selectPaymentsByProjectId(pj.getId());
-        if (payments != null && !payments.isEmpty()) {
-            time = maxPayTime(payments, "final");
-            if (time == null) time = maxPayTime(payments, "advance");
+    private void writeBatchGroups(List<Map.Entry<String, List<ImportPreviewRow>>> groups, String user,
+                                  Map<String, com.xakcch.common.core.domain.entity.SysUser> leaderByName) {
+        final int n = groups.size();
+        List<GroupAgg> aggs = new ArrayList<>(n);
+        List<ProjProject> pjs = new ArrayList<>(n);
+        for (Map.Entry<String, List<ImportPreviewRow>> g : groups) {
+            GroupAgg a = aggregateGroup(g.getKey(), g.getValue(), user, leaderByName);
+            aggs.add(a);
+            ProjProject pj = new ProjProject();
+            pj.setProjectCode(a.code);
+            pj.setProjectName(a.projectName);
+            pj.setEngineeringProject(a.engineeringProject);
+            pj.setProjectCategoryId(a.categoryId);
+            pj.setClientUnit(a.clientUnit);
+            pj.setProjectLocation(a.projectLocation);
+            pj.setDataSource("import");
+            pj.setStatus("closed");
+            pj.setCloseTime(a.closeTime);
+            pj.setAssignDate(a.closeTime);
+            pj.setCreateBy(user);
+            pjs.add(pj);
         }
-        if (time == null) return;
-        ProjReportSubmitLog log = new ProjReportSubmitLog();
-        log.setProjectCode(code);
-        log.setProjectName(projectName);
-        log.setUnitName(clientUnit);
-        log.setSubmitTime(time);
-        // 写入者标识用英文（库里统一存码值，不写中文）；前端 utils/projStatus.js#submitByText
-        // 把 import 映射为「历史导入」。真实上报行存的是操作人账号。
-        log.setSubmitBy(SUBMIT_BY_IMPORT);
-        log.setBatchId(null);
-        reportSubmitMapper.insertLogIgnoreWithTime(log);
+
+        // ① 父项目：一次多值插入
+        projectMapper.insertProjectBatch(pjs);
+        // ② 主键回查（同一事务内可见刚插入的行；工程编号在本批内唯一且入库前已确认库中不存在）
+        List<String> codes = new ArrayList<>(n);
+        for (GroupAgg a : aggs) codes.add(a.code);
+        Map<String, Long> idByCode = new HashMap<>(n * 2);
+        for (Map<String, Object> m : projectMapper.selectProjectIdsByCodes(codes)) {
+            Object codeObj = m.get("project_code");
+            Object idObj = m.get("id");
+            if (codeObj != null && idObj != null) idByCode.put(String.valueOf(codeObj), ((Number) idObj).longValue());
+        }
+        List<Long> projectIds = new ArrayList<>(n);
+        for (GroupAgg a : aggs) {
+            Long pid = idByCode.get(a.code);
+            if (pid == null) throw new RuntimeException("批量插入项目后未按编号回查到主键：" + a.code);
+            projectIds.add(pid);
+        }
+
+        // ③ 负责人：跨全批合并成一条多值 SQL（新建项目不存在唯一键冲突，无需查旧负责人）
+        List<Map<String, Object>> leaders = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            for (Long lid : aggs.get(i).leaderIds) {
+                Map<String, Object> m = new HashMap<>(4);
+                m.put("projectId", projectIds.get(i));
+                m.put("userId", lid);
+                m.put("createBy", user);
+                leaders.add(m);
+            }
+        }
+        if (!leaders.isEmpty()) leaderMapper.insertProjectLeadersBatch(leaders);
+
+        // ④ 任务：每个负责人一条（合并）
+        List<ProjTask> tasks = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            GroupAgg a = aggs.get(i);
+            for (Long lid : a.leaderIds) {
+                ProjTask task = new ProjTask();
+                task.setProjectId(projectIds.get(i));
+                task.setUserId(lid);
+                task.setTaskName(a.projectName);
+                task.setStatus("completed");
+                task.setActualFinishDate(a.closeTime);
+                task.setRequiredFinishDate(a.closeTime);
+                task.setAssignDate(a.closeTime);
+                task.setCreateBy(user);
+                tasks.add(task);
+            }
+        }
+        if (!tasks.isEmpty()) taskMapper.insertTaskBatch(tasks);
+
+        // ⑤ 子项工作量：每个 Excel 行 = 一个子项，sub_item_no 组内自增。
+        //    本路径只处理新建项目（已存在编号在上游整组跳过）⇒ 子项号恒从 1 开始，无需查库续号。
+        List<ProjWorkload> workloads = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            ProjProject pj = pjs.get(i);
+            pj.setId(projectIds.get(i));
+            int seq = 0;
+            for (ImportPreviewRow row : groups.get(i).getValue()) {
+                seq++;
+                workloads.addAll(buildSubItemWorkloads(pj, row, seq, user));
+            }
+        }
+        if (!workloads.isEmpty()) workloadMapper.insertWorkloadBatch(workloads);
+
+        // ⑥⑦ 到账合并项只算一次，供「付款 upsert」与「上报补录时间」共用
+        List<List<ImportPreviewPayment>> mergedPays = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) mergedPays.add(mergeGroupPayments(groups.get(i).getValue()));
+
+        // ⑥ 付款：同类型合并成一条后批量 upsert（覆盖语义，重复导入幂等、不累加）
+        List<ProjPayment> pays = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            pays.addAll(buildPaymentEntities(projectIds.get(i), mergedPays.get(i), user));
+        }
+        if (!pays.isEmpty()) paymentMapper.batchUpsertPayment(pays);
+
+        // ⑦ 历史上报补录：导入的是历史数据，这些定线项目在线下就已上报过，故按
+        //    「有尾款取尾款到账时间、无尾款取预付款到账时间」把上报时间固化进上报记录表。
+        //    业务规则：一个定线项目只允许上报一次 ⇒ 只写、不覆盖、不重报（on conflict do nothing）。
+        //    时间直接取本批内存中的到账项，不再回查数据库。两者都没有则不写（不编造上报时间）。
+        List<ProjReportSubmitLog> submitLogs = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            Date t = maxMergedPayTime(mergedPays.get(i), "final");
+            if (t == null) t = maxMergedPayTime(mergedPays.get(i), "advance");
+            if (t == null) continue;
+            GroupAgg a = aggs.get(i);
+            ProjReportSubmitLog rl = new ProjReportSubmitLog();
+            rl.setProjectCode(a.code);
+            rl.setProjectName(a.projectName);
+            rl.setUnitName(a.clientUnit);
+            rl.setSubmitTime(t);
+            // 写入者标识用英文（库里统一存码值，不写中文）；前端 utils/projStatus.js#submitByText
+            // 把 import 映射为「历史导入」。真实上报行存的是操作人账号。
+            rl.setSubmitBy(SUBMIT_BY_IMPORT);
+            rl.setBatchId(null);
+            submitLogs.add(rl);
+        }
+        if (!submitLogs.isEmpty()) reportSubmitMapper.insertLogIgnoreWithTimeBatch(submitLogs);
+
+        // ⑧ 资料：每个导入项目一条（保证已办结项目在资料管理可见）。
+        //    有「资料领取」日期 → 已领取 + 领取流转；无日期/无该列 → 待领取、待提交
+        //    （与手工办结 completeProject 的兜底口径一致），领取时间/联系人由用户后续在资料管理补录。
+        List<ProjMaterial> mats = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            ProjMaterial mat = new ProjMaterial();
+            mat.setProjectId(projectIds.get(i));
+            mat.setGuarantorFlag("N");
+            mat.setArchiveFlag("N");
+            mat.setCreateBy(user);
+            Date mt = aggs.get(i).materialTime;
+            if (mt != null) {
+                mat.setSubmitTime(mt);
+                // 状态写字典值（proj_material_status: received=已领取），不要写中文标签
+                mat.setStatus("received");
+                mat.setSubmitStatus("submitted");
+            } else {
+                mat.setStatus("pending");
+                mat.setSubmitStatus("pending");
+            }
+            mats.add(mat);
+        }
+        if (!mats.isEmpty()) materialMapper.insertMaterialBatch(mats);
+
+        // ⑨⑩ 资料领取流转：仅有「资料领取日期」的项目需要，且需要 material_id，
+        //      故只在确有需要时回查一次资料主键（同样是同事务内可见）。
+        List<Long> flowPids = new ArrayList<>();
+        List<Date> flowTimes = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            Date mt = aggs.get(i).materialTime;
+            if (mt == null) continue;
+            flowPids.add(projectIds.get(i));
+            flowTimes.add(mt);
+        }
+        if (!flowPids.isEmpty()) {
+            Map<Long, Long> midByProject = new HashMap<>();
+            for (Map<String, Object> m : materialMapper.selectMaterialIdsByProjectIds(flowPids)) {
+                Object pidObj = m.get("project_id");
+                Object midObj = m.get("id");
+                if (pidObj != null && midObj != null) {
+                    midByProject.put(((Number) pidObj).longValue(), ((Number) midObj).longValue());
+                }
+            }
+            List<ProjMaterialFlow> flows = new ArrayList<>(flowPids.size());
+            for (int i = 0; i < flowPids.size(); i++) {
+                Long mid = midByProject.get(flowPids.get(i));
+                if (mid == null) throw new RuntimeException("资料记录写入后未回查到主键，projectId=" + flowPids.get(i));
+                ProjMaterialFlow flow = new ProjMaterialFlow();
+                flow.setMaterialId(mid);
+                flow.setFlowType("领取");
+                flow.setOperateTime(flowTimes.get(i));
+                flow.setCreateBy(user);
+                flows.add(flow);
+            }
+            materialFlowMapper.insertFlowBatch(flows);
+        }
     }
 
-    /** 取某付款类型中最大的到账时间（无该类型或无时间则返回 null） */
-    private Date maxPayTime(List<ProjPayment> payments, String paymentType) {
+    /** 取「合并后的到账项」中某付款类型的最大到账时间（无该类型或无时间则返回 null） */
+    private Date maxMergedPayTime(List<ImportPreviewPayment> merged, String paymentType) {
+        if (merged == null) return null;
         Date max = null;
-        for (ProjPayment p : payments) {
+        for (ImportPreviewPayment p : merged) {
             if (!paymentType.equals(p.getPaymentType())) continue;
             Date t = p.getPayTime();
             if (t != null && (max == null || t.after(max))) max = t;
         }
         return max;
     }
+
+    /** 把一组全部行记为失败并计数（批前校验失败 / 逐组重试失败 两条路径共用，口径一致） */
+    private void markGroupFailed(ImportCommitResult result, int[] counter,
+                                 Map.Entry<String, List<ImportPreviewRow>> group, String reason,
+                                 boolean rolledBack) {
+        counter[2] += group.getValue().size();
+        String tail = rolledBack ? "（该行所在分组写入失败，未写入数据）" : "";
+        String msg = reason == null ? "未知错误" : reason;
+        for (ImportPreviewRow row : group.getValue()) {
+            ImportCommitResult.RowDetail d = new ImportCommitResult.RowDetail();
+            d.setExcelRow(row.getExcelRow());
+            d.setProjectCode(row.getProjectCode());
+            d.setReason(msg + tail);
+            result.getFailedDetails().add(d);
+        }
+    }
+
+    /** 取异常最内层原因并压成单行 —— 批量写库失败时用于定位真正原因（唯一键/长度/NOT NULL 等） */
+    private String rootMsg(Throwable t) {
+        Throwable c = t;
+        for (int i = 0; i < 8 && c.getCause() != null && c.getCause() != c; i++) c = c.getCause();
+        String m = c.getMessage() != null ? c.getMessage() : t.getMessage();
+        if (m == null) m = t.getClass().getSimpleName();
+        return m.contains("\n") ? m.split("\n")[0] : m;
+    }
+
+
 
     /** 构造单个子项的工作量列表（按组合键聚合同类项，打上 sub_item_no / sub_item_name），由调用方统一批量插入 */
     private List<ProjWorkload> buildSubItemWorkloads(ProjProject pj, ImportPreviewRow row, int subItemNo, String user) {
@@ -1429,23 +1577,14 @@ public class ProjImportServiceImpl implements IProjImportService
     }
 
     /**
-     * 新建项目时的到账写入（同类型合并成一条后落库）。
+     * 构造付款实体（不落库）：供「批量写库」与「已存在编号只补到账」两条路径共用。
      * ⚠️ 不与库内已有金额累加：batchUpsertPayment 是
      * {@code on conflict (project_id, payment_type) ... do update set amount = EXCLUDED.amount}
      * 的覆盖语义，先累加再覆盖会让重复导入的金额翻倍。
      */
-    private void writeMergedPayments(ProjProject pj, List<ImportPreviewRow> group, String user) {
-        writePaymentEntities(pj.getId(), mergeGroupPayments(group), user);
-    }
-
-    /** 仅写付款、不动项目：用于「已存在编号只补到账」场景（同类型覆盖） */
-    private void writePaymentsOnly(Long projectId, List<ImportPreviewPayment> merged, String user) {
-        writePaymentEntities(projectId, merged, user);
-    }
-
-    private void writePaymentEntities(Long projectId, List<ImportPreviewPayment> merged, String user) {
-        if (projectId == null || merged == null || merged.isEmpty()) return;
+    private List<ProjPayment> buildPaymentEntities(Long projectId, List<ImportPreviewPayment> merged, String user) {
         List<ProjPayment> toSave = new ArrayList<>();
+        if (projectId == null || merged == null || merged.isEmpty()) return toSave;
         for (ImportPreviewPayment pm : merged) {
             ProjPayment pp = new ProjPayment();
             pp.setProjectId(projectId);
@@ -1463,6 +1602,12 @@ public class ProjImportServiceImpl implements IProjImportService
             pp.setCreateBy(user);
             toSave.add(pp);
         }
+        return toSave;
+    }
+
+    /** 仅写付款、不动项目：用于「已存在编号只补到账」场景（同类型覆盖） */
+    private void writePaymentsOnly(Long projectId, List<ImportPreviewPayment> merged, String user) {
+        List<ProjPayment> toSave = buildPaymentEntities(projectId, merged, user);
         if (!toSave.isEmpty()) paymentMapper.batchUpsertPayment(toSave);
     }
 

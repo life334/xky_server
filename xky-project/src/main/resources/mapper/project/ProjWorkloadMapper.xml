@@ -374,4 +374,137 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             update_time = now()
     </insert>
 
+    <!-- ============================================================
+         产值统计（费用结算页「产值统计」页签，镜像回款页 paymentSummary 三件套）
+         口径：
+           · 归属时间 = proj_project.close_time（产值按办结日期）；未办结项目不计入
+           · 外部产值 = SUM(proj_workload.external_output)
+           · 内部产值 = SUM(internal_output)，并对「管线新测 / 管线修测」做保底 6000
+             （与 ProjSettlementController.calcInternalOutputTotal 同口径）
+           · 内外产值不相加（内部=成本 / 外部=结算基准，相加无业务含义）
+           · 先把工作量聚合到「项目级」再按维度分组 ⇒ groupBy=leader 时不放大产值
+             （一位负责人计一次该项目产值，不会因多人重复翻倍）
+         ============================================================ -->
+
+    <!-- 项目级产值聚合（含内部产值「管线新测/修测」保底 6000），供上层维度分组复用 -->
+    <sql id="outputProjectAgg">
+        SELECT w.project_id AS project_id,
+               SUM(COALESCE(w.internal_output, 0))
+                 - SUM(CASE WHEN w.billing_category IN ('管线新测', '管线修测')
+                            THEN COALESCE(w.internal_output, 0) ELSE 0 END)
+                 + CASE WHEN SUM(CASE WHEN w.billing_category IN ('管线新测', '管线修测') THEN 1 ELSE 0 END) &gt; 0
+                        THEN GREATEST(SUM(CASE WHEN w.billing_category IN ('管线新测', '管线修测')
+                                               THEN COALESCE(w.internal_output, 0) ELSE 0 END), 6000)
+                        ELSE 0 END AS int_out,
+               SUM(COALESCE(w.external_output, 0)) AS ext_out
+        FROM proj_workload w
+        WHERE w.del_flag = '0'
+        GROUP BY w.project_id
+    </sql>
+
+    <sql id="outputBaseFrom">
+        FROM proj_project p
+        LEFT JOIN (<include refid="outputProjectAgg"/>) ws ON ws.project_id = p.id
+        LEFT JOIN proj_category c ON c.id = p.project_category_id AND c.del_flag = '0'
+        <if test="leaderJoin != null and leaderJoin != ''">
+            INNER JOIN proj_leader pl ON pl.project_id = p.id AND pl.del_flag = '0'
+            LEFT JOIN sys_user su ON su.user_id = pl.user_id
+        </if>
+        WHERE p.del_flag = '0'
+          AND p.close_time IS NOT NULL
+        <if test="begin != null and begin != ''">
+            AND p.close_time &gt;= to_date(#{begin}, 'YYYY-MM-DD')
+        </if>
+        <if test="end != null and end != ''">
+            AND p.close_time &lt; to_date(#{end}, 'YYYY-MM-DD') + interval '1 day'
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (p.project_code LIKE concat('%', #{keyword}, '%')
+                 OR p.project_name LIKE concat('%', #{keyword}, '%')
+                 OR p.client_unit LIKE concat('%', #{keyword}, '%'))
+        </if>
+        <if test="clientUnit != null and clientUnit != ''">
+            AND p.client_unit LIKE concat('%', #{clientUnit}, '%')
+        </if>
+        <if test="projectCategoryId != null and projectCategoryId != ''">
+            AND p.project_category_id = cast(#{projectCategoryId} as bigint)
+        </if>
+        <if test="leaderId != null and leaderId != ''">
+            AND EXISTS (
+                SELECT 1 FROM proj_leader l
+                WHERE l.project_id = p.id
+                  AND l.user_id = cast(#{leaderId} as bigint)
+                  AND l.del_flag = '0'
+            )
+        </if>
+    </sql>
+
+    <!-- 产值合计：内部产值 / 外部产值 / 涉及项目数（⚠️ 不传 leaderJoin，避免分组展开放大合计） -->
+    <select id="selectOutputSummary" parameterType="map" resultType="java.util.LinkedHashMap">
+        SELECT
+            COALESCE(SUM(COALESCE(ws.int_out, 0)), 0) AS "internalOutput",
+            COALESCE(SUM(COALESCE(ws.ext_out, 0)), 0) AS "externalOutput",
+            COUNT(DISTINCT p.id) AS "projectCount"
+        <include refid="outputBaseFrom"/>
+    </select>
+
+    <!-- 产值分组明细：label + 内外产值 + 项目数（groupBy=leader 时由 Service 传 leaderJoin 展开） -->
+    <select id="selectOutputSummaryGroups" parameterType="map" resultType="java.util.LinkedHashMap">
+        SELECT
+            <choose>
+                <when test="groupBy == 'month'">
+                    to_char(date_trunc('month', p.close_time), 'YYYY-MM')
+                </when>
+                <when test="groupBy == 'quarter'">
+                    to_char(date_trunc('quarter', p.close_time), 'YYYY') || '-Q'
+                    || (((EXTRACT(MONTH FROM p.close_time))::int - 1) / 3 + 1)
+                </when>
+                <when test="groupBy == 'year'">
+                    to_char(date_trunc('year', p.close_time), 'YYYY')
+                </when>
+                <when test="groupBy == 'clientUnit'">
+                    COALESCE(NULLIF(p.client_unit, ''), '(未知单位)')
+                </when>
+                <when test="groupBy == 'leader'">
+                    COALESCE(NULLIF(su.nick_name, ''), '(未知负责人)')
+                </when>
+                <when test="groupBy == 'category'">
+                    COALESCE(NULLIF(c.name, ''), '(未分类)')
+                </when>
+                <otherwise>
+                    '合计'
+                </otherwise>
+            </choose> AS "label",
+            <!-- 下钻用的原始分组值（时间维度由前端按 label 推导区间，故返回空串） -->
+            <choose>
+                <when test="groupBy == 'clientUnit'">COALESCE(p.client_unit, '')</when>
+                <when test="groupBy == 'leader'">cast(pl.user_id as text)</when>
+                <when test="groupBy == 'category'">cast(p.project_category_id as text)</when>
+                <otherwise>''</otherwise>
+            </choose> AS "key",
+            COALESCE(SUM(COALESCE(ws.int_out, 0)), 0) AS "internalOutput",
+            COALESCE(SUM(COALESCE(ws.ext_out, 0)), 0) AS "externalOutput",
+            COUNT(DISTINCT p.id) AS "projectCount"
+        <include refid="outputBaseFrom"/>
+        GROUP BY 1, 2
+        <choose>
+            <when test="groupBy == 'month' or groupBy == 'quarter' or groupBy == 'year'">ORDER BY 1</when>
+            <otherwise>ORDER BY 4 DESC</otherwise>
+        </choose>
+    </select>
+
+    <!-- 产值明细（下钻）：项目级一行，与产值合计同一口径与筛选；按外部产值降序 -->
+    <select id="selectOutputDetail" parameterType="map" resultType="java.util.LinkedHashMap">
+        SELECT
+            p.id AS "projectId",
+            p.project_code AS "projectCode",
+            p.project_name AS "projectName",
+            p.client_unit AS "clientUnit",
+            p.close_time AS "closeTime",
+            COALESCE(ws.int_out, 0) AS "internalOutput",
+            COALESCE(ws.ext_out, 0) AS "externalOutput"
+        <include refid="outputBaseFrom"/>
+        ORDER BY COALESCE(ws.ext_out, 0) DESC, p.close_time DESC NULLS LAST, p.id DESC
+    </select>
+
 </mapper>

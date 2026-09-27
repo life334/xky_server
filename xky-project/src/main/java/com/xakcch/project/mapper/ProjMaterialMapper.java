@@ -29,6 +29,22 @@ public interface ProjMaterialMapper
     public int insertMaterial(ProjMaterial material);
 
     /**
+     * 批量新增资料记录（数据导入批量落库用）：一次多值 INSERT，固定列清单。
+     *
+     * @param list 资料列表
+     * @return 插入行数
+     */
+    public int insertMaterialBatch(List<ProjMaterial> list);
+
+    /**
+     * 按项目ID批量查资料记录主键（导入批量落库后回查 material_id，供补写流转使用）。
+     *
+     * @param projectIds 项目ID列表
+     * @return 每项含 id / project_id（小写键）
+     */
+    public List<Map<String, Object>> selectMaterialIdsByProjectIds(@Param("projectIds") List<Long> projectIds);
+
+    /**
      * 修改
      */
     public int updateMaterial(ProjMaterial material);

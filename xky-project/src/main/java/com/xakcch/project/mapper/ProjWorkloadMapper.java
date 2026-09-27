@@ -123,4 +123,19 @@ public interface ProjWorkloadMapper
                                @Param("externalOutput") java.math.BigDecimal externalOutput,
                                @Param("priceSource") String priceSource,
                                @Param("extraData") String extraData);
+
+    /**
+     * 产值合计（内部产值 / 外部产值 / 涉及项目数；按 proj_project.close_time 归属）
+     */
+    public java.util.Map<String, Object> selectOutputSummary(java.util.Map<String, Object> params);
+
+    /**
+     * 产值分组明细（按月 / 季 / 年 / 委托单位 / 负责人 / 项目类别）
+     */
+    public java.util.List<java.util.Map<String, Object>> selectOutputSummaryGroups(java.util.Map<String, Object> params);
+
+    /**
+     * 产值明细（下钻：项目级一行，与产值合计同一口径与筛选）
+     */
+    public java.util.List<java.util.Map<String, Object>> selectOutputDetail(java.util.Map<String, Object> params);
 }

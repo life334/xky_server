@@ -1,6 +1,7 @@
 package com.xakcch.project.mapper;
 
 import java.util.List;
+import java.util.Map;
 import org.apache.ibatis.annotations.Param;
 import com.xakcch.common.core.domain.entity.SysUser;
 
@@ -20,6 +21,14 @@ public interface ProjLeaderMapper
      * @return 结果
      */
     public int insertProjectLeaders(@Param("projectId") Long projectId, @Param("userIds") Long[] userIds, @Param("createBy") String createBy);
+
+    /**
+     * 批量插入项目负责人（数据导入批量落库用）：跨多个项目合并成一条多值 INSERT。
+     *
+     * @param list 元素为 Map，键：projectId / userId / createBy
+     * @return 插入行数
+     */
+    public int insertProjectLeadersBatch(@Param("list") List<Map<String, Object>> list);
 
     /**
      * 根据项目ID删除所有负责人关联（逻辑删除）

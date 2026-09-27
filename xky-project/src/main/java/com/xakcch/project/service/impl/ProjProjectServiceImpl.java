@@ -32,6 +32,7 @@ import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.mapper.ProjTaskMapper;
 import com.xakcch.project.mapper.ProjWorkloadMapper;
 import com.xakcch.project.service.IProjProjectService;
+import com.xakcch.project.service.IProjDashboardService;
 import com.xakcch.project.service.IProjPriceRecalcService;
 import com.xakcch.system.mapper.SysUserMapper;
 import com.xakcch.system.service.ISysWorkdayCalendarService;
@@ -56,6 +57,9 @@ public class ProjProjectServiceImpl implements IProjProjectService
 
     @Autowired
     private ProjProjectMapper projectMapper;
+
+    @Autowired
+    private IProjDashboardService dashboardService;
 
     @Autowired
     private ProjLeaderMapper leaderMapper;
@@ -116,6 +120,19 @@ public class ProjProjectServiceImpl implements IProjProjectService
     @Override
     public List<ProjProject> selectProjectList(ProjProject project)
     {
+        // 超期筛选（首页驾驶舱下钻）：工作日口径的超期项目 id 集合由驾驶舱服务统一计算（逻辑唯一出处）
+        if (project.getOverdue() != null && "true".equals(project.getOverdue()))
+        {
+            java.util.List<Long> overdueIds = dashboardService.getOngoingOverdueProjectIds();
+            if (overdueIds.isEmpty())
+            {
+                project.getParams().put("overdueEmpty", Boolean.TRUE);
+            }
+            else
+            {
+                project.getParams().put("overdueIds", overdueIds);
+            }
+        }
         return projectMapper.selectProjectList(project);
     }
 

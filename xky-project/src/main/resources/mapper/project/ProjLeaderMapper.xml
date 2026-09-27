@@ -12,6 +12,17 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </foreach>
     </insert>
 
+    <!-- 批量插入项目负责人（数据导入批量落库专用）：跨多个项目合并成一条多值 INSERT。
+         list 元素为 Map，键：projectId / userId / createBy。
+         导入路径只处理新建项目，项目与负责人组合天然不重复，不会撞 uk_proj_leader_project_user。 -->
+    <insert id="insertProjectLeadersBatch">
+        insert into proj_leader(project_id, user_id, create_by, create_time)
+        values
+        <foreach item="it" collection="list" separator=",">
+            (#{it.projectId}, #{it.userId}, #{it.createBy}, now())
+        </foreach>
+    </insert>
+
     <delete id="deleteLeadersByProjectId" parameterType="Long">
         update proj_leader set del_flag = '2' where project_id = #{projectId}
     </delete>

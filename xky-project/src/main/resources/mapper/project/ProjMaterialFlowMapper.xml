@@ -51,6 +51,21 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         )
     </insert>
 
+    <!-- 批量插入资料流转记录（数据导入批量落库专用）：一次多值 INSERT。
+         目前只用于导入时「已领取」项目补一条 flow_type='领取' 的流转。
+         ⚠️ 列清单必须与 insertFlow 完全一致：proj_material_flow 表**没有 create_by 列**
+         （实体上有该字段但表里不存在，insertFlow 一向只写 create_time），多写会导致整批失败。 -->
+    <insert id="insertFlowBatch" parameterType="java.util.List">
+        insert into proj_material_flow(
+            material_id, flow_type, operate_time, create_time
+        ) values
+        <foreach collection="list" item="item" separator=",">
+        (
+            #{item.materialId}, #{item.flowType}, #{item.operateTime}, now()
+        )
+        </foreach>
+    </insert>
+
     <!-- 逻辑删除某项目下所有资料的流转记录（删除项目时级联清理） -->
     <update id="deleteFlowsByProjectId" parameterType="Long">
         update proj_material_flow set del_flag = '2'

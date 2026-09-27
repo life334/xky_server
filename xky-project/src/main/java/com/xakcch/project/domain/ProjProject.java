@@ -163,6 +163,18 @@ public class ProjProject extends BaseEntity
     /** 录入状态筛选-发票：true=只看「已开未付」/ 其他=不限 */
     private String invoiceUnpaid;
 
+    /** 合同状态筛选（首页驾驶舱下钻）：bound=已关联合同 / unbound=未关联合同 */
+    private String contractStatus;
+
+    /** 超期筛选（首页驾驶舱下钻）：true=仅看在办超期项目（工作日口径，仅手动录入项目） */
+    private String overdue;
+
+    /** 办结日期范围起始（查询用，非持久化） */
+    private String closeDateBegin;
+
+    /** 办结日期范围结束（查询用，非持久化） */
+    private String closeDateEnd;
+
     public Long getId()
     {
         return id;
@@ -530,6 +542,46 @@ public class ProjProject extends BaseEntity
     public void setInvoiceUnpaid(String invoiceUnpaid)
     {
         this.invoiceUnpaid = invoiceUnpaid;
+    }
+
+    public String getContractStatus()
+    {
+        return contractStatus;
+    }
+
+    public void setContractStatus(String contractStatus)
+    {
+        this.contractStatus = contractStatus;
+    }
+
+    public String getOverdue()
+    {
+        return overdue;
+    }
+
+    public void setOverdue(String overdue)
+    {
+        this.overdue = overdue;
+    }
+
+    public String getCloseDateBegin()
+    {
+        return closeDateBegin;
+    }
+
+    public void setCloseDateBegin(String closeDateBegin)
+    {
+        this.closeDateBegin = closeDateBegin;
+    }
+
+    public String getCloseDateEnd()
+    {
+        return closeDateEnd;
+    }
+
+    public void setCloseDateEnd(String closeDateEnd)
+    {
+        this.closeDateEnd = closeDateEnd;
     }
 
     @Override

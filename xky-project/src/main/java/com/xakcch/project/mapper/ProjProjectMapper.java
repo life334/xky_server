@@ -54,6 +54,15 @@ public interface ProjProjectMapper
     public int insertProject(ProjProject project);
 
     /**
+     * 批量新增项目（数据导入批量落库用）：一次多值 INSERT，固定列清单。
+     * 主键不由本方法回填，调用方在同一事务内按 project_code 回查（selectProjectIdsByCodes）。
+     *
+     * @param list 项目列表（非空；工程编号在批内与库内均已去重）
+     * @return 插入行数
+     */
+    public int insertProjectBatch(List<ProjProject> list);
+
+    /**
      * 修改项目
      *
      * @param project 项目

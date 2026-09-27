@@ -149,6 +149,32 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         )
     </insert>
 
+    <!-- 批量新增资料记录（数据导入批量落库专用）：一次多值 INSERT，固定列清单。
+         与 insertMaterial 的字段口径一致：导入项目都是「待领取/已领取」二态，
+         submit_time 为 null 时落 NULL，del_flag 走默认 '0'。 -->
+    <insert id="insertMaterialBatch" parameterType="java.util.List">
+        insert into proj_material(
+            project_id, submit_time, status, submit_status,
+            guarantor_flag, archive_flag, create_by, create_time
+        ) values
+        <foreach collection="list" item="item" separator=",">
+        (
+            #{item.projectId}, #{item.submitTime}, #{item.status}, #{item.submitStatus},
+            #{item.guarantorFlag}, #{item.archiveFlag}, #{item.createBy}, now()
+        )
+        </foreach>
+    </insert>
+
+    <!-- 按项目ID批量查资料记录主键（导入批量落库后回查 material_id 用；小写列名，消费方按 "id"/"project_id" 取值） -->
+    <select id="selectMaterialIdsByProjectIds" resultType="java.util.LinkedHashMap">
+        select id, project_id
+        from proj_material
+        where del_flag = '0' and project_id in
+        <foreach item="projectId" collection="projectIds" open="(" separator="," close=")">
+            #{projectId}
+        </foreach>
+    </select>
+
     <update id="updateMaterial" parameterType="ProjMaterial">
         update proj_material
         <set>

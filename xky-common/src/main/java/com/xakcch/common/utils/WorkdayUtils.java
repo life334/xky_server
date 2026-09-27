@@ -111,7 +111,44 @@ public class WorkdayUtils
     }
 
     /**
+     * 计算 start 之后（含头）第 n 个工作日
+     *
+     * <p>含头含尾语义：countWorkdays(start, 返回值) == n。
+     * 即 start 本身若是工作日，则算第 1 个；若 start 非工作日，从其后第一个工作日算第 1 个。
+     *
+     * @param start 起始日期，null 返回 null
+     * @param n 第 n 个工作日；n &lt;= 0 返回 start
+     * @param calendarMap 工作日历表，可为 null（无数据时按周末规则降级）
+     * @return 第 n 个工作日
+     */
+    public static LocalDate addWorkdays(LocalDate start, int n, Map<LocalDate, String> calendarMap)
+    {
+        if (start == null || n <= 0)
+        {
+            return start;
+        }
+        int remaining = n;
+        if (isWorkday(start, calendarMap))
+        {
+            remaining--;
+        }
+        LocalDate cur = start;
+        while (remaining > 0)
+        {
+            cur = cur.plusDays(1);
+            if (isWorkday(cur, calendarMap))
+            {
+                remaining--;
+            }
+        }
+        return cur;
+    }
+
+    /**
      * java.util.Date → LocalDate（按系统默认时区）
+     *
+     * <p>⚠️ java.sql.Date 覆盖了 toInstant() 并直接抛 UnsupportedOperationException
+     * （PostgreSQL DATE 列经 JDBC 返回的正是 java.sql.Date），必须单独分支处理。
      *
      * @param date 日期，null 返回 null
      * @return LocalDate
@@ -121,6 +158,10 @@ public class WorkdayUtils
         if (date == null)
         {
             return null;
+        }
+        if (date instanceof java.sql.Date)
+        {
+            return ((java.sql.Date) date).toLocalDate();
         }
         return date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
     }

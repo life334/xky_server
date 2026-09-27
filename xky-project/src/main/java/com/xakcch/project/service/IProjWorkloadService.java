@@ -49,4 +49,24 @@ public interface IProjWorkloadService
      * @return 结果
      */
     public int deleteWorkloadByIds(Long[] ids);
+
+    /**
+     * 产值统计：合计（内部产值 / 外部产值 / 涉及项目数）+ 分组明细
+     *
+     * <p>归属时间 = 项目办结时间（close_time）；内外产值不相加。</p>
+     *
+     * @param params 查询条件（groupBy / begin / end / keyword / clientUnit / projectCategoryId / leaderId）
+     * @return { summary: {...}, groups: [...] }
+     */
+    public java.util.Map<String, Object> selectOutputSummary(java.util.Map<String, Object> params);
+
+    /**
+     * 产值明细（下钻：项目级一行，与产值合计同一口径与筛选；分页由 Controller 控制）
+     */
+    public java.util.List<java.util.Map<String, Object>> selectOutputDetail(java.util.Map<String, Object> params);
+
+    /**
+     * 导出产值明细（与产值合计同一口径与筛选，不分页）
+     */
+    public java.util.List<com.xakcch.project.domain.vo.OutputDetailExportVo> selectOutputExportList(java.util.Map<String, Object> params);
 }

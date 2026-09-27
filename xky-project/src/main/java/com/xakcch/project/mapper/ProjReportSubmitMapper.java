@@ -69,6 +69,15 @@ public interface ProjReportSubmitMapper
     int insertLogIgnoreWithTime(ProjReportSubmitLog log);
 
     /**
+     * 批量新增历史补录上报记录（数据导入批量落库用）：与 insertLogIgnoreWithTime 同语义，
+     * 一次多值 INSERT，project_code 冲突时跳过不覆盖。
+     *
+     * @param list 补录记录列表（submit_time 必填）
+     * @return 插入行数
+     */
+    int insertLogIgnoreWithTimeBatch(List<ProjReportSubmitLog> list);
+
+    /**
      * 修改历史补录记录的上报时间（只允许 batch_id 为空的历史行）
      *
      * <p>SQL 内用 {@code batch_id is null} 守卫：真实上报行（batch_id 非空）恒不被命中，

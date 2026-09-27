@@ -255,4 +255,380 @@
         LIMIT 10
     </select>
 
+    <!-- ================================================================
+         ===== v2（2026-09-27 契约）：summary / structure / trend / risk =====
+         口径（契约 §0 总则）：
+           * 新增按 assign_date（修正历史 create_time 口径）；办结/产值按 close_time；
+             到账按 proj_payment.pay_time（非空即到账，全站统一）；合同额按 sign_date
+           * 超期预警仅 data_source='manual'（手动录入），历史导入项目豁免
+           * 工作日日期算术一律在 Java 层（WorkdayUtils），SQL 只拉候选行
+           * 单参数 @Param("q")：轻筛选 clientUnit/leaderId/categoryId 见 v2Filter
+      ================================================================= -->
+
+    <!-- 轻筛选项片（项目别名恒为 p；leaderId 用 EXISTS 防多行放大） -->
+    <sql id="v2Filter">
+        <if test="q.clientUnit != null and q.clientUnit != ''">
+            AND p.client_unit = #{q.clientUnit}
+        </if>
+        <if test="q.leaderId != null">
+            AND EXISTS (SELECT 1 FROM proj_leader pl
+                        WHERE pl.project_id = p.id AND pl.user_id = #{q.leaderId} AND pl.del_flag = '0')
+        </if>
+        <if test="q.categoryId != null">
+            AND p.project_category_id = #{q.categoryId}
+        </if>
+    </sql>
+
+    <!-- 矩阵专用筛选片（已显式 join proj_leader pl，直接等值过滤） -->
+    <sql id="v2MatrixFilter">
+        <if test="q.clientUnit != null and q.clientUnit != ''">
+            AND p.client_unit = #{q.clientUnit}
+        </if>
+        <if test="q.leaderId != null">
+            AND pl.user_id = #{q.leaderId}
+        </if>
+        <if test="q.categoryId != null">
+            AND p.project_category_id = #{q.categoryId}
+        </if>
+    </sql>
+
+    <!-- 合同表筛选片（合同无项目维度，仅委托单位生效；别名 c） -->
+    <sql id="v2ContractFilter">
+        <if test="q.clientUnit != null and q.clientUnit != ''">
+            AND c.client_unit = #{q.clientUnit}
+        </if>
+    </sql>
+
+    <!-- 负责人姓名聚合子查询（多项目复用，防 N+1） -->
+    <sql id="v2LeaderNames">
+        LEFT JOIN (
+            SELECT pl.project_id, string_agg(u.nick_name, ',') AS names
+            FROM proj_leader pl
+            JOIN sys_user u ON u.user_id = pl.user_id
+            WHERE pl.del_flag = '0' AND u.del_flag = '0'
+            GROUP BY pl.project_id
+        ) ln ON ln.project_id = p.id
+    </sql>
+
+    <!-- ===== summary ===== -->
+
+    <!-- 本年/上年/本月/上月 合同额（按签署日，四值一查） -->
+    <select id="contractAmountBySignDate" resultType="map">
+        SELECT
+            COALESCE(SUM(CASE WHEN c.sign_date &gt;= date_trunc('year', CURRENT_DATE)
+                               AND c.sign_date &lt; date_trunc('year', CURRENT_DATE) + interval '1 year'
+                          THEN COALESCE(c.contract_amount, 0) ELSE 0 END), 0) AS "annual",
+            COALESCE(SUM(CASE WHEN c.sign_date &gt;= date_trunc('year', CURRENT_DATE) - interval '1 year'
+                               AND c.sign_date &lt; date_trunc('year', CURRENT_DATE)
+                          THEN COALESCE(c.contract_amount, 0) ELSE 0 END), 0) AS "annualPrev",
+            COALESCE(SUM(CASE WHEN c.sign_date &gt;= date_trunc('month', CURRENT_DATE)
+                               AND c.sign_date &lt; date_trunc('month', CURRENT_DATE) + interval '1 month'
+                          THEN COALESCE(c.contract_amount, 0) ELSE 0 END), 0) AS "month",
+            COALESCE(SUM(CASE WHEN c.sign_date &gt;= date_trunc('month', CURRENT_DATE) - interval '1 month'
+                               AND c.sign_date &lt; date_trunc('month', CURRENT_DATE)
+                          THEN COALESCE(c.contract_amount, 0) ELSE 0 END), 0) AS "monthPrev"
+        FROM proj_contract c
+        WHERE c.del_flag = '0'
+        <include refid="v2ContractFilter"/>
+    </select>
+
+    <!-- 本期/对比期 新增（assign_date）与办结（close_time），四值一查 -->
+    <select id="periodProjectStats" resultType="map">
+        SELECT
+            COUNT(*) FILTER (WHERE p.assign_date IS NOT NULL
+                AND p.assign_date &gt;= #{q.beginDate}::date
+                AND p.assign_date &lt;  #{q.endDate}::date + interval '1 day') AS "periodNew",
+            COUNT(*) FILTER (WHERE p.assign_date IS NOT NULL
+                AND p.assign_date &gt;= #{q.compareBeginDate}::date
+                AND p.assign_date &lt;  #{q.compareEndDate}::date + interval '1 day') AS "periodNewPrev",
+            COUNT(*) FILTER (WHERE p.close_time IS NOT NULL
+                AND p.close_time &gt;= #{q.beginDate}::date
+                AND p.close_time &lt;  #{q.endDate}::date + interval '1 day') AS "periodCompleted",
+            COUNT(*) FILTER (WHERE p.close_time IS NOT NULL
+                AND p.close_time &gt;= #{q.compareBeginDate}::date
+                AND p.close_time &lt;  #{q.compareEndDate}::date + interval '1 day') AS "periodCompletedPrev"
+        FROM proj_project p
+        WHERE p.del_flag = '0'
+        <include refid="v2Filter"/>
+    </select>
+
+    <!-- 本期/对比期 到账（pay_time 非空，refund 负冲，join 项目应用轻筛选） -->
+    <select id="periodPaymentStats" resultType="map">
+        SELECT
+            COALESCE(SUM(CASE WHEN pay.pay_time &gt;= #{q.beginDate}::date
+                               AND pay.pay_time &lt;  #{q.endDate}::date + interval '1 day'
+                          THEN CASE WHEN pay.payment_type = 'refund' THEN -COALESCE(pay.amount, 0)
+                                    ELSE COALESCE(pay.amount, 0) END
+                          ELSE 0 END), 0) AS "periodPayment",
+            COALESCE(SUM(CASE WHEN pay.pay_time &gt;= #{q.compareBeginDate}::date
+                               AND pay.pay_time &lt;  #{q.compareEndDate}::date + interval '1 day'
+                          THEN CASE WHEN pay.payment_type = 'refund' THEN -COALESCE(pay.amount, 0)
+                                    ELSE COALESCE(pay.amount, 0) END
+                          ELSE 0 END), 0) AS "periodPaymentPrev"
+        FROM proj_payment pay
+        JOIN proj_project p ON p.id = pay.project_id AND p.del_flag = '0'
+        WHERE pay.del_flag = '0'
+          AND pay.pay_time IS NOT NULL
+        <include refid="v2Filter"/>
+    </select>
+
+    <!-- 超期候选行（仅手动录入 + 工期要求非空；应完成日/超期天数在 Java 层按工作日计算） -->
+    <select id="selectOverdueCandidates" resultType="map">
+        SELECT p.id,
+               p.project_code AS "projectCode",
+               p.project_name AS "projectName",
+               COALESCE(p.client_unit, '') AS "clientUnit",
+               p.assign_date  AS "assignDate",
+               p.close_time   AS "closeTime",
+               p.status,
+               p.duration_require AS "durationRequire",
+               COALESCE(ln.names, '') AS "leaderNames"
+        FROM proj_project p
+        <include refid="v2LeaderNames"/>
+        WHERE p.del_flag = '0'
+          AND p.data_source = 'manual'
+          AND p.assign_date IS NOT NULL
+          AND p.duration_require IS NOT NULL
+        <include refid="v2Filter"/>
+    </select>
+
+    <!-- 手动项目工期要求维护率：total / maintained 双值 -->
+    <select id="manualDurationStats" resultType="map">
+        SELECT COUNT(*) AS "total",
+               COUNT(p.duration_require) AS "maintained"
+        FROM proj_project p
+        WHERE p.del_flag = '0'
+          AND p.data_source = 'manual'
+        <include refid="v2Filter"/>
+    </select>
+
+    <!-- 项目 KPI：总数 / 进行中 双值 -->
+    <select id="projectKpiStats" resultType="map">
+        SELECT COUNT(*) AS "all",
+               COUNT(*) FILTER (WHERE p.status = 'ongoing') AS "active"
+        FROM proj_project p
+        WHERE p.del_flag = '0'
+        <include refid="v2Filter"/>
+    </select>
+
+    <!-- ===== structure ===== -->
+
+    <select id="selectCategoryList" resultType="map">
+        SELECT id, name FROM proj_category WHERE del_flag = '0'
+    </select>
+
+    <!-- 类型桶统计：数量/办结数（assign 窗）+ 内外产值（close 窗）+ 合同额（assign 窗项目），五指标一查 -->
+    <select id="bucketProjectStats" resultType="map">
+        SELECT p.project_category_id AS "categoryId",
+               COUNT(*) FILTER (WHERE p.assign_date &gt;= #{q.beginDate}::date
+                   AND p.assign_date &lt; #{q.endDate}::date + interval '1 day') AS "count",
+               COUNT(*) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
+                   AND p.close_time &lt; #{q.endDate}::date + interval '1 day') AS "closedCount",
+               COALESCE(SUM(ws.int_out) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
+                   AND p.close_time &lt; #{q.endDate}::date + interval '1 day'), 0) AS "internalOutput",
+               COALESCE(SUM(ws.ext_out) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
+                   AND p.close_time &lt; #{q.endDate}::date + interval '1 day'), 0) AS "externalOutput",
+               COALESCE(SUM(COALESCE(ct.contract_amount, 0)) FILTER (WHERE p.assign_date &gt;= #{q.beginDate}::date
+                   AND p.assign_date &lt; #{q.endDate}::date + interval '1 day'), 0) AS "contractAmount"
+        FROM proj_project p
+        LEFT JOIN (
+            SELECT project_id,
+                   SUM(COALESCE(internal_output, 0)) AS int_out,
+                   SUM(COALESCE(external_output, 0)) AS ext_out
+            FROM proj_workload WHERE del_flag = '0'
+            GROUP BY project_id
+        ) ws ON ws.project_id = p.id
+        LEFT JOIN proj_contract ct ON ct.id = p.contract_id AND ct.del_flag = '0'
+        WHERE p.del_flag = '0'
+        <include refid="v2Filter"/>
+        GROUP BY p.project_category_id
+    </select>
+
+    <!-- 负责人×类型矩阵（多人项目允许重复计数，图上注明） -->
+    <select id="leaderBucketMatrix" resultType="map">
+        SELECT pl.user_id AS "leaderId",
+               p.project_category_id AS "categoryId",
+               COUNT(*) FILTER (WHERE p.assign_date &gt;= #{q.beginDate}::date
+                   AND p.assign_date &lt; #{q.endDate}::date + interval '1 day') AS "count",
+               COALESCE(SUM(ws.int_out) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
+                   AND p.close_time &lt; #{q.endDate}::date + interval '1 day'), 0) AS "internalOutput",
+               COALESCE(SUM(ws.ext_out) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
+                   AND p.close_time &lt; #{q.endDate}::date + interval '1 day'), 0) AS "externalOutput"
+        FROM proj_leader pl
+        JOIN proj_project p ON p.id = pl.project_id AND p.del_flag = '0'
+        LEFT JOIN (
+            SELECT project_id,
+                   SUM(COALESCE(internal_output, 0)) AS int_out,
+                   SUM(COALESCE(external_output, 0)) AS ext_out
+            FROM proj_workload WHERE del_flag = '0'
+            GROUP BY project_id
+        ) ws ON ws.project_id = p.id
+        WHERE pl.del_flag = '0'
+        <include refid="v2MatrixFilter"/>
+        GROUP BY pl.user_id, p.project_category_id
+    </select>
+
+    <select id="selectLeaderNames" resultType="map">
+        SELECT DISTINCT pl.user_id AS "userId", u.nick_name AS "nickName"
+        FROM proj_leader pl
+        JOIN sys_user u ON u.user_id = pl.user_id
+        WHERE pl.del_flag = '0' AND u.del_flag = '0'
+    </select>
+
+    <!-- 周期内 external_output 为空的 workload 行数（前端「未填 N 行」提示） -->
+    <select id="countExternalOutputMissing" resultType="int">
+        SELECT COUNT(*)
+        FROM proj_workload w
+        JOIN proj_project p ON p.id = w.project_id AND p.del_flag = '0'
+        WHERE w.del_flag = '0'
+          AND w.external_output IS NULL
+          AND p.close_time IS NOT NULL
+          AND p.close_time &gt;= #{q.beginDate}::date
+          AND p.close_time &lt; #{q.endDate}::date + interval '1 day'
+        <include refid="v2Filter"/>
+    </select>
+
+    <!-- ===== trend ===== -->
+
+    <!-- 外部产值 月增量 + 累计（双轴），年初至所选期末，generate_series 补零月 -->
+    <select id="outputCumulativeTrendFiltered" resultType="map">
+        SELECT label,
+               monthly,
+               SUM(monthly) OVER (ORDER BY label ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS "cumulative"
+        FROM (
+            SELECT to_char(m, 'YYYY-MM') AS label,
+                   COALESCE(SUM(w.total_output), 0) AS monthly
+            FROM generate_series(
+                date_trunc('year', #{q.beginDate}::date),
+                date_trunc('month', #{q.endDate}::date),
+                '1 month'::interval
+            ) m
+            LEFT JOIN (
+                SELECT date_trunc('month', p.close_time) AS mo,
+                       SUM(COALESCE(wk.external_output, 0)) AS total_output
+                FROM proj_workload wk
+                JOIN proj_project p ON p.id = wk.project_id AND p.del_flag = '0'
+                WHERE wk.del_flag = '0' AND p.close_time IS NOT NULL
+                <include refid="v2Filter"/>
+                GROUP BY date_trunc('month', p.close_time)
+            ) w ON w.mo = m
+            GROUP BY m
+        ) t
+        ORDER BY label
+    </select>
+
+    <!-- 项目动态三系列：新增(assign_date，修正原 create_time) / 办结(close_time) / 到账金额 -->
+    <select id="projectDynamicTrendFiltered" resultType="map">
+        SELECT to_char(m, 'YYYY-MM') AS "label",
+               COALESCE(np.cnt, 0) AS "newProjects",
+               COALESCE(cp.cnt, 0) AS "completedProjects",
+               COALESCE(pay.amt, 0) AS "paymentAmount"
+        FROM generate_series(
+            date_trunc('month', #{q.beginDate}::date),
+            date_trunc('month', #{q.endDate}::date),
+            '1 month'::interval
+        ) m
+        LEFT JOIN (
+            SELECT date_trunc('month', p.assign_date) AS mo, COUNT(*) AS cnt
+            FROM proj_project p
+            WHERE p.del_flag = '0' AND p.assign_date IS NOT NULL
+            <include refid="v2Filter"/>
+            GROUP BY date_trunc('month', p.assign_date)
+        ) np ON np.mo = m
+        LEFT JOIN (
+            SELECT date_trunc('month', p.close_time) AS mo, COUNT(*) AS cnt
+            FROM proj_project p
+            WHERE p.del_flag = '0' AND p.close_time IS NOT NULL
+            <include refid="v2Filter"/>
+            GROUP BY date_trunc('month', p.close_time)
+        ) cp ON cp.mo = m
+        LEFT JOIN (
+            SELECT date_trunc('month', pay.pay_time) AS mo,
+                   SUM(CASE WHEN pay.payment_type = 'refund' THEN -COALESCE(pay.amount, 0)
+                            ELSE COALESCE(pay.amount, 0) END) AS amt
+            FROM proj_payment pay
+            JOIN proj_project p ON p.id = pay.project_id AND p.del_flag = '0'
+            WHERE pay.del_flag = '0' AND pay.pay_time IS NOT NULL
+            <include refid="v2Filter"/>
+            GROUP BY date_trunc('month', pay.pay_time)
+        ) pay ON pay.mo = m
+        ORDER BY m
+    </select>
+
+    <!-- ===== risk ===== -->
+
+    <!-- 欠款按年（办结年）：产值/到账/欠款（先项目级 GREATEST 防正负互抵再按年 SUM） -->
+    <select id="debtStatsByYear" resultType="map">
+        SELECT to_char(date_trunc('year', p.close_time), 'YYYY') AS "year",
+               COALESCE(SUM(ws.ext_out), 0) AS "outputBase",
+               COALESCE(SUM(ps.recv), 0) AS "received",
+               COALESCE(SUM(GREATEST(COALESCE(ws.ext_out, 0) - COALESCE(ps.recv, 0), 0)), 0) AS "debt"
+        FROM proj_project p
+        LEFT JOIN (
+            SELECT project_id, SUM(COALESCE(external_output, 0)) AS ext_out
+            FROM proj_workload WHERE del_flag = '0'
+            GROUP BY project_id
+        ) ws ON ws.project_id = p.id
+        LEFT JOIN (
+            SELECT project_id,
+                   SUM(CASE WHEN payment_type = 'refund' THEN -COALESCE(amount, 0)
+                            ELSE COALESCE(amount, 0) END) AS recv
+            FROM proj_payment WHERE del_flag = '0' AND pay_time IS NOT NULL
+            GROUP BY project_id
+        ) ps ON ps.project_id = p.id
+        WHERE p.del_flag = '0'
+          AND p.close_time IS NOT NULL
+        <include refid="v2Filter"/>
+        GROUP BY date_trunc('year', p.close_time)
+        ORDER BY date_trunc('year', p.close_time)
+    </select>
+
+    <!-- 欠款项目候选行（办结且欠款>0，全量返回；Java 取 top5 + 计数） -->
+    <select id="debtProjectCandidates" resultType="map">
+        SELECT p.id AS "projectId",
+               p.project_code AS "projectCode",
+               p.project_name AS "projectName",
+               COALESCE(p.client_unit, '') AS "clientUnit",
+               p.close_time AS "closeTime",
+               GREATEST(COALESCE(ws.ext_out, 0) - COALESCE(ps.recv, 0), 0) AS "amount",
+               COALESCE(ln.names, '') AS "leaderNames"
+        FROM proj_project p
+        LEFT JOIN (
+            SELECT project_id, SUM(COALESCE(external_output, 0)) AS ext_out
+            FROM proj_workload WHERE del_flag = '0'
+            GROUP BY project_id
+        ) ws ON ws.project_id = p.id
+        LEFT JOIN (
+            SELECT project_id,
+                   SUM(CASE WHEN payment_type = 'refund' THEN -COALESCE(amount, 0)
+                            ELSE COALESCE(amount, 0) END) AS recv
+            FROM proj_payment WHERE del_flag = '0' AND pay_time IS NOT NULL
+            GROUP BY project_id
+        ) ps ON ps.project_id = p.id
+        <include refid="v2LeaderNames"/>
+        WHERE p.del_flag = '0'
+          AND p.close_time IS NOT NULL
+          AND GREATEST(COALESCE(ws.ext_out, 0) - COALESCE(ps.recv, 0), 0) &gt; 0
+        <include refid="v2Filter"/>
+        ORDER BY p.close_time ASC
+    </select>
+
+    <!-- 未关联合同候选行（仅手动录入；3 个工作日判定在 Java 层） -->
+    <select id="contractMissingCandidates" resultType="map">
+        SELECT p.id AS "projectId",
+               p.project_code AS "projectCode",
+               p.project_name AS "projectName",
+               COALESCE(p.client_unit, '') AS "clientUnit",
+               p.create_time AS "createTime",
+               COALESCE(ln.names, '') AS "leaderNames"
+        FROM proj_project p
+        <include refid="v2LeaderNames"/>
+        WHERE p.del_flag = '0'
+          AND p.data_source = 'manual'
+          AND p.contract_id IS NULL
+          AND p.create_time IS NOT NULL
+          AND p.create_time &lt; CURRENT_DATE
+        <include refid="v2Filter"/>
+    </select>
+
 </mapper>

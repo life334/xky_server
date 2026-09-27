@@ -50,4 +50,47 @@ public class ProjDashboardController extends BaseController
         result.put("list", list);
         return AjaxResult.success(result);
     }
+
+    // ============================================================
+    // ===== v2（2026-09-27 契约）：summary / structure / trend / risk =====
+    // 公共入参：beginDate/endDate（周期）+ clientUnit/leaderId/categoryId（轻筛选）
+    //          + compareBeginDate/compareEndDate（对比周期，缺省按上一等长周期推算）
+    // ============================================================
+
+    /**
+     * 段1 经营快照：6 磁贴（本年/本月合同额、本期新增/办结/到账/超期，含对比基准）+ KPI + 工期维护率。
+     * 唯一首屏阻塞请求。
+     */
+    @GetMapping("/summary")
+    public AjaxResult getSummary(com.xakcch.project.domain.ProjDashboardQuery query)
+    {
+        return AjaxResult.success(dashboardService.getSummary(query));
+    }
+
+    /**
+     * 段2+3 业务结构：类型 5 桶统计（数量/占比/合同额/内外产值）、本期办结占比、负责人×类型矩阵。
+     */
+    @GetMapping("/structure")
+    public AjaxResult getStructure(com.xakcch.project.domain.ProjDashboardQuery query)
+    {
+        return AjaxResult.success(dashboardService.getStructure(query));
+    }
+
+    /**
+     * 段4 经营走势：外部产值月增量+累计双轴、项目动态三系列（新增/办结/到账）。
+     */
+    @GetMapping("/trend")
+    public AjaxResult getTrend(com.xakcch.project.domain.ProjDashboardQuery query)
+    {
+        return AjaxResult.success(dashboardService.getTrend(query));
+    }
+
+    /**
+     * 段5 风险与执行：欠款按年（办结年口径）、风险行动清单（欠款/工期超期/未关联合同 三源合并 top15）、计数。
+     */
+    @GetMapping("/risk")
+    public AjaxResult getRisk(com.xakcch.project.domain.ProjDashboardQuery query)
+    {
+        return AjaxResult.success(dashboardService.getRisk(query));
+    }
 }
