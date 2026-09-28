@@ -58,12 +58,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           AND COALESCE(w.receivable, 0) - COALESCE(pa.received, 0) &gt; 0.005
     </sql>
 
-    <!-- 回款台账列表（项目视图，默认账龄降序 = 催收优先级） -->
-    <select id="selectCollectionList" parameterType="map" resultType="java.util.LinkedHashMap">
-        SELECT * FROM (
-            <include refid="collectionBase"/>
-        ) t
-        WHERE 1=1
+    <!--
+      回款台账通用筛选（作用于 collectionBase 的输出别名 t）
+      ⚠️ 项目视图（selectCollectionList）/ 客户视图（selectClientCollectionList）/ 统计卡（selectCollectionStats）
+         三处共用同一份条件，禁止任一处另行维护，避免筛选语义漂移。
+    -->
+    <sql id="collectionFilter">
         <if test="projectName != null and projectName != ''">
             AND t."projectName" LIKE concat('%', #{projectName}, '%')
         </if>
@@ -82,17 +82,17 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="collectStatus != null and collectStatus != ''">
             AND t."collectStatus" = #{collectStatus}
         </if>
-        <if test="ageBegin != null">
+        <if test="ageBegin != null and ageBegin != ''">
             AND t."debtMonths" &gt;= cast(#{ageBegin} as numeric)
         </if>
-        <if test="ageEnd != null">
+        <if test="ageEnd != null and ageEnd != ''">
             AND t."debtMonths" &lt;= cast(#{ageEnd} as numeric)
         </if>
         <if test="closeTimeBegin != null and closeTimeBegin != ''">
             AND t."closeTime" &gt;= cast(#{closeTimeBegin} as timestamp)
         </if>
         <if test="closeTimeEnd != null and closeTimeEnd != ''">
-            AND t."closeTime" &lt;= cast(#{closeTimeEnd} as timestamp)
+            AND t."closeTime" &lt; cast(#{closeTimeEnd} as timestamp) + interval '1 day'
         </if>
         <!-- 到账时间：任意一笔到账落在区间内即命中（含退款） -->
         <if test="payTimeBegin != null and payTimeBegin != ''">
@@ -119,69 +119,71 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                   AND l.del_flag = '0'
             )
         </if>
+    </sql>
+
+    <!-- 回款台账列表（项目视图，默认账龄降序 = 催收优先级） -->
+    <select id="selectCollectionList" parameterType="map" resultType="java.util.LinkedHashMap">
+        SELECT * FROM (
+            <include refid="collectionBase"/>
+        ) t
+        WHERE 1=1
+        <include refid="collectionFilter"/>
         ORDER BY t."debtMonths" DESC, t."clientUnit", t."projectCode"
     </select>
 
     <!-- 客户聚合视图：同一客户多个欠款项目聚合一行，欠款总额降序 -->
     <select id="selectClientCollectionList" parameterType="map" resultType="java.util.LinkedHashMap">
         SELECT
-            t."clientUnit" AS "clientUnit",
+            f."clientUnit" AS "clientUnit",
             COUNT(*) AS "projectCount",
-            SUM(t."receivable") AS "receivable",
-            SUM(t."received") AS "received",
-            SUM(t."unpaidAmount") AS "unpaidAmount",
-            MAX(t."debtMonths") AS "maxDebtMonths",
-            MIN(t."closeTime") AS "oldestCloseTime",
-            COUNT(*) FILTER (WHERE t."collectStatus" = 'overdue') AS "overdueCount",
-            COUNT(*) FILTER (WHERE t."collectStatus" = 'never') AS "neverCount"
+            COALESCE(a."totalCount", 0) AS "totalCount",
+            SUM(f."receivable") AS "receivable",
+            SUM(f."received") AS "received",
+            SUM(f."unpaidAmount") AS "unpaidAmount",
+            MAX(f."debtMonths") AS "maxDebtMonths",
+            MIN(f."closeTime") AS "oldestCloseTime",
+            COUNT(*) FILTER (WHERE f."collectStatus" = 'overdue') AS "overdueCount",
+            COUNT(*) FILTER (WHERE f."collectStatus" = 'never') AS "neverCount"
         FROM (
-            <include refid="collectionBase"/>
-        ) t
-        WHERE 1=1
-        <if test="clientUnit != null and clientUnit != ''">
-            AND t."clientUnit" LIKE concat('%', #{clientUnit}, '%')
-        </if>
-        GROUP BY t."clientUnit"
-        ORDER BY SUM(t."unpaidAmount") DESC
-    </select>
-
-    <!-- 统计卡：待回款项目数/总额、超账期(≥6个月)预警数、本月及上月已回款 -->
-    <select id="selectCollectionStats" resultType="java.util.LinkedHashMap">
-        SELECT
-            s."pendingCount",
-            s."pendingAmount",
-            s."overdueCount",
-            (SELECT COALESCE(SUM(CASE WHEN payment_type = 'refund' THEN -COALESCE(amount, 0) ELSE COALESCE(amount, 0) END), 0)
-             FROM proj_payment
-             WHERE del_flag = '0'
-               AND pay_time &gt;= date_trunc('month', current_date)
-               AND pay_time &lt; date_trunc('month', current_date) + interval '1 month') AS "monthReceived",
-            (SELECT COALESCE(SUM(CASE WHEN payment_type = 'refund' THEN -COALESCE(amount, 0) ELSE COALESCE(amount, 0) END), 0)
-             FROM proj_payment
-             WHERE del_flag = '0'
-               AND pay_time &gt;= date_trunc('month', current_date) - interval '1 month'
-               AND pay_time &lt; date_trunc('month', current_date)) AS "lastMonthReceived"
-        FROM (
-            SELECT
-                COUNT(*) AS "pendingCount",
-                COALESCE(SUM("unpaidAmount"), 0) AS "pendingAmount",
-                COUNT(*) FILTER (WHERE "debtMonths" &gt;= 6) AS "overdueCount"
+            SELECT t.* FROM (
+                <include refid="collectionBase"/>
+            ) t
+            WHERE 1=1
+            <include refid="collectionFilter"/>
+        ) f
+        LEFT JOIN (
+            SELECT b."clientUnit" AS "clientUnit", COUNT(*) AS "totalCount"
             FROM (
                 <include refid="collectionBase"/>
             ) b
-        ) s
+            GROUP BY b."clientUnit"
+        ) a ON a."clientUnit" IS NOT DISTINCT FROM f."clientUnit"
+        GROUP BY f."clientUnit", a."totalCount"
+        ORDER BY COUNT(*) DESC, SUM(f."unpaidAmount") DESC
+    </select>
+
+    <!-- 统计卡：待回款项目数/总额、超账期(≥6个月)预警数、本月及上月已回款 -->
+    <select id="selectCollectionStats" parameterType="map" resultType="java.util.LinkedHashMap">
+        WITH matched AS (
+            SELECT * FROM (
+                <include refid="collectionBase"/>
+            ) t
+            WHERE 1=1
+            <include refid="collectionFilter"/>
+        )
+        SELECT
+            (SELECT COUNT(*) FROM matched) AS "pendingCount",
+            (SELECT COALESCE(SUM("unpaidAmount"), 0) FROM matched) AS "pendingAmount",
+            (SELECT COUNT(*) FROM matched WHERE "debtMonths" &gt;= 6) AS "overdueCount",
+            (SELECT COUNT(*) <include refid="unsettledFrom"/>) AS "unsettledCount"
     </select>
 
     <!-- 待结算提醒：已办结但无外部产值（费用结算未录工作量明细，应收无法计算） -->
-    <select id="selectUnsettledList" parameterType="map" resultType="java.util.LinkedHashMap">
-        SELECT
-            p.id AS "projectId",
-            p.project_code AS "projectCode",
-            p.project_name AS "projectName",
-            p.engineering_project AS "engineeringProject",
-            p.client_unit AS "clientUnit",
-            p.close_time AS "closeTime",
-            COALESCE(pa.received, 0) AS "received"
+    <!--
+      待结算提醒（已办结但无外部产值，应收无法计算）的 FROM + 筛选，按别名 p / w / pa 编写。
+      列表（selectUnsettledList）与统计卡 unsettledCount 共用，保证两处口径永远一致。
+    -->
+    <sql id="unsettledFrom">
         FROM proj_project p
         LEFT JOIN (
             SELECT project_id, SUM(COALESCE(external_output, 0)) AS receivable
@@ -245,6 +247,18 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                   AND l.del_flag = '0'
             )
         </if>
+    </sql>
+
+    <select id="selectUnsettledList" parameterType="map" resultType="java.util.LinkedHashMap">
+        SELECT
+            p.id AS "projectId",
+            p.project_code AS "projectCode",
+            p.project_name AS "projectName",
+            p.engineering_project AS "engineeringProject",
+            p.client_unit AS "clientUnit",
+            p.close_time AS "closeTime",
+            COALESCE(pa.received, 0) AS "received"
+        <include refid="unsettledFrom"/>
         ORDER BY p.close_time
     </select>
 
@@ -317,6 +331,67 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             )
         </if>
     </sql>
+
+<!--
+      到账窗口统计（供「本月已回款 / 区间已回款」卡片使用）
+      口径：只跟随列表筛选中的「项目级子集」——keyword / 委托单位 / 负责人 / 完成时间（办结时间）；
+            账龄、催收状态、项目名称等条件不参与（到账流水驱动链路上无对应列），
+            与同一链路的卡片下钻 selectReceivedDetail 保持完全一致。
+      curBegin/curEnd   ：当前窗口（默认=本月；用户填了「到账时间」区间时=该区间）
+      prevBegin/prevEnd ：对比窗口（紧邻当前窗口之前的等长区间；默认=上月）
+    -->
+    <sql id="receivedWindowWhere">
+        pm.del_flag = '0'
+        AND pm.pay_time IS NOT NULL
+        <if test="keyword != null and keyword != ''">
+            AND (p.project_code LIKE concat('%', #{keyword}, '%')
+                 OR p.project_name LIKE concat('%', #{keyword}, '%')
+                 OR p.client_unit LIKE concat('%', #{keyword}, '%'))
+        </if>
+        <if test="clientUnit != null and clientUnit != ''">
+            AND p.client_unit LIKE concat('%', #{clientUnit}, '%')
+        </if>
+        <if test="closeTimeBegin != null and closeTimeBegin != ''">
+            AND p.close_time &gt;= to_date(#{closeTimeBegin}, 'YYYY-MM-DD')
+        </if>
+        <if test="closeTimeEnd != null and closeTimeEnd != ''">
+            AND p.close_time &lt; to_date(#{closeTimeEnd}, 'YYYY-MM-DD') + interval '1 day'
+        </if>
+        <if test="leaderId != null and leaderId != ''">
+            AND EXISTS (
+                SELECT 1 FROM proj_leader l
+                WHERE l.project_id = pm.project_id
+                  AND l.user_id = cast(#{leaderId} as bigint)
+                  AND l.del_flag = '0'
+            )
+        </if>
+    </sql>
+
+    <select id="selectReceivedStats" parameterType="map" resultType="java.util.LinkedHashMap">
+        SELECT
+            (SELECT COALESCE(SUM(CASE WHEN pm.payment_type = 'refund' THEN -COALESCE(pm.amount, 0) ELSE COALESCE(pm.amount, 0) END), 0)
+             FROM proj_payment pm
+             LEFT JOIN proj_project p ON p.id = pm.project_id AND p.del_flag = '0'
+             WHERE <include refid="receivedWindowWhere"/>
+               <if test="curBegin != null and curBegin != ''">
+                   AND pm.pay_time &gt;= to_date(#{curBegin}, 'YYYY-MM-DD')
+               </if>
+               <if test="curEnd != null and curEnd != ''">
+                   AND pm.pay_time &lt; to_date(#{curEnd}, 'YYYY-MM-DD') + interval '1 day'
+               </if>
+            ) AS "windowReceived",
+            (SELECT COALESCE(SUM(CASE WHEN pm.payment_type = 'refund' THEN -COALESCE(pm.amount, 0) ELSE COALESCE(pm.amount, 0) END), 0)
+             FROM proj_payment pm
+             LEFT JOIN proj_project p ON p.id = pm.project_id AND p.del_flag = '0'
+             WHERE <include refid="receivedWindowWhere"/>
+               <if test="prevBegin != null and prevBegin != ''">
+                   AND pm.pay_time &gt;= to_date(#{prevBegin}, 'YYYY-MM-DD')
+               </if>
+               <if test="prevEnd != null and prevEnd != ''">
+                   AND pm.pay_time &lt; to_date(#{prevEnd}, 'YYYY-MM-DD') + interval '1 day'
+               </if>
+            ) AS "windowPrevReceived"
+    </select>
 
     <!-- 到账合计：到账金额（正向）/ 退款金额 / 净额 / 笔数。⚠️ 不传 leaderJoin，避免分组展开影响合计 -->
     <select id="selectPaymentSummary" parameterType="map" resultType="java.util.LinkedHashMap">

@@ -44,10 +44,27 @@ public class ProjCollectionServiceImpl implements IProjCollectionService
         return collectionMapper.selectClientCollectionList(params);
     }
 
+    /**
+     * 统计卡：项目级口径 + 到账窗口口径合并为一份响应
+     *
+     * ① pendingCount/pendingAmount/overdueCount/unsettledCount —— 由 collectionBase + 公共筛选条件算出（随筛选联动）
+     * ② windowReceived/windowPrevReceived —— 到账流水窗口净额（退款负冲），跟随筛选中的项目级子集
+     */
     @Override
-    public Map<String, Object> selectCollectionStats()
+    public Map<String, Object> selectCollectionStats(Map<String, Object> params)
     {
-        return collectionMapper.selectCollectionStats();
+        Map<String, Object> result = new LinkedHashMap<>();
+        Map<String, Object> projectStats = collectionMapper.selectCollectionStats(params);
+        if (projectStats != null)
+        {
+            result.putAll(projectStats);
+        }
+        Map<String, Object> receivedStats = collectionMapper.selectReceivedStats(params);
+        if (receivedStats != null)
+        {
+            result.putAll(receivedStats);
+        }
+        return result;
     }
 
     @Override

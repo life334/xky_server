@@ -60,12 +60,13 @@ public class ProjCollectionController extends BaseController
     }
 
     /**
-     * 统计卡（待回款项目数/总额、超账期数、本月已回款、上月已回款）
+     * 统计卡（待回款项目数/总额、超账期预警、待结算提醒、窗口到账额）
+     * ⚠️ 口径与 /list 同理联动：入参即列表查询条件的同一套参数
      */
     @GetMapping("/stats")
-    public AjaxResult stats()
+    public AjaxResult stats(@RequestParam Map<String, Object> params)
     {
-        return success(collectionService.selectCollectionStats());
+        return success(collectionService.selectCollectionStats(params));
     }
 
     /**

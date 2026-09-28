@@ -24,9 +24,10 @@ public interface IProjCollectionService
     public List<Map<String, Object>> selectClientCollectionList(Map<String, Object> params);
 
     /**
-     * 统计卡
+     * 统计卡：待回款项目数/总额、超账期预警、待结算提醒、当前窗口/对比窗口到账额
+     * ⚠️ 口径随列表筛选联动，params 与 selectCollectionList 同一套条件
      */
-    public Map<String, Object> selectCollectionStats();
+    public Map<String, Object> selectCollectionStats(Map<String, Object> params);
 
     /**
      * 待结算提醒列表

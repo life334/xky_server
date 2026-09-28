@@ -23,9 +23,17 @@ public interface ProjCollectionMapper
     public List<Map<String, Object>> selectClientCollectionList(Map<String, Object> params);
 
     /**
-     * 统计卡（待回款项目数/总额、超账期数、本月已回款、上月已回款）
+     * 统计卡（待回款项目数/总额、超账期数、待结算数）
+     * ⚠️ 口径随列表筛选联动：params 与 selectCollectionList 同一套筛选条件
      */
-    public Map<String, Object> selectCollectionStats();
+    public Map<String, Object> selectCollectionStats(Map<String, Object> params);
+
+    /**
+     * 到账窗口统计（当前窗口 / 对比窗口 到账净额，退款负冲）
+     *
+     * @param params 列表筛选条件 + curBegin/curEnd（当前窗口）+ prevBegin/prevEnd（对比窗口）
+     */
+    public Map<String, Object> selectReceivedStats(Map<String, Object> params);
 
     /**
      * 待结算提醒列表（已办结但无外部产值的项目）
