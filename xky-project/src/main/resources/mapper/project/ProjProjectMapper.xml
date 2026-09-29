@@ -22,6 +22,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="extraData"           column="extra_data"           />
         <result property="delFlag"             column="del_flag"             />
         <result property="relatedProjectId"    column="related_project_id"   />
+        <result property="relatedProjectCodeText" column="related_project_code_text" />
         <result property="createBy"            column="create_by"            />
         <result property="createTime"          column="create_time"          />
         <result property="updateBy"            column="update_by"            />
@@ -46,6 +47,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                p.close_time,
                p.assign_date, p.duration_require, p.total_duration,
                p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
+               p.related_project_code_text,
                p.create_by, p.create_time, p.update_by, p.update_time, p.remark
         from proj_project p
     </sql>
@@ -57,11 +59,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                p.close_time,
                p.assign_date, p.duration_require, p.total_duration,
                p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
+               p.related_project_code_text,
                p.create_by, p.create_time, p.update_by, p.update_time, p.remark,
                c.name as category_name,
                ct.contract_name,
                ct.contract_no,
-               rp.project_code as related_project_code,
+               coalesce(rp.project_code, p.related_project_code_text) as related_project_code,
                coalesce(ln.leader_names, '') as leader_names
         from proj_project p
         left join proj_category c on c.id = p.project_category_id
@@ -206,11 +209,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                p.close_time,
                p.assign_date, p.duration_require, p.total_duration,
                p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
+               p.related_project_code_text,
                p.create_by, p.create_time, p.update_by, p.update_time, p.remark,
                c.name as category_name,
                ct.contract_name,
                ct.contract_no,
-               rp.project_code as related_project_code,
+               coalesce(rp.project_code, p.related_project_code_text) as related_project_code,
                coalesce(ln.leader_names, '') as leader_names
         from proj_project p
         left join proj_category c on c.id = p.project_category_id
@@ -259,6 +263,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="totalDuration != null">total_duration,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
             <if test="relatedProjectId != null">related_project_id,</if>
+            <if test="relatedProjectCodeText != null and relatedProjectCodeText != ''">related_project_code_text,</if>
             <if test="remark != null and remark != ''">remark,</if>
             <if test="createBy != null and createBy != ''">create_by,</if>
             create_time
@@ -281,6 +286,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="totalDuration != null">#{totalDuration},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="relatedProjectId != null">#{relatedProjectId},</if>
+            <if test="relatedProjectCodeText != null and relatedProjectCodeText != ''">#{relatedProjectCodeText},</if>
             <if test="remark != null and remark != ''">#{remark},</if>
             <if test="createBy != null and createBy != ''">#{createBy},</if>
             now()
@@ -328,6 +334,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             total_duration = #{totalDuration},
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             related_project_id = #{relatedProjectId},
+            related_project_code_text = #{relatedProjectCodeText},
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
             update_time = now()

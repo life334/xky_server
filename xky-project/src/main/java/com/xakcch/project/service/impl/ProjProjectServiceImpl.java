@@ -690,7 +690,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
         addColumn(columns, "durationRequire", "工期要求", "duration", "business", true, "durationRequire");
         addColumn(columns, "totalDuration", "总时长", "total", "business", true, "totalDuration");
         addColumn(columns, "projectName", "项目名称", "text", "business", false, "projectName");
-        addColumn(columns, "relatedProjectCode", "关联工程编号", "text", "business", true, "relatedProjectCode");
+        addColumn(columns, "relatedProjectCode", "关联定线编号", "text", "business", true, "relatedProjectCode");
         addColumn(columns, "dataSource", "项目来源", "dict", "business", false, "dataSource");
         addColumn(columns, "remark", "备注", "text", "business", false, "remark");
 
@@ -700,7 +700,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
             "project_location", "status", "assign_date", "duration_require", "total_duration",
             "project_name", "remark", "id", "create_by", "create_time", "update_by", "update_time",
             "del_flag", "extra_data", "project_category_id", "contract_id", "related_project_id",
-            "close_time", "data_source", "project_nature"));
+            "close_time", "data_source", "project_nature", "related_project_code_text"));
         List<Map<String, Object>> tableColumns = projectMapper.selectTableColumns("proj_project");
         if (tableColumns != null)
         {

@@ -14,7 +14,7 @@ import com.xakcch.project.domain.ProjMandateRule;
  */
 public interface IProjMandateService
 {
-    /** 项目性质：常规项目 */
+    /** 项目性质：市场性任务 */
     String NATURE_NORMAL = "normal";
 
     /** 项目性质：指令性任务 */

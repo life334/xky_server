@@ -62,7 +62,7 @@ public class ProjProject extends BaseEntity
     private String status;
 
     /**
-     * 项目性质：normal=常规项目（外部产值计入应收）；mandate=指令性任务
+     * 项目性质：normal=市场性任务（外部产值计入应收）；mandate=指令性任务
      * （外部产值不计入应收 / 全量外部产值，仅内部产值计入）
      */
     @Excel(name = "项目性质")
@@ -76,6 +76,9 @@ public class ProjProject extends BaseEntity
 
     /** 关联定线项目ID（验线项目关联对应的定线项目） */
     private Long relatedProjectId;
+
+    /** 关联定线编号（手输文本：系统中不存在该定线项目时使用；有关联项目时以 relatedProjectId 为准） */
+    private String relatedProjectCodeText;
 
     /** 安排日期 */
     @Excel(name = "安排日期", dateFormat = "yyyy-MM-dd")
@@ -341,6 +344,16 @@ public class ProjProject extends BaseEntity
     public void setRelatedProjectId(Long relatedProjectId)
     {
         this.relatedProjectId = relatedProjectId;
+    }
+
+    public String getRelatedProjectCodeText()
+    {
+        return relatedProjectCodeText;
+    }
+
+    public void setRelatedProjectCodeText(String relatedProjectCodeText)
+    {
+        this.relatedProjectCodeText = relatedProjectCodeText;
     }
 
     public String getRelatedProjectCode()
@@ -621,6 +634,7 @@ public class ProjProject extends BaseEntity
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())
             .append("relatedProjectId", getRelatedProjectId())
+            .append("relatedProjectCodeText", getRelatedProjectCodeText())
             .append("createBy", getCreateBy())
             .append("createTime", getCreateTime())
             .append("updateBy", getUpdateBy())

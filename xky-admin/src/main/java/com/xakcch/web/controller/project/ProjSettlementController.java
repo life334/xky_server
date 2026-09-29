@@ -620,6 +620,8 @@ public class ProjSettlementController extends BaseController
         node.put("clientUnit", p.getClientUnit());
         node.put("projectLocation", p.getProjectLocation());
         node.put("engineeringProject", p.getEngineeringProject());
+        // 项目类别名称：列表「项目类别」列（列元数据 key/prop = categoryName）数据源
+        node.put("categoryName", p.getCategoryName());
         node.put("leaderNames", p.getLeaderNames());
         return node;
     }

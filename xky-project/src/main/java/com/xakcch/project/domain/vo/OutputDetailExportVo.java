@@ -31,8 +31,8 @@ public class OutputDetailExportVo
     @Excel(name = "外部产值(元)")
     private BigDecimal externalOutput;
 
-    /** 项目性质（normal=常规 mandate=指令性任务）；指令性项目的「外部产值」列展示实际录入值但带此标记 */
-    @Excel(name = "项目性质", readConverterExp = "normal=常规,mandate=指令性任务")
+    /** 项目性质（normal=市场性任务 mandate=指令性任务）；指令性项目的「外部产值」列展示实际录入值但带此标记 */
+    @Excel(name = "项目性质", readConverterExp = "normal=市场性任务,mandate=指令性任务")
     private String projectNature;
 
     public OutputDetailExportVo()
