@@ -1400,6 +1400,8 @@ public class ProjImportServiceImpl implements IProjImportService
                 ProjMaterialFlow flow = new ProjMaterialFlow();
                 flow.setMaterialId(mid);
                 flow.setFlowType("领取");
+                // 导入的历史领取数据无介质信息 → 按纸质版兜底（与状态派生 COALESCE 口径一致）
+                flow.setPickupType("paper");
                 flow.setOperateTime(flowTimes.get(i));
                 flow.setCreateBy(user);
                 flows.add(flow);

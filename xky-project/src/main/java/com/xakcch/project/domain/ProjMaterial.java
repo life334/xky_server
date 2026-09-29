@@ -37,17 +37,22 @@ public class ProjMaterial extends BaseEntity
     /** 目录（用户自由填写） */
     private String archiveDir;
 
-    /** 资料状态：待领取/已领取/已归还 */
+    /** 资料状态（派生只读，唯一口径见 ProjMaterialMapper.materialStatusExpr）：
+     *  pending 未领取 / received_electronic 已领取(电子版)
+     *  received_paper 已领取(纸质版) / received_both 已领取(电子+纸质) */
     private String status;
 
-    /** 提交状态（字典 proj_material_submit_status） */
+    /** 提交状态（已退役：保留字段与列，不再作为筛选/展示口径） */
     private String submitStatus;
 
     /** 是否担保（Y需要担保人 N不需要） */
     private String guarantorFlag;
 
-    /** 担保人ID（关联 sys_user.user_id） */
+    /** 担保人ID（关联 sys_user.user_id；已弃用，保留列） */
     private Long guarantorId;
+
+    /** 担保人姓名（手动输入文本；guarantor_id 保留但已弃用） */
+    private String guarantorName;
 
     /** 动态字段数据（JSONB） */
     private String extraData;
@@ -102,6 +107,12 @@ public class ProjMaterial extends BaseEntity
 
     /** 办结日期范围-结束（筛选） */
     private transient String closeDateEnd;
+
+    /** 领取备注（本次领取专用：只写入流转记录，不覆盖资料登记备注 remark） */
+    private transient String borrowRemark;
+
+    /** 本次领取类型（electronic 电子版 / paper 纸质版 / both 电子+纸质版；随领取写入流转记录） */
+    private transient String pickupType;
 
     // ===== getter/setter =====
 
@@ -215,6 +226,16 @@ public class ProjMaterial extends BaseEntity
         this.guarantorId = guarantorId;
     }
 
+    public String getGuarantorName()
+    {
+        return guarantorName;
+    }
+
+    public void setGuarantorName(String guarantorName)
+    {
+        this.guarantorName = guarantorName;
+    }
+
     public String getExtraData()
     {
         return extraData;
@@ -319,6 +340,10 @@ public class ProjMaterial extends BaseEntity
     public void setCloseDateBegin(String closeDateBegin) { this.closeDateBegin = closeDateBegin; }
     public String getCloseDateEnd() { return closeDateEnd; }
     public void setCloseDateEnd(String closeDateEnd) { this.closeDateEnd = closeDateEnd; }
+    public String getBorrowRemark() { return borrowRemark; }
+    public void setBorrowRemark(String borrowRemark) { this.borrowRemark = borrowRemark; }
+    public String getPickupType() { return pickupType; }
+    public void setPickupType(String pickupType) { this.pickupType = pickupType; }
 
     @Override
     public String toString() {
@@ -336,6 +361,7 @@ public class ProjMaterial extends BaseEntity
             .append("status", getStatus())
             .append("guarantorFlag", getGuarantorFlag())
             .append("guarantorId", getGuarantorId())
+            .append("guarantorName", getGuarantorName())
             .append("archiveFlag", getArchiveFlag())
             .append("archiveTime", getArchiveTime())
             .append("extraData", getExtraData())

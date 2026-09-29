@@ -27,7 +27,7 @@ public class ProjMaterialFlow extends BaseEntity
     /** 操作人ID */
     private Long userId;
 
-    /** 担保人ID（首次领取时必填） */
+    /** 担保人ID（已弃用，保留列） */
     private Long guarantorId;
 
     /** 操作时间 */
@@ -42,11 +42,14 @@ public class ProjMaterialFlow extends BaseEntity
     /** 操作人姓名 */
     private String userName;
 
-    /** 担保人姓名 */
+    /** 担保人姓名（持久化列 guarantor_name：领取时手动输入的文本） */
     private String guarantorName;
 
     /** 本次领取时的资料快照（JSON：联系人/电话/成果类型/交付时间等） */
     private String snapshot;
+
+    /** 领取类型（持久化列 pickup_type：electronic 电子版 / paper 纸质版 / both 电子+纸质版） */
+    private String pickupType;
 
     // ===== getter/setter =====
 
@@ -80,6 +83,9 @@ public class ProjMaterialFlow extends BaseEntity
     public String getSnapshot() { return snapshot; }
     public void setSnapshot(String snapshot) { this.snapshot = snapshot; }
 
+    public String getPickupType() { return pickupType; }
+    public void setPickupType(String pickupType) { this.pickupType = pickupType; }
+
     @Override
     public String toString() {
         return new ToStringBuilder(this, ToStringStyle.MULTI_LINE_STYLE)
@@ -88,6 +94,8 @@ public class ProjMaterialFlow extends BaseEntity
             .append("flowType", getFlowType())
             .append("userId", getUserId())
             .append("guarantorId", getGuarantorId())
+            .append("guarantorName", getGuarantorName())
+            .append("pickupType", getPickupType())
             .append("operateTime", getOperateTime())
             .append("remark", getRemark())
             .toString();

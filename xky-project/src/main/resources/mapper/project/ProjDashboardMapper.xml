@@ -119,9 +119,27 @@
     </select>
 
     <select id="materialFlowStats" resultType="map">
-        SELECT status AS "name", COUNT(*) AS "value"
-        FROM proj_material WHERE del_flag = '0'
-        GROUP BY status
+        <!-- 资料状态派生口径与 ProjMaterialMapper.materialStatusExpr 一致（领取介质 4 态，归档不参与）：
+             pending / received_electronic / received_paper / received_both -->
+        SELECT (CASE
+                  WHEN EXISTS (SELECT 1 FROM proj_material_flow f
+                               WHERE f.material_id = m.id AND f.flow_type = '领取' AND f.del_flag = '0'
+                                 AND COALESCE(f.pickup_type, 'paper') IN ('electronic', 'both'))
+                       THEN (CASE
+                               WHEN EXISTS (SELECT 1 FROM proj_material_flow f2
+                                            WHERE f2.material_id = m.id AND f2.flow_type = '领取' AND f2.del_flag = '0'
+                                              AND COALESCE(f2.pickup_type, 'paper') IN ('paper', 'both'))
+                                    THEN 'received_both'
+                               ELSE 'received_electronic'
+                             END)
+                  WHEN EXISTS (SELECT 1 FROM proj_material_flow f3
+                               WHERE f3.material_id = m.id AND f3.flow_type = '领取' AND f3.del_flag = '0')
+                       THEN 'received_paper'
+                  ELSE 'pending'
+                END) AS "name",
+               COUNT(*) AS "value"
+        FROM proj_material m WHERE m.del_flag = '0'
+        GROUP BY 1
     </select>
 
     <!-- ==================== 图表：产值与到账趋势（按月） ==================== -->

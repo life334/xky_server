@@ -16,6 +16,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="submitStatus"     column="submit_status"     />
         <result property="guarantorFlag"    column="guarantor_flag"    />
         <result property="guarantorId"      column="guarantor_id"      />
+        <result property="guarantorName"    column="guarantor_name"    />
         <result property="archiveFlag"      column="archive_flag"      />
         <result property="archiveTime"      column="archive_time"      />
         <result property="extraData"         column="extra_data"        />
@@ -32,10 +33,40 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="receiveTime"       column="receive_time"      />
     </resultMap>
 
+    <!-- 资料状态派生（唯一事实来源）= 领取介质维度（4 态，归档不参与）：
+         pending 未领取 / received_electronic 已领取(电子版)
+         received_paper 已领取(纸质版) / received_both 已领取(电子+纸质)。
+         规则：取该资料所有未删除「领取」流转的 pickup_type 并集（both 同时含电子与纸质）；
+         历史/导入未写 pickup_type 的记录按纸质版兜底（与驾驶舱 COALESCE 口径一致）。
+         归档状态是独立维度，由 archive_flag 单独呈现（归档状态列/筛选项）。
+         列表 / 详情 / 状态统计 共用；驾驶舱(materialFlowStats) 同口径。 -->
+    <sql id="materialStatusExpr">
+        case
+            when exists (
+                select 1 from proj_material_flow f
+                where f.material_id = ${alias}.id and f.flow_type = '领取' and f.del_flag = '0'
+                  and coalesce(f.pickup_type, 'paper') in ('electronic', 'both')
+            ) then case
+                when exists (
+                    select 1 from proj_material_flow f2
+                    where f2.material_id = ${alias}.id and f2.flow_type = '领取' and f2.del_flag = '0'
+                      and coalesce(f2.pickup_type, 'paper') in ('paper', 'both')
+                ) then 'received_both'
+                else 'received_electronic'
+            end
+            when exists (
+                select 1 from proj_material_flow f3
+                where f3.material_id = ${alias}.id and f3.flow_type = '领取' and f3.del_flag = '0'
+            ) then 'received_paper'
+            else 'pending'
+        end
+    </sql>
+
     <sql id="selectMaterialVo">
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
-               m.result_type, m.archive_dir, m.status, m.submit_status,
-               m.guarantor_flag, m.guarantor_id,
+               m.result_type, m.archive_dir, m.submit_status,
+               m.guarantor_flag, m.guarantor_id, m.guarantor_name,
+               <include refid="materialStatusExpr"><property name="alias" value="m"/></include> as status,
                m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark
         from proj_material m
@@ -43,9 +74,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <select id="selectMaterialList" parameterType="ProjMaterial" resultMap="ProjMaterialResult">
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
-               m.result_type, m.archive_dir, m.status, m.submit_status,
-               m.guarantor_flag, m.guarantor_id,
+               m.result_type, m.archive_dir, m.submit_status,
+               m.guarantor_flag, m.guarantor_id, m.guarantor_name,
                m.archive_flag, m.archive_time,
+               <include refid="materialStatusExpr"><property name="alias" value="m"/></include> as status,
                m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
                p.project_name, p.project_code, p.engineering_project, p.project_location,
@@ -65,7 +97,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             and m.result_type = #{resultType}
         </if>
         <if test="status != null and status != ''">
-            and m.status = #{status}
+            and (<include refid="materialStatusExpr"><property name="alias" value="m"/></include>) = #{status}
+        </if>
+        <!-- 归档状态筛选（独立维度：Y 已归档 / N 未归档） -->
+        <if test="archiveFlag != null and archiveFlag != ''">
+            and m.archive_flag = #{archiveFlag}
         </if>
         <if test="params.statusList != null and params.statusList.size() > 0">
             and p.status in
@@ -117,9 +153,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <select id="selectMaterialById" parameterType="Long" resultMap="ProjMaterialResult">
         select m.id, m.project_id, m.submit_time, m.contact_name, m.contact_phone,
-               m.result_type, m.archive_dir, m.status, m.submit_status,
-               m.guarantor_flag, m.guarantor_id,
+               m.result_type, m.archive_dir, m.submit_status,
+               m.guarantor_flag, m.guarantor_id, m.guarantor_name,
                m.archive_flag, m.archive_time,
+               <include refid="materialStatusExpr"><property name="alias" value="m"/></include> as status,
                m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
                p.project_name, p.project_code, p.engineering_project, p.project_location
@@ -140,6 +177,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="submitStatus != null and submitStatus != ''">submit_status,</if>
             <if test="guarantorFlag != null and guarantorFlag != ''">guarantor_flag,</if>
             <if test="guarantorId != null">guarantor_id,</if>
+            <if test="guarantorName != null and guarantorName != ''">guarantor_name,</if>
             <if test="archiveFlag != null and archiveFlag != ''">archive_flag,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
             <if test="remark != null and remark != ''">remark,</if>
@@ -156,6 +194,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="submitStatus != null and submitStatus != ''">#{submitStatus},</if>
             <if test="guarantorFlag != null and guarantorFlag != ''">#{guarantorFlag},</if>
             <if test="guarantorId != null">#{guarantorId},</if>
+            <if test="guarantorName != null and guarantorName != ''">#{guarantorName},</if>
             <if test="archiveFlag != null and archiveFlag != ''">#{archiveFlag},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="remark != null and remark != ''">#{remark},</if>
@@ -202,8 +241,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="status != null">status = #{status},</if>
             <if test="submitStatus != null and submitStatus != ''">submit_status = #{submitStatus},</if>
             <if test="guarantorFlag != null">guarantor_flag = #{guarantorFlag},</if>
-            <if test="guarantorFlag == 'N'.toString()">guarantor_id = null,</if>
+            <if test="guarantorFlag == 'N'.toString()">guarantor_id = null, guarantor_name = null,</if>
             <if test="guarantorFlag != null and guarantorFlag == 'Y'.toString() and guarantorId != null">guarantor_id = #{guarantorId},</if>
+            <if test="guarantorName != null and guarantorName != ''">guarantor_name = #{guarantorName},</if>
             <if test="archiveFlag != null and archiveFlag != ''">archive_flag = #{archiveFlag},</if>
             <if test="archiveFlag != null and archiveFlag == 'Y'.toString()">archive_time = now(),</if>
             <if test="archiveFlag != null and archiveFlag == 'N'.toString()">archive_time = null,</if>
@@ -245,13 +285,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <!-- 按状态统计资料数量 -->
     <select id="selectMaterialStatusCounts" resultType="map">
-        select m.status, count(1) as cnt
+        select (<include refid="materialStatusExpr"><property name="alias" value="m"/></include>) as status, count(1) as cnt
         from proj_material m
         left join proj_project p on p.id = m.project_id
         where m.del_flag = '0'
           and p.status in ('closed', 'archived')
-        group by m.status
-        order by m.status
+        group by 1
+        order by 1
     </select>
 
     <!-- 动态读取指定表的物理列元数据（列名 + 中文注释），供列表列显隐功能复用 -->

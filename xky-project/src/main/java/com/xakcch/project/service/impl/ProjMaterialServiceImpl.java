@@ -118,30 +118,35 @@ public class ProjMaterialServiceImpl implements IProjMaterialService
         ProjMaterial material = materialMapper.selectMaterialById(materialId);
         if (material == null) throw new ServiceException("资料不存在");
 
-        // 校验担保人：本次标记需要担保但未选择担保人时拦截
-        if ("Y".equals(data.getGuarantorFlag()) && data.getGuarantorId() == null)
-            throw new ServiceException("已勾选需要担保人，请选择担保人");
+        // 校验担保人：本次标记需要担保但未填写担保人姓名时拦截
+        if ("Y".equals(data.getGuarantorFlag()) && isBlank(data.getGuarantorName()))
+            throw new ServiceException("已勾选需要担保人，请填写担保人姓名");
 
-        // 状态：pending -> received；received 保持 received（再次领取登记）
-        String newStatus = "pending".equals(material.getStatus()) ? "received" : material.getStatus();
+        // 校验领取类型：电子版 / 纸质版 / 电子+纸质版（决定资料状态派生口径）
+        if (isBlank(data.getPickupType()))
+            throw new ServiceException("请选择领取类型（电子版 / 纸质版 / 电子+纸质版）");
 
         // 交付时间即领取时间，刷新为当前领取时刻（避免历史记录都是同一旧时间）
         Date now = new Date();
         data.setSubmitTime(now);
-        // 更新主表本次领取信息（领取时间/是否担保/担保人/备注/状态等）
+        // 更新主表本次领取信息（是否担保 / 担保人姓名 / 登记备注 / 归档标志等）
+        // 资料状态不落库：由「领取流转的 pickup_type 并集」实时派生（见 ProjMaterialMapper.materialStatusExpr）
         data.setId(materialId);
-        data.setStatus(newStatus);
+        data.setStatus(null);
         data.setUpdateBy(userName);
         materialMapper.updateMaterial(data);
 
-        // 写入历史记录（领取人 + 担保人 + 领取时间 + 备注）
+        // 写入历史记录（领取人 + 担保人姓名 + 领取时间 + 领取备注）
         ProjMaterialFlow flow = new ProjMaterialFlow();
         flow.setMaterialId(materialId);
         flow.setFlowType("领取");
         flow.setUserId(userId);
-        flow.setGuarantorId("Y".equals(data.getGuarantorFlag()) ? data.getGuarantorId() : null);
+        flow.setGuarantorName("Y".equals(data.getGuarantorFlag()) ? data.getGuarantorName() : null);
+        // 领取类型（电子版 / 纸质版 / 电子+纸质版）：写入流转记录，资料状态据此派生
+        flow.setPickupType(data.getPickupType());
         flow.setOperateTime(now);
-        flow.setRemark(data.getRemark());
+        // 领取备注只进流转记录，不覆盖资料登记备注
+        flow.setRemark(data.getBorrowRemark());
         // 快照：记录本次领取时的资料信息（联系人/电话/成果类型等）供历史追溯
         try {
             flow.setSnapshot(MAPPER.writeValueAsString(data));
@@ -231,16 +236,15 @@ public class ProjMaterialServiceImpl implements IProjMaterialService
         addColumn(columns, "status", "资料状态", "dict", "business", true, "status");
         addColumn(columns, "receiveTime", "领取时间", "date", "business", true, "receiveTime");
         addColumn(columns, "archiveFlag", "归档状态", "dict", "business", true, "archiveFlag");
-        addColumn(columns, "submitStatus", "提交状态", "dict", "business", false, "submitStatus");
         addColumn(columns, "guarantorFlag", "是否担保", "dict", "business", false, "guarantorFlag");
-        addColumn(columns, "guarantorId", "担保人", "user", "business", false, "guarantorId");
+        addColumn(columns, "guarantorName", "担保人", "text", "business", false, "guarantorName");
         addColumn(columns, "remark", "备注", "text", "business", true, "remark");
 
         // ---- 物理表新增列自动发现（不在固定清单中的列 → 业务组末尾，默认隐藏） ----
         Set<String> known = new HashSet<>(Arrays.asList(
             "id", "project_id", "submit_time", "contact_name", "contact_phone",
             "result_type", "archive_dir", "status", "submit_status", "remark",
-            "guarantor_flag", "guarantor_id",
+            "guarantor_flag", "guarantor_id", "guarantor_name",
             "archive_flag", "archive_time",
             "extra_data", "del_flag", "create_by", "create_time", "update_by", "update_time"));
         List<Map<String, Object>> tableColumns = materialMapper.selectTableColumns("proj_material");
@@ -298,6 +302,12 @@ public class ProjMaterialServiceImpl implements IProjMaterialService
         col.put("defaultVisible", defaultVisible);
         col.put("prop", prop);
         columns.add(col);
+    }
+
+    /** 空串 / 空白判定 */
+    private boolean isBlank(String s)
+    {
+        return s == null || s.trim().isEmpty();
     }
 
     /** 数据库列名（snake_case）→ Java 属性名（camelCase） */
