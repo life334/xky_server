@@ -94,16 +94,6 @@ public interface IProjProjectService
     public int changeProjectStatus(Long id, String targetStatus);
 
     /**
-     * 导入项目数据（Excel文件解析后批量插入）
-     *
-     * @param projectList 项目列表
-     * @param isUpdateSupport 是否更新已存在数据
-     * @param operName 操作人
-     * @return 结果消息
-     */
-    public String importProject(List<ProjProject> projectList, Boolean isUpdateSupport, String operName);
-
-    /**
      * 批量新增项目（区域粘贴）
      *
      * @param projectList 项目列表

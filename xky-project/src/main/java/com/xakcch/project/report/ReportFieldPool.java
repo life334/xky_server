@@ -48,7 +48,7 @@ public class ReportFieldPool
         addField("rowNo", "序号", "agg", "项目信息", "number", false, null);
         addField("projectCode", "工程编号", "subject", "项目信息", "string", true, null);
         addField("projectName", "项目名称", "subject", "项目信息", "string", true, null);
-        addField("engineeringProject", "工程项目", "subject", "项目信息", "string", true, null);
+        addField("engineeringProject", "项目类别", "subject", "项目信息", "string", true, null);
         addField("clientUnit", "委托单位", "subject", "项目信息", "string", true, null);
         addField("contactName", "联系人", "subject", "项目信息", "string", true, null);
         addField("contactPhone", "联系电话", "subject", "项目信息", "string", true, null);
@@ -246,7 +246,7 @@ public class ReportFieldPool
         //   合同金额：单价合同 → 文本"单价合同"；总价合同 → 合同总金额（多项目由导出层合并单元格）；无合同 → 空
         //   欠款金额：项目结算金额（外部产值合计）- 已收金额；未结算（外部产值为空/0）→ 空
         boolean isYhdz = field.getTemplateId() != null && field.getTemplateId() == 3L;
-        // 项目名称列 = 该项目的工程项目字段值（模板3专属，不影响其他模板）
+        // 项目名称列 = 该项目的项目类别字段值（模板3专属，不影响其他模板）
         if ("projectName".equals(key) && isYhdz)
         {
             return row.get("engineeringProject");
@@ -291,7 +291,7 @@ public class ReportFieldPool
             return cmp > 0 ? "超额" : (cmp == 0 ? "已结清" : "未结清");
         }
         // 模板4「市场性任务到账收入确认表」列语义定制：
-        //   项目类别列 = 工程项目字段值；到账金额 0 显示空；发票情况仅在到账>0 时显示已/未开票
+        //   项目类别列 = 项目类别字段值；到账金额 0 显示空；发票情况仅在到账>0 时显示已/未开票
         boolean isScsr = field.getTemplateId() != null && (field.getTemplateId() == 4L || field.getTemplateId() == 7L);
         if ("categoryName".equals(key) && isScsr)
         {

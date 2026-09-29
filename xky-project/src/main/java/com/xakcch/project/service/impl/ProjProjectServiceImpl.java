@@ -430,93 +430,6 @@ public class ProjProjectServiceImpl implements IProjProjectService
     }
 
     /**
-     * 导入项目数据（Excel文件解析后批量插入）
-     */
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public String importProject(List<ProjProject> projectList, Boolean isUpdateSupport, String operName)
-    {
-        if (projectList == null || projectList.isEmpty())
-        {
-            throw new ServiceException("导入数据不能为空");
-        }
-        int successNum = 0;
-        int failureNum = 0;
-        StringBuilder successMsg = new StringBuilder();
-        StringBuilder failureMsg = new StringBuilder();
-        for (ProjProject project : projectList)
-        {
-            try
-            {
-                // 校验工程编号
-                if (project.getProjectCode() == null || project.getProjectCode().isEmpty())
-                {
-                    failureNum++;
-                    failureMsg.append("<br/>工程编号为空，跳过");
-                    continue;
-                }
-                // 检查重复
-                ProjProject existing = projectMapper.checkProjectCodeUnique(project);
-                if (existing != null)
-                {
-                    if (isUpdateSupport)
-                    {
-                        project.setId(existing.getId());
-                        project.setUpdateBy(operName);
-                        if (project.getImportRemark() != null)
-                        {
-                            project.setRemark(project.getImportRemark());
-                        }
-                        resolveCategoryAndLeaders(project);
-                        updateProject(project);
-                        // 更新已有任务的日期/时长（Excel 导入的分配日期/验收日期/总时长覆盖到所有关联任务）
-                        updateImportedTaskFields(project.getId(), project);
-                        successNum++;
-                        successMsg.append("<br/>更新成功：" + project.getProjectCode());
-                    }
-                    else
-                    {
-                        failureNum++;
-                        failureMsg.append("<br/>工程编号已存在：" + project.getProjectCode());
-                    }
-                    continue;
-                }
-                // 新增
-                project.setStatus("ongoing");
-                project.setCreateBy(operName);
-                // 备注：从 Excel 导入字段写入 BaseEntity.remark
-                if (project.getImportRemark() != null)
-                {
-                    project.setRemark(project.getImportRemark());
-                }
-                resolveCategoryAndLeaders(project);
-                recalcTotalDuration(project);
-                projectMapper.insertProject(project);                  // 1. 插入项目
-                Long[] leaderIds = project.getLeaderIds();
-                if (leaderIds != null && leaderIds.length > 0)
-                {
-                    leaderMapper.insertProjectLeaders(project.getId(), leaderIds, operName);  // 2. 负责人关联
-                    createImportedTask(project, operName);                                   // 3. 任务（含日期/时长）
-                }
-                successNum++;
-                successMsg.append("<br/>新增成功：" + project.getProjectCode());
-            }
-            catch (Exception e)
-            {
-                failureNum++;
-                failureMsg.append("<br/>" + project.getProjectCode() + " 导入失败：" + e.getMessage());
-            }
-        }
-        if (failureNum > 0)
-        {
-            failureMsg.insert(0, "导入失败！共 " + failureNum + " 条数据格式不正确");
-            throw new ServiceException(failureMsg.toString());
-        }
-        successMsg.insert(0, "导入成功！共 " + successNum + " 条");
-        return successMsg.toString();
-    }
-
-    /**
      * 批量新增项目（区域粘贴）
      */
     @Override
@@ -638,80 +551,6 @@ public class ProjProjectServiceImpl implements IProjProjectService
             task.setStatus("pending");
             task.setCreateBy(operName);
             taskMapper.insertTask(task);
-        }
-    }
-
-    /**
-     * Excel 导入时创建任务（含分配日期/验收日期/总时长）
-     * 每个负责人创建一条任务记录
-     *
-     * @param project  项目对象（含 leaderIds 和导入的日期/时长字段）
-     * @param operName 操作人
-     */
-    private void createImportedTask(ProjProject project, String operName)
-    {
-        Long[] leaderIds = project.getLeaderIds();
-        if (leaderIds == null || leaderIds.length == 0) return;
-
-        String taskName = (project.getProjectName() != null && !project.getProjectName().isEmpty())
-                ? project.getProjectName() : "项目任务";
-        for (Long userId : leaderIds)
-        {
-            ProjTask task = new ProjTask();
-            task.setProjectId(project.getId());
-            task.setUserId(userId);
-            task.setTaskName(taskName);
-            task.setAssignDate(project.getImportTaskAssignDate());
-            task.setActualFinishDate(project.getImportTaskFinishDate());
-            task.setTotalDuration(project.getImportTaskDuration());
-            task.setStatus("ongoing");
-            task.setCreateBy(operName);
-            taskMapper.insertTask(task);
-        }
-    }
-
-    /**
-     * Excel 更新导入时，用导入的日期/时长覆盖项目下所有已有任务
-     * 只更新非 null 字段，避免误清空
-     *
-     * @param projectId 项目ID
-     * @param project   含导入日期/时长的项目对象
-     */
-    private void updateImportedTaskFields(Long projectId, ProjProject project)
-    {
-        if (project.getImportTaskAssignDate() == null
-                && project.getImportTaskFinishDate() == null
-                && project.getImportTaskDuration() == null)
-        {
-            return; // 没有导入日期信息，跳过
-        }
-        ProjTask query = new ProjTask();
-        query.setProjectId(projectId);
-        List<ProjTask> tasks = taskMapper.selectTaskList(query);
-        if (tasks == null || tasks.isEmpty()) return;
-
-        for (ProjTask task : tasks)
-        {
-            boolean changed = false;
-            if (project.getImportTaskAssignDate() != null)
-            {
-                task.setAssignDate(project.getImportTaskAssignDate());
-                changed = true;
-            }
-            if (project.getImportTaskFinishDate() != null)
-            {
-                task.setActualFinishDate(project.getImportTaskFinishDate());
-                changed = true;
-            }
-            if (project.getImportTaskDuration() != null)
-            {
-                task.setTotalDuration(project.getImportTaskDuration());
-                changed = true;
-            }
-            if (changed)
-            {
-                taskMapper.updateTask(task);
-            }
         }
     }
 
@@ -840,12 +679,11 @@ public class ProjProjectServiceImpl implements IProjProjectService
         addColumn(columns, "clientUnit", "委托单位", "text", "business", true, "clientUnit");
         addColumn(columns, "contactName", "联系人", "text", "business", true, "contactName");
         addColumn(columns, "contactPhone", "联系电话", "text", "business", true, "contactPhone");
-        addColumn(columns, "engineeringProject", "工程项目", "text", "business", true, "engineeringProject");
+        addColumn(columns, "engineeringProject", "项目类别", "text", "business", true, "engineeringProject");
         addColumn(columns, "projectLocation", "工程地点", "text", "business", true, "projectLocation");
         addColumn(columns, "status", "状态", "dict", "business", true, "status");
         addColumn(columns, "closeTime", "办结日期", "date", "business", true, "closeTime");
         addColumn(columns, "projectNature", "项目性质", "dict", "business", true, "projectNature");
-        addColumn(columns, "categoryName", "项目类别", "text", "business", false, "categoryName");
         addColumn(columns, "contractName", "合同", "text", "business", false, "contractName");
         addColumn(columns, "leaderNames", "负责人", "text", "business", true, "leaderNames");
         addColumn(columns, "assignDate", "安排日期", "date", "business", true, "assignDate");

@@ -88,7 +88,7 @@ public class SysRoleFieldAuthController extends BaseController
         tables.add(buildTable("proj_project", "项目主表", new String[][]{
             {"project_code",       "工程编号"},
             {"project_name",       "项目名称"},
-            {"engineering_project","工程项目"},
+            {"engineering_project","项目类别"},
             {"project_category_id","项目类别"},
             {"client_unit",        "委托单位"},
             {"contact_name",       "联系人"},

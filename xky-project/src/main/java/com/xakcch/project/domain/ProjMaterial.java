@@ -67,7 +67,7 @@ public class ProjMaterial extends BaseEntity
     /** 工程编号（JOIN proj_project） */
     private String projectCode;
 
-    /** 委托任务（JOIN proj_project） */
+    /** 项目类别（JOIN proj_project.engineering_project） */
     private String engineeringProject;
 
     /** 工程地点（JOIN proj_project） */

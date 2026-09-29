@@ -28,7 +28,8 @@ public class ProjProject extends BaseEntity
     @Excel(name = "项目名称")
     private String projectName;
 
-    /** 工程项目（自由文本，用户自行填写） */
+    /** 工程项目：存放项目所属类别名称（历史列名 engineering_project，与 project_category_id 同源）
+     *  @Excel 名保持“工程项目”不动——它同时是项目导入模板表头与导入解析的匹配键，改了会打断导入。 */
     @Excel(name = "工程项目")
     private String engineeringProject;
 
@@ -134,7 +135,7 @@ public class ProjProject extends BaseEntity
 
     // ===== 以下为列表查询专用字段 =====
 
-    /** 全局关键字搜索（匹配工程编号/项目名称/委托单位/工程项目/联系人/工程地点） */
+    /** 全局关键字搜索（匹配工程编号/项目名称/委托单位/项目类别/联系人/工程地点） */
     private String keyword;
 
     // ===== 以下为首笔付款字段（表单提交用，非持久化） =====

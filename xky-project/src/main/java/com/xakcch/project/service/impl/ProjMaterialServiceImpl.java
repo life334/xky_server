@@ -220,7 +220,7 @@ public class ProjMaterialServiceImpl implements IProjMaterialService
 
         // ---- 业务字段（固定顺序，默认可见性 = 当前页面展示列） ----
         addColumn(columns, "projectCode", "工程编号", "text", "business", true, "projectCode");
-        addColumn(columns, "engineeringProject", "委托任务", "text", "business", true, "engineeringProject");
+        addColumn(columns, "engineeringProject", "项目类别", "text", "business", true, "engineeringProject");
         addColumn(columns, "projectLocation", "工程地点", "text", "business", true, "projectLocation");
         addColumn(columns, "projectName", "项目名称", "text", "business", true, "projectName");
         addColumn(columns, "submitTime", "交付时间", "date", "business", true, "submitTime");

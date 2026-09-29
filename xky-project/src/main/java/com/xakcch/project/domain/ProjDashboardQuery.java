@@ -33,7 +33,7 @@ public class ProjDashboardQuery
     /** 项目负责人（单选，可空） */
     private Long leaderId;
 
-    /** 项目小类（单选，可空） */
+    /** 项目类别（单选，可空） */
     private Long categoryId;
 
     public String getBeginDate()

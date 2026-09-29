@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 import com.xakcch.common.annotation.Log;
 import com.xakcch.common.core.controller.BaseController;
 import com.xakcch.common.core.domain.AjaxResult;
@@ -67,7 +66,7 @@ public class ProjProjectController extends BaseController
 
     /**
      * 查询字段去重值列表（高级筛选下拉选项用）
-     * 支持字段：clientUnit（委托单位）、engineeringProject（工程项目）
+     * 支持字段：clientUnit（委托单位）、engineeringProject（项目类别）
      */
     @GetMapping("/distinctValues")
     public AjaxResult distinctValues(@RequestParam String field)
@@ -206,30 +205,6 @@ public class ProjProjectController extends BaseController
     {
         checkClosedProject(id, "变更状态");
         return toAjax(projectService.changeProjectStatus(id, status));
-    }
-
-    /**
-     * 下载导入模板
-     */
-    @PostMapping("/importTemplate")
-    public void importTemplate(HttpServletResponse response)
-    {
-        ExcelUtil<ProjProject> util = new ExcelUtil<ProjProject>(ProjProject.class);
-        util.importTemplateExcel(response, "项目数据");
-    }
-
-    /**
-     * 导入项目数据（Excel文件上传）
-     */
-    @PreAuthorize("@ss.hasPermi('project:project:import')")
-    @Log(title = "项目信息", businessType = BusinessType.IMPORT)
-    @PostMapping("/importData")
-    public AjaxResult importData(MultipartFile file, boolean updateSupport) throws Exception
-    {
-        ExcelUtil<ProjProject> util = new ExcelUtil<ProjProject>(ProjProject.class);
-        List<ProjProject> projectList = util.importExcel(file.getInputStream());
-        String message = projectService.importProject(projectList, updateSupport, getUsername());
-        return AjaxResult.success(message);
     }
 
     /**

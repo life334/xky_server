@@ -59,7 +59,7 @@ public class ProjWorkload extends BaseEntity
     /** 子项序号（项目内自增，历史导入同工程编号多记录时区分子项） */
     private Integer subItemNo;
 
-    /** 子项名称（=委托任务，工作量列表展示用） */
+    /** 子项名称（=项目类别名称，工作量列表展示用） */
     private String subItemName;
 
     /** 计价单位（如：平方公里、公里、宗） */

@@ -70,7 +70,6 @@ public class ProjSettlementController extends BaseController
         addColumn(columns, "projectName", "项目名称", "text", false, "projectName");
         addColumn(columns, "clientUnit", "委托单位", "text", true, "clientUnit");
         addColumn(columns, "projectLocation", "工程地点", "text", true, "projectLocation");
-        addColumn(columns, "engineeringProject", "工程项目", "text", false, "engineeringProject");
         addColumn(columns, "leaderNames", "负责人", "text", false, "leaderNames");
         addColumn(columns, "userName", "人员", "text", false, "userName");
         addColumn(columns, "categoryName", "项目类别", "text", false, "categoryName");
