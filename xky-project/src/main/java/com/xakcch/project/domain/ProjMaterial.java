@@ -91,6 +91,18 @@ public class ProjMaterial extends BaseEntity
     /** 提交时间范围-结束 */
     private transient Date submitTimeEnd;
 
+    /** 合同 id（筛选：资料页合同下拉远程搜索选中后传入） */
+    private transient Long contractId;
+
+    /** 项目来源（筛选：manual=手动录入 / import=Excel 导入） */
+    private transient String dataSource;
+
+    /** 办结日期范围-开始（筛选） */
+    private transient String closeDateBegin;
+
+    /** 办结日期范围-结束（筛选） */
+    private transient String closeDateEnd;
+
     // ===== getter/setter =====
 
     public Long getId()
@@ -299,6 +311,14 @@ public class ProjMaterial extends BaseEntity
     public void setSubmitTimeBegin(Date submitTimeBegin) { this.submitTimeBegin = submitTimeBegin; }
     public Date getSubmitTimeEnd() { return submitTimeEnd; }
     public void setSubmitTimeEnd(Date submitTimeEnd) { this.submitTimeEnd = submitTimeEnd; }
+    public Long getContractId() { return contractId; }
+    public void setContractId(Long contractId) { this.contractId = contractId; }
+    public String getDataSource() { return dataSource; }
+    public void setDataSource(String dataSource) { this.dataSource = dataSource; }
+    public String getCloseDateBegin() { return closeDateBegin; }
+    public void setCloseDateBegin(String closeDateBegin) { this.closeDateBegin = closeDateBegin; }
+    public String getCloseDateEnd() { return closeDateEnd; }
+    public void setCloseDateEnd(String closeDateEnd) { this.closeDateEnd = closeDateEnd; }
 
     @Override
     public String toString() {

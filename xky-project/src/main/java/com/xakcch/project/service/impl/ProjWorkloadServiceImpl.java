@@ -186,7 +186,8 @@ public class ProjWorkloadServiceImpl implements IProjWorkloadService
                     str(row.get("clientUnit")),
                     date(row.get("closeTime")),
                     num(row.get("internalOutput")),
-                    num(row.get("externalOutput"))));
+                    num(row.get("externalOutput")),
+                    str(row.get("projectNature"))));
         }
         return result;
     }

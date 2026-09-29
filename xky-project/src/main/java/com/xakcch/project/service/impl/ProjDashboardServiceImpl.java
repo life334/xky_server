@@ -219,6 +219,10 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         Map<String, Object> meta = new HashMap<>();
         meta.put("durationMaintainedRate", manualTotal > 0
                 ? Math.round(maintained * 1000.0 / manualTotal) / 10.0 : 0.0);
+        // 指令性任务（期间内办结）：其外部产值不计入外部产值 / 应收，单列以便对账
+        Map<String, Object> mandate = dashboardMapper.mandateOutputStats(query);
+        meta.put("mandateExternalOutput", toBig(mandate == null ? null : mandate.get("mandateExternalOutput")));
+        meta.put("mandateProjectCount", mandate == null ? 0 : toInt(mandate.get("mandateProjectCount")));
         data.put("meta", meta);
 
         return data;

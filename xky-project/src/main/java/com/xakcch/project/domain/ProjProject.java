@@ -60,6 +60,13 @@ public class ProjProject extends BaseEntity
     /** 项目状态 */
     private String status;
 
+    /**
+     * 项目性质：normal=常规项目（外部产值计入应收）；mandate=指令性任务
+     * （外部产值不计入应收 / 全量外部产值，仅内部产值计入）
+     */
+    @Excel(name = "项目性质")
+    private String projectNature;
+
     /** 动态字段数据（JSONB） */
     private String extraData;
 
@@ -293,6 +300,16 @@ public class ProjProject extends BaseEntity
     public void setStatus(String status)
     {
         this.status = status;
+    }
+
+    public String getProjectNature()
+    {
+        return projectNature;
+    }
+
+    public void setProjectNature(String projectNature)
+    {
+        this.projectNature = projectNature;
     }
 
     public String getExtraData()
@@ -599,6 +616,7 @@ public class ProjProject extends BaseEntity
             .append("contractId", getContractId())
             .append("dataSource", getDataSource())
             .append("status", getStatus())
+            .append("projectNature", getProjectNature())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())
             .append("relatedProjectId", getRelatedProjectId())

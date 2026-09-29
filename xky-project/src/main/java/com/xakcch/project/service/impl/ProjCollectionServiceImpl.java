@@ -45,10 +45,12 @@ public class ProjCollectionServiceImpl implements IProjCollectionService
     }
 
     /**
-     * 统计卡：项目级口径 + 到账窗口口径合并为一份响应
+     * 统计卡：项目级口径 + 到账窗口口径 + 指令性任务口径，合并为一份响应
      *
      * ① pendingCount/pendingAmount/overdueCount/unsettledCount —— 由 collectionBase + 公共筛选条件算出（随筛选联动）
      * ② windowReceived/windowPrevReceived —— 到账流水窗口净额（退款负冲），跟随筛选中的项目级子集
+     * ③ mandateExternalOutput/mandateProjectCount —— 指令性任务项目的外部产值与项目数
+     *    （外部产值不计入应收，故在 ① 中已被排除，这里单独列示以便对账）
      */
     @Override
     public Map<String, Object> selectCollectionStats(Map<String, Object> params)
@@ -64,6 +66,14 @@ public class ProjCollectionServiceImpl implements IProjCollectionService
         {
             result.putAll(receivedStats);
         }
+        Map<String, Object> mandateStats = collectionMapper.selectMandateExternalStats(params);
+        if (mandateStats != null)
+        {
+            result.putAll(mandateStats);
+        }
+        // 兜底：SQL 恒返回一行，但防御性补零，避免前端 undefined
+        result.putIfAbsent("mandateExternalOutput", BigDecimal.ZERO);
+        result.putIfAbsent("mandateProjectCount", 0);
         return result;
     }
 

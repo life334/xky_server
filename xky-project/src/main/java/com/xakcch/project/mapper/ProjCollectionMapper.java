@@ -36,6 +36,14 @@ public interface ProjCollectionMapper
     public Map<String, Object> selectReceivedStats(Map<String, Object> params);
 
     /**
+     * 指令性任务卡：当前筛选条件下「指令性任务」项目的外部产值合计 + 项目数
+     * （= 从全量外部产值改道出来、不计入应收的那部分）
+     *
+     * @param params 与 selectCollectionList 同一套筛选条件
+     */
+    public Map<String, Object> selectMandateExternalStats(Map<String, Object> params);
+
+    /**
      * 待结算提醒列表（已办结但无外部产值的项目）
      */
     public List<Map<String, Object>> selectUnsettledList(Map<String, Object> params);

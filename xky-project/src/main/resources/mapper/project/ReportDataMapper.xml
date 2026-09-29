@@ -102,13 +102,20 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             left join sys_user su on su.user_id = pl.user_id
             group by pl.project_id
         ) leader on leader.project_id = p.id
+        <!--
+          外部产值：指令性任务（proj_project.project_nature = 'mandate'）的外部产值不计入
+          结算金额 / 欠款 / 挂账口径（改道到「指令性任务」独立指标）；内部产值照常计入。
+          ⚠️ 在子查询内部一次性剔除，使下游所有 w_sum.external_output 的用法（含多筛选条件）自动一致。
+        -->
         left join (
-            select project_id,
-                   sum(coalesce(external_output, 0)) as external_output,
-                   sum(coalesce(internal_output, 0)) as internal_output
-            from proj_workload
-            where del_flag = '0'
-            group by project_id
+            select wk.project_id,
+                   sum(case when coalesce(pj.project_nature, 'normal') = 'mandate' then 0
+                            else coalesce(wk.external_output, 0) end) as external_output,
+                   sum(coalesce(wk.internal_output, 0)) as internal_output
+            from proj_workload wk
+            join proj_project pj on pj.id = wk.project_id
+            where wk.del_flag = '0'
+            group by wk.project_id
         ) w_sum on w_sum.project_id = p.id
         <!-- 外部工作量文字描述（模板4 scsr 项目工作量列）：类别名:工作量+单位，多条以换行分隔 -->
         left join (

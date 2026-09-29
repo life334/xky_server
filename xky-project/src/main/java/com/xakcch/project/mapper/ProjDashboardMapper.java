@@ -128,4 +128,10 @@ public interface ProjDashboardMapper
 
     /** 未关联合同候选行（仅手动录入；3 个工作日判定在 Java 层） */
     public List<Map<String, Object>> contractMissingCandidates(@Param("q") com.xakcch.project.domain.ProjDashboardQuery q);
+
+    /**
+     * 指令性任务卡：期间内办结的指令性项目的外部产值 + 项目数
+     * （该部分外部产值不计入外部产值 / 应收，单列以便对账）
+     */
+    public Map<String, Object> mandateOutputStats(@Param("q") com.xakcch.project.domain.ProjDashboardQuery q);
 }

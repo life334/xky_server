@@ -97,6 +97,21 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="projectLocation != null and projectLocation != ''">
             AND p.project_location like concat('%', #{projectLocation}, '%')
         </if>
+        <!-- 合同筛选（按合同 id，下拉远程搜索选中后传入） -->
+        <if test="contractId != null">
+            AND p.contract_id = #{contractId}
+        </if>
+        <!-- 项目来源筛选（manual=手动录入 / import=Excel 导入） -->
+        <if test="dataSource != null and dataSource != ''">
+            AND p.data_source = #{dataSource}
+        </if>
+        <!-- 办结日期范围（改为按项目办结时间 close_time 过滤，替代已废弃的交付时间 submit_time） -->
+        <if test="closeDateBegin != null and closeDateBegin != ''">
+            AND p.close_time &gt;= to_date(#{closeDateBegin}, 'YYYY-MM-DD')
+        </if>
+        <if test="closeDateEnd != null and closeDateEnd != ''">
+            AND p.close_time &lt; to_date(#{closeDateEnd}, 'YYYY-MM-DD') + interval '1 day'
+        </if>
         order by m.id desc
     </select>
 

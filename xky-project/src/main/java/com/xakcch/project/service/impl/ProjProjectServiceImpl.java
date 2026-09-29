@@ -34,6 +34,7 @@ import com.xakcch.project.mapper.ProjWorkloadMapper;
 import com.xakcch.project.service.IProjProjectService;
 import com.xakcch.project.service.IProjDashboardService;
 import com.xakcch.project.service.IProjPriceRecalcService;
+import com.xakcch.project.service.IProjMandateService;
 import com.xakcch.system.mapper.SysUserMapper;
 import com.xakcch.system.service.ISysWorkdayCalendarService;
 import com.xakcch.common.core.domain.entity.SysUser;
@@ -96,6 +97,9 @@ public class ProjProjectServiceImpl implements IProjProjectService
 
     @Autowired
     private IProjPriceRecalcService priceRecalcService;
+
+    @Autowired
+    private IProjMandateService mandateService;
 
     /**
      * 查询项目详情
@@ -177,6 +181,9 @@ public class ProjProjectServiceImpl implements IProjProjectService
         {
             project.setDataSource("manual");
         }
+        // 指令性任务自动打标：委托单位命中规则关键词 ⇒ 项目性质 = mandate
+        // （仅新建时判定，避免覆盖人工在项目列表里的批量调整）
+        project.setProjectNature(mandateService.resolveNature(project.getClientUnit()));
         // 总时长自动计算（安排日期 → 今天，仅工作日；未办结时保存即重算）
         recalcTotalDuration(project);
         int rows = projectMapper.insertProject(project);
@@ -837,6 +844,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
         addColumn(columns, "projectLocation", "工程地点", "text", "business", true, "projectLocation");
         addColumn(columns, "status", "状态", "dict", "business", true, "status");
         addColumn(columns, "closeTime", "办结日期", "date", "business", true, "closeTime");
+        addColumn(columns, "projectNature", "项目性质", "dict", "business", true, "projectNature");
         addColumn(columns, "categoryName", "项目类别", "text", "business", false, "categoryName");
         addColumn(columns, "contractName", "合同", "text", "business", false, "contractName");
         addColumn(columns, "leaderNames", "负责人", "text", "business", true, "leaderNames");
@@ -854,7 +862,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
             "project_location", "status", "assign_date", "duration_require", "total_duration",
             "project_name", "remark", "id", "create_by", "create_time", "update_by", "update_time",
             "del_flag", "extra_data", "project_category_id", "contract_id", "related_project_id",
-            "close_time", "data_source"));
+            "close_time", "data_source", "project_nature"));
         List<Map<String, Object>> tableColumns = projectMapper.selectTableColumns("proj_project");
         if (tableColumns != null)
         {

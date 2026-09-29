@@ -279,6 +279,13 @@
         </if>
     </sql>
 
+    <!-- 指令性任务排除片：仅用于「钱」的口径（外部产值 / 欠款 / 到账）。
+         指令性项目的外部产值改道到独立的「指令性任务」指标，不计入外部产值与应收；
+         但项目计数类指标（新增/办结/KPI）不受影响，故不做全局过滤。 -->
+    <sql id="v2ExcludeMandate">
+        AND COALESCE(p.project_nature, 'normal') &lt;&gt; 'mandate'
+    </sql>
+
     <!-- 矩阵专用筛选片（已显式 join proj_leader pl，直接等值过滤） -->
     <sql id="v2MatrixFilter">
         <if test="q.clientUnit != null and q.clientUnit != ''">
@@ -369,6 +376,7 @@
         JOIN proj_project p ON p.id = pay.project_id AND p.del_flag = '0'
         WHERE pay.del_flag = '0'
           AND pay.pay_time IS NOT NULL
+          AND COALESCE(p.project_nature, 'normal') &lt;&gt; 'mandate'
         <include refid="v2Filter"/>
     </select>
 
@@ -426,7 +434,7 @@
                    AND p.close_time &lt; #{q.endDate}::date + interval '1 day') AS "closedCount",
                COALESCE(SUM(ws.int_out) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
                    AND p.close_time &lt; #{q.endDate}::date + interval '1 day'), 0) AS "internalOutput",
-               COALESCE(SUM(ws.ext_out) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
+               COALESCE(SUM(CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN 0 ELSE COALESCE(ws.ext_out, 0) END) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
                    AND p.close_time &lt; #{q.endDate}::date + interval '1 day'), 0) AS "externalOutput",
                COALESCE(SUM(COALESCE(ct.contract_amount, 0)) FILTER (WHERE p.assign_date &gt;= #{q.beginDate}::date
                    AND p.assign_date &lt; #{q.endDate}::date + interval '1 day'), 0) AS "contractAmount"
@@ -452,7 +460,7 @@
                    AND p.assign_date &lt; #{q.endDate}::date + interval '1 day') AS "count",
                COALESCE(SUM(ws.int_out) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
                    AND p.close_time &lt; #{q.endDate}::date + interval '1 day'), 0) AS "internalOutput",
-               COALESCE(SUM(ws.ext_out) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
+               COALESCE(SUM(CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN 0 ELSE COALESCE(ws.ext_out, 0) END) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
                    AND p.close_time &lt; #{q.endDate}::date + interval '1 day'), 0) AS "externalOutput"
         FROM proj_leader pl
         JOIN proj_project p ON p.id = pl.project_id AND p.del_flag = '0'
@@ -505,7 +513,8 @@
             ) m
             LEFT JOIN (
                 SELECT date_trunc('month', p.close_time) AS mo,
-                       SUM(COALESCE(wk.external_output, 0)) AS total_output
+                       SUM(CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN 0
+                                ELSE COALESCE(wk.external_output, 0) END) AS total_output
                 FROM proj_workload wk
                 JOIN proj_project p ON p.id = wk.project_id AND p.del_flag = '0'
                 WHERE wk.del_flag = '0' AND p.close_time IS NOT NULL
@@ -560,9 +569,9 @@
     <!-- 欠款按年（办结年）：产值/到账/欠款（先项目级 GREATEST 防正负互抵再按年 SUM） -->
     <select id="debtStatsByYear" resultType="map">
         SELECT to_char(date_trunc('year', p.close_time), 'YYYY') AS "year",
-               COALESCE(SUM(ws.ext_out), 0) AS "outputBase",
+               COALESCE(SUM(CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN 0 ELSE COALESCE(ws.ext_out, 0) END), 0) AS "outputBase",
                COALESCE(SUM(ps.recv), 0) AS "received",
-               COALESCE(SUM(GREATEST(COALESCE(ws.ext_out, 0) - COALESCE(ps.recv, 0), 0)), 0) AS "debt"
+               COALESCE(SUM(GREATEST(CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN 0 ELSE COALESCE(ws.ext_out, 0) END - COALESCE(ps.recv, 0), 0)), 0) AS "debt"
         FROM proj_project p
         LEFT JOIN (
             SELECT project_id, SUM(COALESCE(external_output, 0)) AS ext_out
@@ -590,7 +599,7 @@
                p.project_name AS "projectName",
                COALESCE(p.client_unit, '') AS "clientUnit",
                p.close_time AS "closeTime",
-               GREATEST(COALESCE(ws.ext_out, 0) - COALESCE(ps.recv, 0), 0) AS "amount",
+               GREATEST(CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN 0 ELSE COALESCE(ws.ext_out, 0) END - COALESCE(ps.recv, 0), 0) AS "amount",
                COALESCE(ln.names, '') AS "leaderNames"
         FROM proj_project p
         LEFT JOIN (
@@ -608,7 +617,7 @@
         <include refid="v2LeaderNames"/>
         WHERE p.del_flag = '0'
           AND p.close_time IS NOT NULL
-          AND GREATEST(COALESCE(ws.ext_out, 0) - COALESCE(ps.recv, 0), 0) &gt; 0
+          AND GREATEST(CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN 0 ELSE COALESCE(ws.ext_out, 0) END - COALESCE(ps.recv, 0), 0) &gt; 0
         <include refid="v2Filter"/>
         ORDER BY p.close_time ASC
     </select>
@@ -628,6 +637,24 @@
           AND p.contract_id IS NULL
           AND p.create_time IS NOT NULL
           AND p.create_time &lt; CURRENT_DATE
+        <include refid="v2Filter"/>
+    </select>
+
+    <!-- 指令性任务卡：期间内办结的指令性项目的外部产值（不计入外部产值 / 应收） -->
+    <select id="mandateOutputStats" resultType="map">
+        SELECT COALESCE(SUM(ws.ext_out), 0) AS "mandateExternalOutput",
+               COUNT(*) AS "mandateProjectCount"
+        FROM proj_project p
+        LEFT JOIN (
+            SELECT project_id, SUM(COALESCE(external_output, 0)) AS ext_out
+            FROM proj_workload WHERE del_flag = '0'
+            GROUP BY project_id
+        ) ws ON ws.project_id = p.id
+        WHERE p.del_flag = '0'
+          AND p.close_time IS NOT NULL
+          AND COALESCE(p.project_nature, 'normal') = 'mandate'
+          AND p.close_time &gt;= #{q.beginDate}::date
+          AND p.close_time &lt; #{q.endDate}::date + interval '1 day'
         <include refid="v2Filter"/>
     </select>
 

@@ -173,4 +173,36 @@ public interface ProjProjectMapper
      * @return 结果
      */
     public int updateProjectCloseTime(@Param("id") Long id, @Param("closeTime") Date closeTime);
+
+    // ==================== 指令性任务（项目性质） ====================
+
+    /**
+     * 规则预览：按委托单位关键词（包含匹配）命中的项目数 + 其中已是指令性任务的数量
+     *
+     * @param keywords 委托单位关键词集合（为空时返回 0，不会全表命中）
+     * @return Map: matchedCount / alreadyCount
+     */
+    public Map<String, Object> previewMandateRule(@Param("keywords") List<String> keywords);
+
+    /**
+     * 按委托单位关键词查命中的项目 id（「一键回填」批量打标用）
+     *
+     * @param keywords   委托单位关键词集合（为空时返回空集合）
+     * @param onlyNormal true=只取当前不是指令性任务的项目（避免重复写入）
+     * @return 项目 id 列表
+     */
+    public List<Long> selectIdsByClientUnitKeywords(@Param("keywords") List<String> keywords,
+                                                    @Param("onlyNormal") boolean onlyNormal);
+
+    /**
+     * 批量设置项目性质（normal / mandate）
+     *
+     * @param ids      项目 id 列表
+     * @param nature   目标性质（normal / mandate）
+     * @param updateBy 操作人
+     * @return 影响行数
+     */
+    public int updateProjectNatureByIds(@Param("ids") List<Long> ids,
+                                        @Param("nature") String nature,
+                                        @Param("updateBy") String updateBy);
 }

@@ -31,6 +31,7 @@ import com.xakcch.project.domain.*;
 import com.xakcch.project.domain.vo.*;
 import com.xakcch.project.mapper.*;
 import com.xakcch.project.service.IProjImportService;
+import com.xakcch.project.service.IProjMandateService;
 
 @Service
 public class ProjImportServiceImpl implements IProjImportService
@@ -80,6 +81,7 @@ public class ProjImportServiceImpl implements IProjImportService
     @Autowired private ProjMaterialMapper materialMapper;
     @Autowired private ProjMaterialFlowMapper materialFlowMapper;
     @Autowired private ProjImportLogMapper importLogMapper;
+    @Autowired private IProjMandateService mandateService;
     @Autowired private PlatformTransactionManager txManager;
     private transient TransactionTemplate _txRequiresNew;
     private TransactionTemplate txRequiresNew() {
@@ -1239,6 +1241,8 @@ public class ProjImportServiceImpl implements IProjImportService
             pj.setEngineeringProject(a.engineeringProject);
             pj.setProjectCategoryId(a.categoryId);
             pj.setClientUnit(a.clientUnit);
+            // 指令性任务自动打标（委托单位命中规则关键词 ⇒ mandate；否则 normal）
+            pj.setProjectNature(mandateService.resolveNature(a.clientUnit));
             pj.setProjectLocation(a.projectLocation);
             pj.setDataSource("import");
             pj.setStatus("closed");

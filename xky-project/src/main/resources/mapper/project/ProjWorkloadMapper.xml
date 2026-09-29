@@ -402,6 +402,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         GROUP BY w.project_id
     </sql>
 
+    <!--
+      外部产值口径（剔除指令性任务）：指令性项目的外部产值「改道」到独立的「指令性任务」指标，
+      不计入外部产值 / 应收。恒等式：外部产值 + 指令性任务 = 全量外部产值。
+      ⚠️ 内部产值不受影响（指令性项目照常计入）。
+    -->
+    <sql id="extOutNormal">CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN 0 ELSE COALESCE(ws.ext_out, 0) END</sql>
+    <sql id="extOutMandate">CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN COALESCE(ws.ext_out, 0) ELSE 0 END</sql>
+
     <sql id="outputBaseFrom">
         FROM proj_project p
         LEFT JOIN (<include refid="outputProjectAgg"/>) ws ON ws.project_id = p.id
@@ -443,8 +451,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectOutputSummary" parameterType="map" resultType="java.util.LinkedHashMap">
         SELECT
             COALESCE(SUM(COALESCE(ws.int_out, 0)), 0) AS "internalOutput",
-            COALESCE(SUM(COALESCE(ws.ext_out, 0)), 0) AS "externalOutput",
-            COUNT(DISTINCT p.id) AS "projectCount"
+            COALESCE(SUM(<include refid="extOutNormal"/>), 0) AS "externalOutput",
+            COUNT(DISTINCT p.id) AS "projectCount",
+            COALESCE(SUM(<include refid="extOutMandate"/>), 0) AS "mandateExternalOutput",
+            COUNT(DISTINCT p.id) FILTER (WHERE COALESCE(p.project_nature, 'normal') = 'mandate') AS "mandateProjectCount"
         <include refid="outputBaseFrom"/>
     </select>
 
@@ -483,8 +493,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 <otherwise>''</otherwise>
             </choose> AS "key",
             COALESCE(SUM(COALESCE(ws.int_out, 0)), 0) AS "internalOutput",
-            COALESCE(SUM(COALESCE(ws.ext_out, 0)), 0) AS "externalOutput",
-            COUNT(DISTINCT p.id) AS "projectCount"
+            COALESCE(SUM(<include refid="extOutNormal"/>), 0) AS "externalOutput",
+            COUNT(DISTINCT p.id) AS "projectCount",
+            COALESCE(SUM(<include refid="extOutMandate"/>), 0) AS "mandateExternalOutput",
+            COUNT(DISTINCT p.id) FILTER (WHERE COALESCE(p.project_nature, 'normal') = 'mandate') AS "mandateProjectCount"
         <include refid="outputBaseFrom"/>
         GROUP BY 1, 2
         <choose>
@@ -502,7 +514,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             p.client_unit AS "clientUnit",
             p.close_time AS "closeTime",
             COALESCE(ws.int_out, 0) AS "internalOutput",
-            COALESCE(ws.ext_out, 0) AS "externalOutput"
+            COALESCE(ws.ext_out, 0) AS "externalOutput",
+            COALESCE(p.project_nature, 'normal') AS "projectNature"
         <include refid="outputBaseFrom"/>
         ORDER BY COALESCE(ws.ext_out, 0) DESC, p.close_time DESC NULLS LAST, p.id DESC
     </select>

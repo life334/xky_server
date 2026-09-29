@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjMandateRuleMapper">
+
+    <resultMap type="ProjMandateRule" id="ProjMandateRuleResult">
+        <id     property="id"          column="id"          />
+        <result property="keyword"     column="keyword"     />
+        <result property="enabled"     column="enabled"     />
+        <result property="remark"      column="remark"      />
+        <result property="delFlag"     column="del_flag"    />
+        <result property="createBy"    column="create_by"   />
+        <result property="createTime"  column="create_time" />
+        <result property="updateBy"    column="update_by"   />
+        <result property="updateTime"  column="update_time" />
+    </resultMap>
+
+    <sql id="selectMandateRuleVo">
+        select id, keyword, enabled, remark, del_flag, create_by, create_time, update_by, update_time
+        from proj_mandate_rule
+    </sql>
+
+    <select id="selectMandateRuleList" parameterType="ProjMandateRule" resultMap="ProjMandateRuleResult">
+        <include refid="selectMandateRuleVo"/>
+        where del_flag = '0'
+        <if test="keyword != null and keyword != ''">
+            and keyword like concat('%', #{keyword}, '%')
+        </if>
+        <if test="enabled != null and enabled != ''">
+            and enabled = #{enabled}
+        </if>
+        order by enabled asc, id asc
+    </select>
+
+    <select id="selectEnabledKeywords" resultType="java.lang.String">
+        select keyword from proj_mandate_rule
+        where del_flag = '0' and enabled = '0' and keyword is not null and keyword != ''
+        order by id
+    </select>
+
+    <select id="checkKeywordUnique" resultType="java.lang.Long">
+        select id from proj_mandate_rule
+        where del_flag = '0' and keyword = #{keyword}
+        <if test="excludeId != null">and id != #{excludeId}</if>
+        limit 1
+    </select>
+
+    <insert id="insertMandateRule" parameterType="ProjMandateRule" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_mandate_rule (keyword, enabled, remark, del_flag, create_by, create_time)
+        values (#{keyword}, #{enabled}, #{remark}, '0', #{createBy}, now())
+    </insert>
+
+    <update id="updateMandateRule" parameterType="ProjMandateRule">
+        update proj_mandate_rule
+        <set>
+            <if test="keyword != null and keyword != ''">keyword = #{keyword},</if>
+            <if test="enabled != null and enabled != ''">enabled = #{enabled},</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
+            update_time = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <update id="deleteMandateRuleById">
+        update proj_mandate_rule set del_flag = '2', update_by = #{updateBy}, update_time = now()
+        where id = #{id}
+    </update>
+
+    <update id="deleteMandateRuleByIds">
+        update proj_mandate_rule set del_flag = '2', update_by = #{updateBy}, update_time = now()
+        where id in
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+</mapper>

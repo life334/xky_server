@@ -31,12 +31,16 @@ public class OutputDetailExportVo
     @Excel(name = "外部产值(元)")
     private BigDecimal externalOutput;
 
+    /** 项目性质（normal=常规 mandate=指令性任务）；指令性项目的「外部产值」列展示实际录入值但带此标记 */
+    @Excel(name = "项目性质", readConverterExp = "normal=常规,mandate=指令性任务")
+    private String projectNature;
+
     public OutputDetailExportVo()
     {
     }
 
     public OutputDetailExportVo(String projectCode, String projectName, String clientUnit,
-            Date closeTime, BigDecimal internalOutput, BigDecimal externalOutput)
+            Date closeTime, BigDecimal internalOutput, BigDecimal externalOutput, String projectNature)
     {
         this.projectCode = projectCode;
         this.projectName = projectName;
@@ -44,6 +48,7 @@ public class OutputDetailExportVo
         this.closeTime = closeTime;
         this.internalOutput = internalOutput;
         this.externalOutput = externalOutput;
+        this.projectNature = projectNature;
     }
 
     public String getProjectCode()
@@ -104,5 +109,15 @@ public class OutputDetailExportVo
     public void setExternalOutput(BigDecimal externalOutput)
     {
         this.externalOutput = externalOutput;
+    }
+
+    public String getProjectNature()
+    {
+        return projectNature;
+    }
+
+    public void setProjectNature(String projectNature)
+    {
+        this.projectNature = projectNature;
     }
 }

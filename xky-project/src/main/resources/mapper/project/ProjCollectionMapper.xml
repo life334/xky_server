@@ -9,7 +9,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
       一行一项目：应收/已收/未收/进度/账龄/最近到账/最近催收/催收状态
       催收状态：never=从未催收 calling=催收中 overdue=超期未催（下次催收日期已过仍无新记录）
     -->
-    <sql id="collectionBase">
+    <sql id="collectionBaseCore">
         SELECT
             p.id AS "projectId",
             p.project_code AS "projectCode",
@@ -29,7 +29,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 WHEN cl.id IS NULL THEN 'never'
                 WHEN cl.next_collect_time IS NOT NULL AND cl.next_collect_time &lt; current_date THEN 'overdue'
                 ELSE 'calling'
-            END AS "collectStatus"
+            END AS "collectStatus",
+            COALESCE(p.project_nature, 'normal') AS "projectNature"
         FROM proj_project p
         LEFT JOIN (
             SELECT project_id,
@@ -54,8 +55,31 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         ) cl ON true
         WHERE p.del_flag = '0'
           AND p.status IN ('closed', 'archived')
-          AND COALESCE(w.receivable, 0) &gt; 0
-          AND COALESCE(w.receivable, 0) - COALESCE(pa.received, 0) &gt; 0.005
+    </sql>
+
+    <!--
+      常规口径（应收台账）：在 core 之上排除「指令性任务」。
+      指令性项目的外部产值不计入应收 / 未收 ⇒ 不应出现在回款台账、客户视图、统计卡里。
+      ⚠️ 排除写在 collectionBase 里（唯一出口），项目视图 / 客户视图 / 统计卡三处自动一致。
+    -->
+    <sql id="collectionBase">
+        SELECT * FROM (
+            <include refid="collectionBaseCore"/>
+        ) c
+        WHERE c."projectNature" &lt;&gt; 'mandate'
+          AND c."receivable" &gt; 0
+          AND c."receivable" - c."received" &gt; 0.005
+    </sql>
+
+    <!--
+      指令性任务口径：仅指令性项目（供「指令性任务」卡片统计其外部产值）。
+      与 collectionBase 共用 collectionBaseCore + collectionFilter，保证筛选语义一致。
+    -->
+    <sql id="mandateBase">
+        SELECT * FROM (
+            <include refid="collectionBaseCore"/>
+        ) c
+        WHERE c."projectNature" = 'mandate'
     </sql>
 
     <!--
@@ -199,6 +223,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         ) pa ON pa.project_id = p.id
         WHERE p.del_flag = '0'
           AND p.status IN ('closed', 'archived')
+          AND COALESCE(p.project_nature, 'normal') &lt;&gt; 'mandate'
           AND COALESCE(w.receivable, 0) = 0
         <if test="projectName != null and projectName != ''">
             AND p.project_name LIKE concat('%', #{projectName}, '%')
@@ -282,6 +307,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             LEFT JOIN sys_user su ON su.user_id = pl.user_id
         </if>
         WHERE pm.del_flag = '0'
+        AND COALESCE(p.project_nature, 'normal') &lt;&gt; 'mandate'
         <choose>
             <when test="dimension == 'closeTime'">
                 AND p.close_time IS NOT NULL
@@ -343,6 +369,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <sql id="receivedWindowWhere">
         pm.del_flag = '0'
         AND pm.pay_time IS NOT NULL
+        AND COALESCE(p.project_nature, 'normal') &lt;&gt; 'mandate'
         <if test="keyword != null and keyword != ''">
             AND (p.project_code LIKE concat('%', #{keyword}, '%')
                  OR p.project_name LIKE concat('%', #{keyword}, '%')
@@ -535,5 +562,16 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </foreach>
         AND del_flag = '0'
     </update>
+
+    <!-- 指令性任务卡：当前筛选条件下指令性项目的外部产值（= 从全量外部产值改道出来的那部分） -->
+    <select id="selectMandateExternalStats" parameterType="map" resultType="java.util.LinkedHashMap">
+        SELECT COALESCE(SUM(t."receivable"), 0) AS "mandateExternalOutput",
+               COUNT(*) AS "mandateProjectCount"
+        FROM (
+            <include refid="mandateBase"/>
+        ) t
+        WHERE 1=1
+        <include refid="collectionFilter"/>
+    </select>
 
 </mapper>

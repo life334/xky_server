@@ -17,6 +17,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="contractId"          column="contract_id"          />
         <result property="dataSource"          column="data_source"          />
         <result property="status"              column="status"               />
+        <result property="projectNature"       column="project_nature"       />
         <result property="closeTime"           column="close_time"           />
         <result property="extraData"           column="extra_data"           />
         <result property="delFlag"             column="del_flag"             />
@@ -41,7 +42,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <sql id="selectProjectVo">
         select p.id, p.project_code, p.project_name, p.engineering_project,
                p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
-               p.project_location, p.contract_id, p.data_source, p.status,
+               p.project_location, p.contract_id, p.data_source, p.status, p.project_nature,
                p.close_time,
                p.assign_date, p.duration_require, p.total_duration,
                p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
@@ -52,7 +53,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectProjectList" parameterType="ProjProject" resultMap="ProjProjectResult">
         select p.id, p.project_code, p.project_name, p.engineering_project,
                p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
-               p.project_location, p.contract_id, p.data_source, p.status,
+               p.project_location, p.contract_id, p.data_source, p.status, p.project_nature,
                p.close_time,
                p.assign_date, p.duration_require, p.total_duration,
                p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
@@ -142,8 +143,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="closeDateEnd != null and closeDateEnd != ''">
             AND p.close_time &lt; to_date(#{closeDateEnd}, 'YYYY-MM-DD') + interval '1 day'
         </if>
+        <!-- 项目来源筛选（manual=手动录入 / import=Excel 导入） -->
+        <if test="dataSource != null and dataSource != ''">
+            AND p.data_source = #{dataSource}
+        </if>
         <if test="status != null and status != ''">
             AND p.status = #{status}
+        </if>
+        <if test="projectNature != null and projectNature != ''">
+            AND p.project_nature = #{projectNature}
         </if>
         <if test="params.statusList != null">
             AND p.status in
@@ -194,7 +202,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectProjectById" parameterType="Long" resultMap="ProjProjectResult">
         select p.id, p.project_code, p.project_name, p.engineering_project,
                p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
-               p.project_location, p.contract_id, p.data_source, p.status,
+               p.project_location, p.contract_id, p.data_source, p.status, p.project_nature,
                p.close_time,
                p.assign_date, p.duration_require, p.total_duration,
                p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
@@ -244,6 +252,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="contractId != null">contract_id,</if>
             <if test="dataSource != null and dataSource != ''">data_source,</if>
             <if test="status != null and status != ''">status,</if>
+            <if test="projectNature != null and projectNature != ''">project_nature,</if>
             <if test="assignDate != null">assign_date,</if>
             <if test="closeTime != null">close_time,</if>
             <if test="durationRequire != null">duration_require,</if>
@@ -265,6 +274,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="contractId != null">#{contractId},</if>
             <if test="dataSource != null and dataSource != ''">#{dataSource},</if>
             <if test="status != null and status != ''">#{status},</if>
+            <if test="projectNature != null and projectNature != ''">#{projectNature},</if>
             <if test="assignDate != null">#{assignDate},</if>
             <if test="closeTime != null">#{closeTime},</if>
             <if test="durationRequire != null">#{durationRequire},</if>
@@ -286,13 +296,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <insert id="insertProjectBatch" parameterType="java.util.List">
         insert into proj_project(
             project_code, project_name, engineering_project, project_category_id,
-            client_unit, project_location, data_source, status,
+            client_unit, project_location, data_source, status, project_nature,
             assign_date, close_time, create_by, create_time
         ) values
         <foreach collection="list" item="item" separator=",">
         (
             #{item.projectCode}, #{item.projectName}, #{item.engineeringProject}, #{item.projectCategoryId},
-            #{item.clientUnit}, #{item.projectLocation}, #{item.dataSource}, #{item.status},
+            #{item.clientUnit}, #{item.projectLocation}, #{item.dataSource}, #{item.status}, coalesce(#{item.projectNature}, 'normal'),
             #{item.assignDate}, #{item.closeTime}, #{item.createBy}, now()
         )
         </foreach>
@@ -312,6 +322,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             contract_id = #{contractId},
             <if test="dataSource != null and dataSource != ''">data_source = #{dataSource},</if>
             <if test="status != null and status != ''">status = #{status},</if>
+            <if test="projectNature != null and projectNature != ''">project_nature = #{projectNature},</if>
             <if test="assignDate != null">assign_date = #{assignDate},</if>
             <if test="durationRequire != null">duration_require = #{durationRequire},</if>
             total_duration = #{totalDuration},
@@ -495,11 +506,24 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="status != null and status != ''">
             AND p.status = #{status}
         </if>
+        <if test="projectNature != null and projectNature != ''">
+            AND p.project_nature = #{projectNature}
+        </if>
         <if test="params.statusList != null">
             AND p.status in
             <foreach collection="params.statusList" item="s" open="(" separator="," close=")">
                 #{s}
             </foreach>
+        </if>
+        <!-- 项目来源 + 办结日期（与 selectProjectList 口径一致，保证结算页胶囊计数与列表同步） -->
+        <if test="dataSource != null and dataSource != ''">
+            AND p.data_source = #{dataSource}
+        </if>
+        <if test="closeDateBegin != null and closeDateBegin != ''">
+            AND p.close_time &gt;= to_date(#{closeDateBegin}, 'YYYY-MM-DD')
+        </if>
+        <if test="closeDateEnd != null and closeDateEnd != ''">
+            AND p.close_time &lt; to_date(#{closeDateEnd}, 'YYYY-MM-DD') + interval '1 day'
         </if>
     </select>
 
@@ -557,5 +581,59 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             #{code}
         </foreach>
     </select>
+
+    <!-- ==================== 指令性任务（项目性质） ==================== -->
+
+    <!-- 规则预览：按委托单位关键词（包含匹配）命中的项目数 + 其中已是指令性任务的数量 -->
+    <select id="previewMandateRule" resultType="java.util.LinkedHashMap">
+        SELECT COUNT(*) AS "matchedCount",
+               COUNT(*) FILTER (WHERE p.project_nature = 'mandate') AS "alreadyCount"
+        FROM proj_project p
+        WHERE p.del_flag = '0'
+        <choose>
+            <when test="keywords != null and keywords.size() &gt; 0">
+                AND (
+                <foreach collection="keywords" item="kw" separator=" OR ">
+                    p.client_unit LIKE concat('%', #{kw}, '%')
+                </foreach>
+                )
+            </when>
+            <otherwise>
+                AND 1 = 0
+            </otherwise>
+        </choose>
+    </select>
+
+    <!-- 按委托单位关键词查命中的项目 id（「一键回填」批量打标用；onlyNormal=true 时排除已是指令性的） -->
+    <select id="selectIdsByClientUnitKeywords" resultType="java.lang.Long">
+        SELECT p.id
+        FROM proj_project p
+        WHERE p.del_flag = '0'
+        <if test="onlyNormal == true">AND p.project_nature &lt;&gt; 'mandate'</if>
+        <choose>
+            <when test="keywords != null and keywords.size() &gt; 0">
+                AND (
+                <foreach collection="keywords" item="kw" separator=" OR ">
+                    p.client_unit LIKE concat('%', #{kw}, '%')
+                </foreach>
+                )
+            </when>
+            <otherwise>
+                AND 1 = 0
+            </otherwise>
+        </choose>
+    </select>
+
+    <!-- 批量设置项目性质（normal / mandate） -->
+    <update id="updateProjectNatureByIds">
+        UPDATE proj_project
+        SET project_nature = #{nature},
+            update_by = #{updateBy},
+            update_time = now()
+        WHERE id IN
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
 
 </mapper>
