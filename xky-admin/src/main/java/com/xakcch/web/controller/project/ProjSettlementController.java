@@ -18,6 +18,7 @@ import com.xakcch.common.core.controller.BaseController;
 import com.xakcch.common.core.domain.AjaxResult;
 import com.xakcch.common.core.page.TableDataInfo;
 import com.xakcch.common.enums.BusinessType;
+import com.xakcch.common.utils.StringUtils;
 import com.xakcch.project.domain.ProjContractPrice;
 import com.xakcch.project.domain.ProjPayment;
 import com.xakcch.project.domain.ProjProject;
@@ -89,7 +90,7 @@ public class ProjSettlementController extends BaseController
         addColumn(columns, "refundAmount", "退款金额", "money", true, "refundAmount");
         addColumn(columns, "refundDate", "退款时间", "date", true, "refundDate");
         addColumn(columns, "invoiceStatus", "开票状态", "text", true, "invoiceStatus");
-        addColumn(columns, "invoiceNo", "发票号码", "text", true, "invoiceNo");
+        addColumn(columns, "invoiceUnit", "开票单位", "text", true, "invoiceUnit");
         addColumn(columns, "invoiceAmount", "开票金额", "money", true, "invoiceAmount");
         addColumn(columns, "payRemark", "备注", "text", true, "payRemark");
         return success(columns);
@@ -670,7 +671,7 @@ public class ProjSettlementController extends BaseController
         ProjPayment invoiceSource = prepay != null ? prepay : tail;
         if (invoiceSource != null)
         {
-            node.put("invoiceNo", invoiceSource.getInvoiceNo());
+            node.put("invoiceUnit", invoiceSource.getInvoiceUnit());
             node.put("invoiceDate", invoiceSource.getInvoiceDate() != null ? DATE_FMT.format(invoiceSource.getInvoiceDate()) : "");
             node.put("invoiceAmount", invoiceSource.getInvoiceAmount());
             node.put("invoiceStatus", invoiceSource.getInvoiceStatus());
@@ -727,14 +728,16 @@ public class ProjSettlementController extends BaseController
         pm.setPayTime(toDate(payMap.get("payTime")));
         pm.setPayUnit((String) payMap.get("payUnit"));
         pm.setPayMethod((String) payMap.get("payMethod"));
-        pm.setInvoiceNo((String) payMap.get("invoiceNo"));
+        pm.setInvoiceUnit((String) payMap.get("invoiceUnit"));
         pm.setInvoiceDate(toDate(payMap.get("invoiceDate")));
         pm.setInvoiceAmount(toBigDecimal(payMap.get("invoiceAmount")));
         // 开票状态自动推断（库里统一存英文码值，中文由前端 utils/projStatus.js 映射）：
         //   勾选作废 → voided；有发票信息 → invoiced；否则 → pending（不再手选）
         String invoiceStatus = (String) payMap.get("invoiceStatus");
         boolean voided = isVoidedStatus(invoiceStatus);
-        boolean hasInvoice = pm.getInvoiceNo() != null || pm.getInvoiceDate() != null
+        // ⚠️ 必须用 isNotBlank：invoice_unit 列默认值为空串 ''，若用 != null 判断，
+        //    存量行(默认 '')回填后原样回传会把开票状态误判为 invoiced。
+        boolean hasInvoice = StringUtils.isNotBlank(pm.getInvoiceUnit()) || pm.getInvoiceDate() != null
             || (pm.getInvoiceAmount() != null && pm.getInvoiceAmount().compareTo(BigDecimal.ZERO) > 0);
         if (voided)
         {

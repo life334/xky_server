@@ -39,8 +39,11 @@ public class ProjPayment extends BaseEntity
     /** 付款方式 */
     private String payMethod;
 
-    /** 发票号码 */
+    /** 发票号码（已停用：到账信息弹窗改为「开票单位」，本列保留不再写入） */
     private String invoiceNo;
+
+    /** 开票单位（下拉选择委托单位） */
+    private String invoiceUnit;
 
     /** 开票日期 */
     @JsonFormat(pattern = "yyyy-MM-dd")
@@ -147,6 +150,9 @@ public class ProjPayment extends BaseEntity
     public String getInvoiceNo() { return invoiceNo; }
     public void setInvoiceNo(String invoiceNo) { this.invoiceNo = invoiceNo; }
 
+    public String getInvoiceUnit() { return invoiceUnit; }
+    public void setInvoiceUnit(String invoiceUnit) { this.invoiceUnit = invoiceUnit; }
+
     public Date getInvoiceDate() { return invoiceDate; }
     public void setInvoiceDate(Date invoiceDate) { this.invoiceDate = invoiceDate; }
 
@@ -200,6 +206,7 @@ public class ProjPayment extends BaseEntity
             .append("payUnit", getPayUnit())
             .append("payMethod", getPayMethod())
             .append("invoiceNo", getInvoiceNo())
+            .append("invoiceUnit", getInvoiceUnit())
             .append("invoiceDate", getInvoiceDate())
             .append("invoiceAmount", getInvoiceAmount())
             .append("invoiceStatus", getInvoiceStatus())
