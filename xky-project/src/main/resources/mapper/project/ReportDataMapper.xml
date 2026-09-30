@@ -52,8 +52,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             (select count(*) from proj_project px where px.contract_id = c.id and px.del_flag = '0') as "contractProjectCount",
             c.sign_date as "signDate",
             c.entrust_date as "entrustDate",
-            c.audit_date as "auditDate",
-            c.finish_date as "finishDate",
             c.archive_date as "archiveDate",
             c.contract_period as "contractPeriod",
             c.payment_terms as "paymentTerms",
@@ -192,12 +190,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="f.entrustDateEnd != null and f.entrustDateEnd != ''">
             and c.entrust_date &lt;= cast(#{f.entrustDateEnd} as date)
         </if>
-        <if test="f.auditDateBegin != null and f.auditDateBegin != ''">
-            and c.audit_date &gt;= cast(#{f.auditDateBegin} as date)
-        </if>
-        <if test="f.auditDateEnd != null and f.auditDateEnd != ''">
-            and c.audit_date &lt;= cast(#{f.auditDateEnd} as date)
-        </if>
         <if test="f.lastPayTimeBegin != null and f.lastPayTimeBegin != ''">
             and pay_sum.max_pay_time &gt;= cast(#{f.lastPayTimeBegin} as timestamp)
         </if>
@@ -287,12 +279,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
         <if test="f.archiveDateEnd != null and f.archiveDateEnd != ''">
             and c.archive_date &lt;= cast(#{f.archiveDateEnd} as date)
-        </if>
-        <if test="f.finishDateBegin != null and f.finishDateBegin != ''">
-            and c.finish_date &gt;= cast(#{f.finishDateBegin} as date)
-        </if>
-        <if test="f.finishDateEnd != null and f.finishDateEnd != ''">
-            and c.finish_date &lt;= cast(#{f.finishDateEnd} as date)
         </if>
         <if test="f.invoiceFlag != null and f.invoiceFlag != ''">
             <choose>

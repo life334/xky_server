@@ -41,15 +41,20 @@ public class ProjContractServiceImpl implements IProjContractService
     @Autowired
     private ProjFieldDefMapper fieldDefMapper;
 
-    /** 合同状态流转规则 */
+    /**
+     * 合同状态流转规则（字典 proj_contract_status：进行中 / 待返回 / 已完成 / 已取消）
+     * <p>「待返回」= 本单位已盖章并寄出、等待客户盖章返回；客户退回则可重回「进行中」。
+     * 已完成 / 已取消 为终态。
+     */
     private static final Map<String, List<String>> STATUS_TRANSITIONS = new HashMap<>();
     static {
-        STATUS_TRANSITIONS.put("draft",     Arrays.asList("signed", "cancelled"));
-        STATUS_TRANSITIONS.put("signed",    Arrays.asList("ongoing", "cancelled"));
-        STATUS_TRANSITIONS.put("ongoing",   Arrays.asList("completed", "cancelled"));
-        STATUS_TRANSITIONS.put("completed", Arrays.asList("archived", "cancelled"));
-        // 已归档、已取消 → 终态，不允许流转
+        STATUS_TRANSITIONS.put("ongoing",        Arrays.asList("pending_return", "completed", "cancelled"));
+        STATUS_TRANSITIONS.put("pending_return", Arrays.asList("ongoing", "completed", "cancelled"));
+        // 已完成、已取消 → 终态，不允许流转
     }
+
+    /** 合法状态码值集合 */
+    private static final List<String> VALID_STATUS = Arrays.asList("ongoing", "pending_return", "completed", "cancelled");
 
     /**
      * 查询合同详情
@@ -78,6 +83,12 @@ public class ProjContractServiceImpl implements IProjContractService
     @Override
     public boolean checkContractNoUnique(ProjContract contract)
     {
+        // 合同编号允许为空（编号须等合同签署完成后才有）：空编号不参与唯一性校验。
+        // 否则第二份无编号合同会命中第一份的空串，被误报「合同编号已存在」。
+        if (contract.getContractNo() == null || contract.getContractNo().trim().isEmpty())
+        {
+            return true;
+        }
         Long id = contract.getId() == null ? -1L : contract.getId();
         ProjContract info = contractMapper.checkContractNoUnique(contract);
         if (info != null && info.getId().longValue() != id.longValue())
@@ -174,11 +185,19 @@ public class ProjContractServiceImpl implements IProjContractService
         {
             throw new ServiceException("合同不存在");
         }
-        String currentStatus = contract.getStatus();
+        String currentStatus = normalizeContractStatus(contract.getStatus());
         // 终态不可变更
-        if ("archived".equals(currentStatus) || "cancelled".equals(currentStatus))
+        if ("completed".equals(currentStatus) || "cancelled".equals(currentStatus))
         {
             throw new ServiceException("当前状态【" + currentStatus + "】为终态，不允许变更");
+        }
+        if (targetStatus == null || targetStatus.trim().isEmpty())
+        {
+            throw new ServiceException("请选择目标状态");
+        }
+        if (!VALID_STATUS.contains(targetStatus))
+        {
+            throw new ServiceException("不支持的目标状态【" + targetStatus + "】");
         }
         // 校验流转规则
         List<String> allowed = STATUS_TRANSITIONS.get(currentStatus);
@@ -187,6 +206,16 @@ public class ProjContractServiceImpl implements IProjContractService
             throw new ServiceException("不允许从【" + currentStatus + "】变更为【" + targetStatus + "】");
         }
         return contractMapper.updateContractStatus(id, targetStatus);
+    }
+
+    /** 历史/空状态归一：空值视为「进行中」（与数据库迁移口径一致） */
+    private String normalizeContractStatus(String status)
+    {
+        if (status == null || status.trim().isEmpty())
+        {
+            return "ongoing";
+        }
+        return status;
     }
 
     /**
@@ -274,9 +303,6 @@ public class ProjContractServiceImpl implements IProjContractService
         addColumn(columns, "contactPhone", "联系电话", "text", "business", false, "contactPhone");
         addColumn(columns, "signDate", "签署日期", "date", "business", true, "signDate");
         addColumn(columns, "entrustDate", "委托时间", "date", "business", false, "entrustDate");
-        addColumn(columns, "auditDate", "审核日期", "date", "business", false, "auditDate");
-        addColumn(columns, "returnDate", "返回日期", "date", "business", false, "returnDate");
-        addColumn(columns, "finishDate", "完成日期", "date", "business", false, "finishDate");
         addColumn(columns, "archiveDate", "归档日期", "date", "business", false, "archiveDate");
         addColumn(columns, "archivePath", "归档路径", "text", "business", false, "archivePath");
         addColumn(columns, "contractPeriod", "合同期限", "text", "business", false, "contractPeriod");
@@ -287,6 +313,8 @@ public class ProjContractServiceImpl implements IProjContractService
         addColumn(columns, "remark", "备注", "text", "business", false, "remark");
 
         // ---- 物理表新增列自动发现（不在固定清单中的列 → 业务组末尾，默认隐藏） ----
+        // 注：audit_date / return_date / finish_date 已停止录入，但物理列保留在库中，
+        //     仍在 known 白名单里，避免被「物理列自动发现」重新加回可显隐列清单。
         Set<String> known = new HashSet<>(Arrays.asList(
             "contract_no", "contract_name", "client_unit", "contact_name", "contact_phone",
             "contract_type", "contract_amount", "sign_date", "entrust_date", "audit_date",

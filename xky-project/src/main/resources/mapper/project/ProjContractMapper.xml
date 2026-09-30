@@ -15,9 +15,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="contractAmount"  column="contract_amount"  />
         <result property="signDate"        column="sign_date"        />
         <result property="entrustDate"     column="entrust_date"     />
-        <result property="auditDate"       column="audit_date"       />
-        <result property="returnDate"      column="return_date"      />
-        <result property="finishDate"      column="finish_date"      />
         <result property="archiveDate"     column="archive_date"     />
         <result property="archivePath"     column="archive_path"     />
         <result property="contractPeriod"  column="contract_period"  />
@@ -40,8 +37,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <sql id="selectContractVo">
         select id, contract_no, contract_name, client_unit, contact_name, contact_phone,
-               contract_type, contract_amount, sign_date, entrust_date, audit_date,
-               return_date, finish_date, archive_date, archive_path, contract_period,
+               contract_type, contract_amount, sign_date, entrust_date,
+               archive_date, archive_path, contract_period,
                payment_terms, received_amount, status, is_settled, extra_data::text as extra_data, del_flag,
                create_by, create_time, update_by, update_time, remark
         from proj_contract
@@ -67,8 +64,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                   where pj.contract_id = t.id and pay.del_flag = '0') as paid_total
         from (
         select id, contract_no, contract_name, client_unit, contact_name, contact_phone,
-               contract_type, contract_amount, sign_date, entrust_date, audit_date,
-               return_date, finish_date, archive_date, archive_path, contract_period,
+               contract_type, contract_amount, sign_date, entrust_date,
+               archive_date, archive_path, contract_period,
                payment_terms, received_amount, status, is_settled, extra_data::text as extra_data, del_flag,
                create_by, create_time, update_by, update_time, remark
         from proj_contract
@@ -109,18 +106,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="entrustDateEnd != null">
             AND entrust_date &lt;= #{entrustDateEnd}
         </if>
-        <if test="auditDateBegin != null">
-            AND audit_date &gt;= #{auditDateBegin}
-        </if>
-        <if test="auditDateEnd != null">
-            AND audit_date &lt;= #{auditDateEnd}
-        </if>
-        <if test="finishDateBegin != null">
-            AND finish_date &gt;= #{finishDateBegin}
-        </if>
-        <if test="finishDateEnd != null">
-            AND finish_date &lt;= #{finishDateEnd}
-        </if>
         <if test="contractAmountMin != null">
             AND contract_amount &gt;= #{contractAmountMin}
         </if>
@@ -148,6 +133,35 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by c.parent_id, c.sort_order
     </select>
 
+    <!-- 批量：各合同单价统计（条数 / 最低价 / 最高价），结算页列表胶囊内联展示用，避免 N+1 -->
+    <select id="selectPriceStatByContractIds" resultType="map">
+        select cp.contract_id as "contractId",
+               count(1)        as "cnt",
+               min(cp.price)   as "minPrice",
+               max(cp.price)   as "maxPrice"
+        from proj_contract_price cp
+        inner join proj_category c on c.id = cp.category_id and c.del_flag = '0'
+        where cp.del_flag = '0'
+          and cp.contract_id in
+          <foreach collection="list" item="cid" open="(" separator="," close=")">
+              #{cid}
+          </foreach>
+        group by cp.contract_id
+    </select>
+
+    <!-- 批量：各合同关联项目的工程编号（仅编号，列表标签列内联展示用，避免 N+1） -->
+    <select id="selectProjectCodesByContractIds" resultType="map">
+        select p.contract_id  as "contractId",
+               p.project_code as "projectCode"
+        from proj_project p
+        where p.del_flag = '0'
+          and p.contract_id in
+          <foreach collection="list" item="cid" open="(" separator="," close=")">
+              #{cid}
+          </foreach>
+        order by p.create_time
+    </select>
+
     <select id="selectContractById" parameterType="Long" resultMap="ProjContractResult">
         <include refid="selectContractVo"/>
         where id = #{id}
@@ -169,9 +183,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="contractAmount != null">contract_amount,</if>
             <if test="signDate != null">sign_date,</if>
             <if test="entrustDate != null">entrust_date,</if>
-            <if test="auditDate != null">audit_date,</if>
-            <if test="returnDate != null">return_date,</if>
-            <if test="finishDate != null">finish_date,</if>
             <if test="archiveDate != null">archive_date,</if>
             <if test="archivePath != null">archive_path,</if>
             <if test="contractPeriod != null">contract_period,</if>
@@ -193,9 +204,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="contractAmount != null">#{contractAmount},</if>
             <if test="signDate != null">#{signDate},</if>
             <if test="entrustDate != null">#{entrustDate},</if>
-            <if test="auditDate != null">#{auditDate},</if>
-            <if test="returnDate != null">#{returnDate},</if>
-            <if test="finishDate != null">#{finishDate},</if>
             <if test="archiveDate != null">#{archiveDate},</if>
             <if test="archivePath != null">#{archivePath},</if>
             <if test="contractPeriod != null">#{contractPeriod},</if>
@@ -222,9 +230,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="contractAmount != null">contract_amount = #{contractAmount},</if>
             <if test="signDate != null">sign_date = #{signDate},</if>
             <if test="entrustDate != null">entrust_date = #{entrustDate},</if>
-            <if test="auditDate != null">audit_date = #{auditDate},</if>
-            <if test="returnDate != null">return_date = #{returnDate},</if>
-            <if test="finishDate != null">finish_date = #{finishDate},</if>
             <if test="archiveDate != null">archive_date = #{archiveDate},</if>
             <if test="archivePath != null">archive_path = #{archivePath},</if>
             <if test="contractPeriod != null">contract_period = #{contractPeriod},</if>
@@ -255,21 +260,27 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         update proj_contract set status = #{status}, update_time = now() where id = #{id}
     </update>
 
-    <!-- 查询超时合同：登记时间超过7天 且 完成日期为空 -->
+    <!--
+      查询超时合同：登记时间超过 7 天 且 状态尚未走到「已完成 / 已取消」。
+      口径变更说明：原判定依赖 finish_date IS NULL，但「完成日期」已停止录入（表单移除），
+      继续用它会令所有超 7 天的合同永久被判超时、预警刷屏；故改为按合同状态判定。
+    -->
     <select id="selectTimeoutContracts" resultType="java.util.LinkedHashMap">
-        select id, contract_no, contract_name, entrust_date
+        select id, contract_no, contract_name, entrust_date, status
         from proj_contract
         where del_flag = '0'
           and entrust_date is not null
           and entrust_date &lt; now() - interval '7 days'
-          and finish_date is null
+          and COALESCE(NULLIF(status, ''), 'ongoing') NOT IN ('completed', 'cancelled')
         order by entrust_date asc
-    </select>    <!-- 按状态统计合同数量（NULL/空状态归为 draft） -->
+    </select>
+
+    <!-- 按状态统计合同数量（NULL/空状态归为 ongoing，与新字典 4 态一致） -->
     <select id="selectContractStatusCounts" resultType="map">
-        select COALESCE(NULLIF(status, ''), 'draft') as status, count(1) as cnt
+        select COALESCE(NULLIF(status, ''), 'ongoing') as status, count(1) as cnt
         from proj_contract
         where del_flag = '0'
-        group by COALESCE(NULLIF(status, ''), 'draft')
+        group by COALESCE(NULLIF(status, ''), 'ongoing')
         order by status
     </select>
 

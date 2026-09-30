@@ -731,7 +731,7 @@ public class ProjReportServiceImpl implements IProjReportService
         if (filter != null)
         {
             String[] dateKeys = {"createTimeBegin", "archiveDateBegin", "signDateBegin",
-                    "lastPayTimeBegin", "finishDateBegin", "entrustDateBegin", "auditDateBegin", "assignDateBegin"};
+                    "lastPayTimeBegin", "entrustDateBegin", "assignDateBegin"};
             DateTimeFormatter[] formatters = {
                 DateTimeFormatter.ofPattern("yyyy-MM-dd"),
                 DateTimeFormatter.ofPattern("yyyy/MM/dd"),

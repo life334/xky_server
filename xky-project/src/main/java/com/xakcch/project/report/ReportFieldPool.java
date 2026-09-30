@@ -71,8 +71,6 @@ public class ReportFieldPool
         addField("contractAmount", "合同金额", "join", "合同信息", "number", true, null);
         addField("signDate", "签订时间", "join", "合同信息", "date", true, null);
         addField("entrustDate", "委托时间", "join", "合同信息", "date", true, null);
-        addField("auditDate", "审核时间", "join", "合同信息", "date", true, null);
-        addField("finishDate", "完工时间", "join", "合同信息", "date", true, null);
         addField("archiveDate", "归档时间", "join", "合同信息", "date", true, null);
         addField("contractPeriod", "合同工期", "join", "合同信息", "string", true, null);
         addField("paymentTerms", "付款方式", "join", "合同信息", "string", true, null);

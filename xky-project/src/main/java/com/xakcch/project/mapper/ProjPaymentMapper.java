@@ -93,6 +93,14 @@ public interface ProjPaymentMapper
     public BigDecimal selectReceivedAmountByContractId(Long contractId);
 
     /**
+     * 批量查询各合同的到账总额（退款按负数计入），避免 N+1
+     *
+     * @param contractIds 合同ID列表
+     * @return [{ contractId, amount }, ...]
+     */
+    public List<Map<String, Object>> selectReceivedSumByContractIds(List<Long> contractIds);
+
+    /**
      * 按合同ID查询各项目的到账明细（预付款/尾款/进度款分类合计 + 项目基础信息）
      *
      * @param contractId 合同ID

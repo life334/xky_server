@@ -316,6 +316,20 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           AND pay.del_flag = '0'
     </select>
 
+    <!-- 批量：各合同到账总额（退款按负数计入；口径与 selectReceivedAmountByContractId 完全一致） -->
+    <select id="selectReceivedSumByContractIds" resultType="map">
+        SELECT p.contract_id as "contractId",
+               COALESCE(SUM(CASE WHEN pay.payment_type = 'refund' THEN -COALESCE(pay.amount, 0) ELSE COALESCE(pay.amount, 0) END), 0) as "amount"
+        FROM proj_payment pay
+        JOIN proj_project p ON p.id = pay.project_id AND p.del_flag = '0'
+        WHERE pay.del_flag = '0'
+          AND p.contract_id IN
+          <foreach collection="list" item="cid" open="(" separator="," close=")">
+              #{cid}
+          </foreach>
+        GROUP BY p.contract_id
+    </select>
+
     <!-- 整组逻辑删除某项目的退款记录（保存退款=先删后插整组替换） -->
     <update id="deleteRefundsByProjectId">
         update proj_payment set del_flag = '2', update_by = #{updateBy}, update_time = now()

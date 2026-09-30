@@ -77,6 +77,22 @@ public interface ProjContractMapper
     public List<Map<String, Object>> selectPriceListByContractId(Long contractId);
 
     /**
+     * 批量查询各合同的单价统计（条数 / 最低价 / 最高价），避免 N+1
+     *
+     * @param contractIds 合同ID列表
+     * @return [{ contractId, cnt, minPrice, maxPrice }, ...]
+     */
+    public List<Map<String, Object>> selectPriceStatByContractIds(List<Long> contractIds);
+
+    /**
+     * 批量查询各合同关联项目的工程编号，避免 N+1
+     *
+     * @param contractIds 合同ID列表
+     * @return [{ contractId, projectCode }, ...]
+     */
+    public List<Map<String, Object>> selectProjectCodesByContractIds(List<Long> contractIds);
+
+    /**
      * 更新合同状态
      *
      * @param id 合同ID
@@ -86,7 +102,7 @@ public interface ProjContractMapper
     public int updateContractStatus(@Param("id") Long id, @Param("status") String status);
 
     /**
-     * 查询超时合同：登记时间超过7天 且 完成日期为空
+     * 查询超时合同：登记时间超过 7 天 且 状态未到「已完成 / 已取消」
      *
      * @return 超时合同列表
      */

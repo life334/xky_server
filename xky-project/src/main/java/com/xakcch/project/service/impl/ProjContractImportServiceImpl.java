@@ -306,7 +306,7 @@ public class ProjContractImportServiceImpl implements IProjContractImportService
         c.setContractType(row.getContractType());
         c.setContractAmount(row.getContractAmount());
         c.setSignDate(row.getSignDate());
-        c.setStatus("signed");
+        c.setStatus("ongoing");
         c.setIsSettled("0");
         c.setRemark(row.getRemark());
         c.setCreateBy(user);

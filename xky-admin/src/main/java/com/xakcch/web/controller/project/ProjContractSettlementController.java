@@ -1,5 +1,6 @@
 package com.xakcch.web.controller.project;
 
+import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -40,7 +41,11 @@ public class ProjContractSettlementController extends BaseController
 
     /**
      * 查询合同结算树形列表
+     *
+     * @deprecated 旧实现（1 + 3N 次查询，合同多时必然超时）。
+     *             前端已改用 {@link #list(ProjContract)}，本方法仅作回滚垫保留，验收后下线。
      */
+    @Deprecated
     @GetMapping("/treeList")
     public AjaxResult treeList()
     {
@@ -104,6 +109,81 @@ public class ProjContractSettlementController extends BaseController
             tree.add(contractNode);
         }
         return success(tree);
+    }
+
+    /**
+     * 合同结算列表（轻量）
+     * <p>只返回首屏必需字段：合同主数据 + 到账汇总 + 单价统计（条数/最低/最高）+ 关联项目编号。
+     * 查询次数恒定（不随合同数增长）：
+     * <ol>
+     *   <li>合同列表（含 project_count / attachment_count 等子查询，同一次往返）</li>
+     *   <li>批量到账汇总 GROUP BY contract_id</li>
+     *   <li>批量单价统计 GROUP BY contract_id</li>
+     *   <li>批量关联项目编号 IN (contractIds)</li>
+     * </ol>
+     * 单价明细与关联项目明细由前端按需懒加载（{@code priceDetail/{id}}、
+     * {@code /project/contract/{id}/projects}），不再随列表一次性带出。
+     */
+    @GetMapping("/list")
+    public AjaxResult list(ProjContract query)
+    {
+        List<ProjContract> contracts = contractMapper.selectContractList(query);
+
+        List<Long> ids = contracts.stream()
+                .map(ProjContract::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        Map<Long, BigDecimal> receivedMap = new HashMap<>();
+        Map<Long, Map<String, Object>> priceStatMap = new HashMap<>();
+        Map<Long, List<String>> codeMap = new HashMap<>();
+
+        if (!ids.isEmpty())
+        {
+            for (Map<String, Object> r : paymentMapper.selectReceivedSumByContractIds(ids))
+            {
+                receivedMap.put(toLong(r.get("contractId")), toBigDecimal(r.get("amount")));
+            }
+            for (Map<String, Object> r : contractMapper.selectPriceStatByContractIds(ids))
+            {
+                priceStatMap.put(toLong(r.get("contractId")), r);
+            }
+            for (Map<String, Object> r : contractMapper.selectProjectCodesByContractIds(ids))
+            {
+                Long cid = toLong(r.get("contractId"));
+                if (cid == null) continue;
+                codeMap.computeIfAbsent(cid, k -> new ArrayList<>()).add((String) r.get("projectCode"));
+            }
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (ProjContract c : contracts)
+        {
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("contractId", c.getId());
+            node.put("contractName", c.getContractName());
+            node.put("contractNo", c.getContractNo());
+            node.put("contractAmount", c.getContractAmount());
+            node.put("signDate", c.getSignDate() != null ? DATE_FMT.format(c.getSignDate()) : "");
+            node.put("contractPeriod", c.getContractPeriod());
+            node.put("paymentTerms", c.getPaymentTerms());
+            node.put("isSettled", c.getIsSettled());
+            node.put("remark", c.getRemark());
+            // 到账金额：口径与「已到账」卡片、回款页台账一致（退款按负数计入）
+            node.put("receivedAmount", receivedMap.containsKey(c.getId()) ? receivedMap.get(c.getId()) : BigDecimal.ZERO);
+
+            Map<String, Object> stat = priceStatMap.get(c.getId());
+            node.put("priceCount", stat == null ? 0 : stat.get("cnt"));
+            node.put("priceMin", stat == null ? null : stat.get("minPrice"));
+            node.put("priceMax", stat == null ? null : stat.get("maxPrice"));
+
+            List<String> codes = codeMap.get(c.getId());
+            node.put("projectCodes", codes != null ? codes : new ArrayList<String>());
+            node.put("projectCount", codes != null ? codes.size() : 0);
+
+            result.add(node);
+        }
+        return success(result);
     }
 
     /**

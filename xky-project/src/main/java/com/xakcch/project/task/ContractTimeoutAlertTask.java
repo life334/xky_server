@@ -15,7 +15,8 @@ import com.xakcch.project.mapper.ProjAlertLogMapper;
 /**
  * 合同超时预警定时任务
  * <p>
- * 扫描规则：合同登记时间超过7天 且 完成日期为空 → 写入预警日志
+ * 扫描规则：合同登记时间超过 7 天 且 状态未到「已完成 / 已取消」→ 写入预警日志
+ * <p>（原口径为「完成日期为空」，因完成日期字段已停止录入而改为按合同状态判定）
  * <p>
  * 建议 cron：0 0 8 * * ?（每天上午8点执行）
  *
@@ -34,6 +35,20 @@ public class ContractTimeoutAlertTask
 
     @Autowired
     private ProjAlertLogMapper alertLogMapper;
+
+    /** 合同状态码值 → 中文（与字典 proj_contract_status 一致） */
+    private static String statusLabel(String status)
+    {
+        if (status == null || status.trim().isEmpty()) return "进行中";
+        switch (status)
+        {
+            case "ongoing":        return "进行中";
+            case "pending_return": return "待返回";
+            case "completed":      return "已完成";
+            case "cancelled":      return "已取消";
+            default:               return status;
+        }
+    }
 
     /**
      * 执行超时合同扫描
@@ -56,10 +71,11 @@ public class ContractTimeoutAlertTask
                 String contractNo = (String) row.get("contract_no");
                 String contractName = (String) row.get("contract_name");
                 java.util.Date entrustDate = (java.util.Date) row.get("entrust_date");
+                String status = (String) row.get("status");
 
                 String content = String.format(
-                    "合同【%s - %s】登记时间 %tF，已超过7天，完成日期为空，请及时处理。",
-                    contractNo, contractName, entrustDate);
+                    "合同【%s - %s】登记时间 %tF，已超过7天，当前状态【%s】，请及时处理。",
+                    contractNo, contractName, entrustDate, statusLabel(status));
 
                 // 检查是否已存在未读的同类预警（幂等处理）
                 long existing = alertLogMapper.countUnreadByContent(content);

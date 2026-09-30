@@ -50,18 +50,6 @@ public class ProjContract extends BaseEntity
     @JsonFormat(pattern = "yyyy-MM-dd")
     private Date entrustDate;
 
-    /** 审核日期 */
-    @JsonFormat(pattern = "yyyy-MM-dd")
-    private Date auditDate;
-
-    /** 用户返回日期 */
-    @JsonFormat(pattern = "yyyy-MM-dd")
-    private Date returnDate;
-
-    /** 完成日期 */
-    @JsonFormat(pattern = "yyyy-MM-dd")
-    private Date finishDate;
-
     /** 归档日期 */
     @JsonFormat(pattern = "yyyy-MM-dd")
     private Date archiveDate;
@@ -78,7 +66,12 @@ public class ProjContract extends BaseEntity
     /** 已到账金额 */
     private BigDecimal receivedAmount;
 
-    /** 合同状态（字典 proj_contract_status） */
+    /**
+     * 合同状态（字典 proj_contract_status）
+     * <p>码值：ongoing 进行中 / pending_return 待返回 / completed 已完成 / cancelled 已取消。
+     * 「待返回」= 本单位已盖章并寄出、等待客户盖章返回；系统无「已寄出」信号，故状态由人工通过
+     * 「状态变更」入口维护，不做自动派生，避免误判。
+     */
     private String status;
 
     /** 是否结算（0=未结算 1=已结算） */
@@ -133,18 +126,6 @@ public class ProjContract extends BaseEntity
 
     /** 付款明细列表（前端展示用） */
     private transient List<Map<String, Object>> paidList;
-
-    /** 审核日期范围-开始 */
-    private transient Date auditDateBegin;
-
-    /** 审核日期范围-结束 */
-    private transient Date auditDateEnd;
-
-    /** 完成日期范围-开始 */
-    private transient Date finishDateBegin;
-
-    /** 完成日期范围-结束 */
-    private transient Date finishDateEnd;
 
     // ===== getter/setter =====
 
@@ -246,36 +227,6 @@ public class ProjContract extends BaseEntity
     public void setEntrustDate(Date entrustDate)
     {
         this.entrustDate = entrustDate;
-    }
-
-    public Date getAuditDate()
-    {
-        return auditDate;
-    }
-
-    public void setAuditDate(Date auditDate)
-    {
-        this.auditDate = auditDate;
-    }
-
-    public Date getReturnDate()
-    {
-        return returnDate;
-    }
-
-    public void setReturnDate(Date returnDate)
-    {
-        this.returnDate = returnDate;
-    }
-
-    public Date getFinishDate()
-    {
-        return finishDate;
-    }
-
-    public void setFinishDate(Date finishDate)
-    {
-        this.finishDate = finishDate;
     }
 
     public Date getArchiveDate()
@@ -408,14 +359,6 @@ public class ProjContract extends BaseEntity
     public void setPaidTotal(BigDecimal paidTotal) { this.paidTotal = paidTotal; }
     public List<Map<String, Object>> getPaidList() { return paidList; }
     public void setPaidList(List<Map<String, Object>> paidList) { this.paidList = paidList; }
-    public Date getAuditDateBegin() { return auditDateBegin; }
-    public void setAuditDateBegin(Date auditDateBegin) { this.auditDateBegin = auditDateBegin; }
-    public Date getAuditDateEnd() { return auditDateEnd; }
-    public void setAuditDateEnd(Date auditDateEnd) { this.auditDateEnd = auditDateEnd; }
-    public Date getFinishDateBegin() { return finishDateBegin; }
-    public void setFinishDateBegin(Date finishDateBegin) { this.finishDateBegin = finishDateBegin; }
-    public Date getFinishDateEnd() { return finishDateEnd; }
-    public void setFinishDateEnd(Date finishDateEnd) { this.finishDateEnd = finishDateEnd; }
 
     @Override
     public String toString() {
@@ -430,9 +373,6 @@ public class ProjContract extends BaseEntity
             .append("contractAmount", getContractAmount())
             .append("signDate", getSignDate())
             .append("entrustDate", getEntrustDate())
-            .append("auditDate", getAuditDate())
-            .append("returnDate", getReturnDate())
-            .append("finishDate", getFinishDate())
             .append("archiveDate", getArchiveDate())
             .append("archivePath", getArchivePath())
             .append("contractPeriod", getContractPeriod())
