@@ -43,6 +43,8 @@ public class ProjPriceRecalcServiceImpl implements IProjPriceRecalcService
     private static final String SRC_DICT = "dict";
     /** 单价来源：导入推导价 */
     private static final String SRC_IMPORTED = "imported";
+    /** 手动覆盖（单价 / 起步量通用） */
+    private static final String SRC_MANUAL = "manual";
 
     @Autowired
     private ProjProjectMapper projectMapper;
@@ -76,8 +78,9 @@ public class ProjPriceRecalcServiceImpl implements IProjPriceRecalcService
             return 0;
         }
 
-        // 1. 合同价索引： key = categoryId + "|" + billingId  ->  price
+        // 1. 合同索引： key = categoryId + "|" + billingId  ->  price / minQuantity
         Map<String, BigDecimal> contractPriceMap = new HashMap<>();
+        Map<String, BigDecimal> contractMinMap = new HashMap<>();
         Long contractId = project.getContractId();
         if (contractId != null)
         {
@@ -86,11 +89,19 @@ public class ProjPriceRecalcServiceImpl implements IProjPriceRecalcService
             {
                 for (ProjContractPrice cp : cps)
                 {
-                    if (cp.getCategoryId() == null || cp.getBillingId() == null || cp.getPrice() == null)
+                    if (cp.getCategoryId() == null || cp.getBillingId() == null)
                     {
                         continue;
                     }
-                    contractPriceMap.put(cp.getCategoryId() + "|" + cp.getBillingId(), cp.getPrice());
+                    String key = cp.getCategoryId() + "|" + cp.getBillingId();
+                    if (cp.getPrice() != null)
+                    {
+                        contractPriceMap.put(key, cp.getPrice());
+                    }
+                    if (cp.getContractMinQuantity() != null)
+                    {
+                        contractMinMap.put(key, cp.getContractMinQuantity());
+                    }
                 }
             }
         }
@@ -161,19 +172,32 @@ public class ProjPriceRecalcServiceImpl implements IProjPriceRecalcService
                 continue;
             }
 
-            // 无变化则跳过（价格与来源都相同才跳过）
+            // 解析目标起步量（与单价同优先级：① 手改 ② 合同 ③ 字典）
+            MinResolve mr = resolveMinQuantity(project, w, contractMinMap, dictPriceMap, forceReset);
+
+            // 无变化则跳过（单价、起步量及其来源都相同才跳过）
             boolean priceSame = w.getUnitPrice() != null && w.getUnitPrice().compareTo(rr.price) == 0;
             boolean sourceSame = rr.source.equals(w.getPriceSource());
-            if (priceSame && sourceSame)
+            boolean minSame = bigDecimalEquals(w.getMinQuantity(), mr.minQuantity)
+                && java.util.Objects.equals(mr.source, w.getMinQuantitySource());
+            if (priceSame && sourceSame && minSame)
             {
                 continue;
             }
 
-            // 产值 = 单价 × 工作量
+            // 产值 = 计费数量 × 单价；计费数量 = max(工作量, 起步量)
             BigDecimal output = null;
             if (w.getWorkload() != null)
             {
-                output = rr.price.multiply(w.getWorkload()).setScale(2, RoundingMode.HALF_UP);
+                BigDecimal effQty = w.getWorkload();
+                if (mr.minQuantity != null && mr.minQuantity.signum() > 0 && effQty.signum() > 0
+                        && effQty.compareTo(mr.minQuantity) < 0)
+                {
+                    // 起步量 = 最低计费数量：工作量低于起步量时按起步量计费，达到/超过则按实际
+                    // （与前端 calcRow 一致：effQty = max(工作量, 起步量)）
+                    effQty = mr.minQuantity;
+                }
+                output = rr.price.multiply(effQty).setScale(2, RoundingMode.HALF_UP);
             }
 
             // 备份导入推导价：重算为合同价/字典价时，把导入推导价写入 extra_data.origin_price 以便还原
@@ -193,7 +217,7 @@ public class ProjPriceRecalcServiceImpl implements IProjPriceRecalcService
                 }
             }
 
-            workloadMapper.updatePriceById(w.getId(), rr.price, output, rr.source, extraData);
+            workloadMapper.updatePriceById(w.getId(), rr.price, output, rr.source, mr.minQuantity, mr.source, extraData);
             updated++;
         }
 
@@ -255,6 +279,49 @@ public class ProjPriceRecalcServiceImpl implements IProjPriceRecalcService
         return new ResolveResult(currentPrice, w.getPriceSource() != null ? w.getPriceSource() : SRC_DICT);
     }
 
+    /**
+     * 解析目标起步量（优先级与单价一致）：
+     * ① 手改起步量（manual，保持不动；forceReset=true 时作废重算）
+     * ② 合同起步量（项目关联合同且该计费方式配置了合同起步量）
+     * ③ 字典起步量（proj_category_billing.min_quantity）
+     * 三者皆无 → 保持原值
+     */
+    private MinResolve resolveMinQuantity(ProjProject project, ProjWorkload w,
+                                          Map<String, BigDecimal> contractMinMap,
+                                          Map<String, ProjCategoryBilling> dictPriceMap,
+                                          boolean forceReset)
+    {
+        BigDecimal current = w.getMinQuantity();
+        String currentSource = w.getMinQuantitySource();
+
+        // ① 手改起步量：非强制重置场景下不覆盖
+        if (!forceReset && SRC_MANUAL.equals(currentSource))
+        {
+            return new MinResolve(current, SRC_MANUAL);
+        }
+
+        ProjCategoryBilling matched = dictPriceMap.get(dictKey(w.getCategoryId(), w.getBillingType(), w.getBillingCategory()));
+
+        // ② 合同起步量
+        if (project.getContractId() != null && w.getCategoryId() != null && matched != null && matched.getId() != null)
+        {
+            BigDecimal cm = contractMinMap.get(w.getCategoryId() + "|" + matched.getId());
+            if (cm != null)
+            {
+                return new MinResolve(cm, SRC_CONTRACT);
+            }
+        }
+
+        // ③ 字典起步量
+        if (matched != null && matched.getMinQuantity() != null)
+        {
+            return new MinResolve(matched.getMinQuantity(), SRC_DICT);
+        }
+
+        // 无起步量来源：保持原值
+        return new MinResolve(current, currentSource != null ? currentSource : SRC_DICT);
+    }
+
     /** 读取 extra_data.origin_price（导入推导价备份） */
     private BigDecimal readOriginPrice(String extraData)
     {
@@ -295,5 +362,26 @@ public class ProjPriceRecalcServiceImpl implements IProjPriceRecalcService
             this.price = price;
             this.source = source;
         }
+    }
+
+    /** 起步量解析结果 */
+    private static class MinResolve
+    {
+        final BigDecimal minQuantity;
+        final String source;
+
+        MinResolve(BigDecimal minQuantity, String source)
+        {
+            this.minQuantity = minQuantity;
+            this.source = source;
+        }
+    }
+
+    /** BigDecimal 相等判断（含 null 语义：都为空视为相等；按值比较而非标度） */
+    private boolean bigDecimalEquals(BigDecimal a, BigDecimal b)
+    {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        return a.compareTo(b) == 0;
     }
 }

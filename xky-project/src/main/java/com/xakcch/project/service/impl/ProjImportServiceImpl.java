@@ -1492,6 +1492,8 @@ public class ProjImportServiceImpl implements IProjImportService
             wl.setSubItemName(row.getEngineeringProject());
             wl.setPriceUnit(w.getPriceUnit());
             wl.setMinQuantity(w.getMinQuantity());
+            // 导入起步量取自字典计费项，来源标记 dict（与单价来源独立）
+            wl.setMinQuantitySource(w.getMinQuantity() != null ? "dict" : null);
             wl.setUnitPrice(w.getUnitPrice());
             // 导入项目的工作量单价为「导入推导价」，来源标记 imported；
             // 同时把推导价备份到 extra_data.origin_price，便于取消合同关联时精确还原

@@ -419,6 +419,8 @@ public class ProjSettlementController extends BaseController
                 w.setBillingCategory((String) wl.getOrDefault("billingCategory", ""));
                 w.setPriceUnit((String) wl.getOrDefault("priceUnit", ""));
                 w.setMinQuantity(toBigDecimal(wl.get("minQuantity")));
+                Object minSrcObj = wl.get("minQuantitySource");
+                w.setMinQuantitySource(minSrcObj != null ? minSrcObj.toString() : null);
                 w.setUnitPrice(toBigDecimal(wl.get("unitPrice")));
                 w.setRemark((String) wl.getOrDefault("remark", ""));
                 Object subItemNoObj = wl.get("subItemNo");
@@ -479,6 +481,8 @@ public class ProjSettlementController extends BaseController
                 w.setBillingCategory((String) wl.getOrDefault("billingCategory", ""));
                 w.setPriceUnit((String) wl.getOrDefault("priceUnit", ""));
                 w.setMinQuantity(toBigDecimal(wl.get("minQuantity")));
+                Object minSrcObj = wl.get("minQuantitySource");
+                w.setMinQuantitySource(minSrcObj != null ? minSrcObj.toString() : null);
                 w.setUnitPrice(toBigDecimal(wl.get("unitPrice")));
                 w.setRemark((String) wl.getOrDefault("remark", ""));
                 Object subItemNoObj = wl.get("subItemNo");

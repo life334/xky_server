@@ -23,6 +23,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="subItemName"       column="sub_item_name"     />
         <result property="priceUnit"         column="price_unit"        />
         <result property="minQuantity"       column="min_quantity"      />
+        <result property="minQuantitySource" column="min_quantity_source" />
         <result property="unitPrice"         column="unit_price"        />
         <result property="extraData"         column="extra_data"        />
         <result property="delFlag"           column="del_flag"          />
@@ -43,7 +44,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price,
+               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark
         from proj_workload w
@@ -56,7 +57,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price,
+               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -89,7 +90,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price,
+               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -121,6 +122,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="subItemName != null and subItemName != ''">sub_item_name,</if>
             <if test="priceUnit != null">price_unit,</if>
             <if test="minQuantity != null">min_quantity,</if>
+            <if test="minQuantitySource != null and minQuantitySource != ''">min_quantity_source,</if>
             <if test="unitPrice != null">unit_price,</if>
             <if test="extraData != null and extraData != ''">extra_data,</if>
             <if test="remark != null and remark != ''">remark,</if>
@@ -144,6 +146,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="subItemName != null and subItemName != ''">#{subItemName},</if>
             <if test="priceUnit != null">#{priceUnit},</if>
             <if test="minQuantity != null">#{minQuantity},</if>
+            <if test="minQuantitySource != null and minQuantitySource != ''">#{minQuantitySource},</if>
             <if test="unitPrice != null">#{unitPrice},</if>
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="remark != null and remark != ''">#{remark},</if>
@@ -172,6 +175,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="subItemName != null and subItemName != ''">sub_item_name = #{subItemName},</if>
             <if test="priceUnit != null">price_unit = #{priceUnit},</if>
             <if test="minQuantity != null">min_quantity = #{minQuantity},</if>
+            <if test="minQuantitySource != null and minQuantitySource != ''">min_quantity_source = #{minQuantitySource},</if>
             <if test="unitPrice != null">unit_price = #{unitPrice},</if>
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             <if test="remark != null">remark = #{remark},</if>
@@ -181,13 +185,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where id = #{id}
     </update>
 
-    <!-- 单价重算：按 id 批量更新单价/产值/来源/备份价（仅外部工作量重算使用） -->
+    <!-- 单价重算：按 id 批量更新单价/起步量/产值/来源/备份价（仅外部工作量重算使用） -->
     <update id="updatePriceById">
         update proj_workload
         set unit_price = #{unitPrice},
             external_price = #{unitPrice},
             external_output = #{externalOutput},
             price_source = #{priceSource},
+            min_quantity = #{minQuantity},
+            min_quantity_source = #{minQuantitySource},
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             update_time = now()
         where id = #{id}
@@ -227,7 +233,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             internal_output, external_output,
             workload, price_source,
             billing_type, billing_category, sub_item_no, sub_item_name,
-            price_unit, min_quantity, unit_price,
+            price_unit, min_quantity, unit_price, min_quantity_source,
             extra_data, remark,
             create_by, create_time
         ) values
@@ -254,7 +260,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 <when test="item.subItemName != null and item.subItemName != ''">#{item.subItemName}</when>
                 <otherwise>''</otherwise>
             </choose>,
-            #{item.priceUnit}, #{item.minQuantity}, #{item.unitPrice},
+            #{item.priceUnit}, #{item.minQuantity}, #{item.unitPrice}, #{item.minQuantitySource},
             <choose>
                 <when test="item.extraData != null and item.extraData != ''">#{item.extraData}::jsonb</when>
                 <otherwise>null</otherwise>
@@ -272,7 +278,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price,
+               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -293,7 +299,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price,
+               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -319,7 +325,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             internal_output, external_output,
             workload,
             price_source,
-            billing_type, billing_category, sub_item_no, sub_item_name, price_unit, min_quantity, unit_price,
+            billing_type, billing_category, sub_item_no, sub_item_name, price_unit, min_quantity, unit_price, min_quantity_source,
             extra_data, remark,
             create_by, create_time
         )values(
@@ -345,7 +351,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 <when test="subItemName != null and subItemName != ''">#{subItemName},</when>
                 <otherwise>'',</otherwise>
             </choose>
-            #{priceUnit}, #{minQuantity}, #{unitPrice},
+            #{priceUnit}, #{minQuantity}, #{unitPrice}, #{minQuantitySource},
             <if test="extraData != null and extraData != ''">#{extraData}::jsonb,</if>
             <if test="extraData == null or extraData == ''">null,</if>
             #{remark},
@@ -368,6 +374,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             price_unit = EXCLUDED.price_unit,
             min_quantity = EXCLUDED.min_quantity,
             unit_price = EXCLUDED.unit_price,
+            min_quantity_source = EXCLUDED.min_quantity_source,
             extra_data = coalesce(EXCLUDED.extra_data, proj_workload.extra_data),
             remark = EXCLUDED.remark,
             update_by = EXCLUDED.create_by,

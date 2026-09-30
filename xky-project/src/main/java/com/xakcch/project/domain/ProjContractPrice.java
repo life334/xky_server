@@ -63,8 +63,11 @@ public class ProjContractPrice extends BaseEntity
     /** 计价单位（如：平方公里、公里、宗） */
     private String priceUnit;
 
-    /** 起步量 */
+    /** 字典起步量（proj_category_billing.min_quantity，JOIN 带出，只读展示） */
     private BigDecimal minQuantity;
+
+    /** 合同起步量（持久化到 proj_contract_price.min_quantity；为空表示沿用字典起步量） */
+    private BigDecimal contractMinQuantity;
 
     // ===== getter/setter =====
 
@@ -226,6 +229,16 @@ public class ProjContractPrice extends BaseEntity
     public void setMinQuantity(BigDecimal minQuantity)
     {
         this.minQuantity = minQuantity;
+    }
+
+    public BigDecimal getContractMinQuantity()
+    {
+        return contractMinQuantity;
+    }
+
+    public void setContractMinQuantity(BigDecimal contractMinQuantity)
+    {
+        this.contractMinQuantity = contractMinQuantity;
     }
 
     @Override

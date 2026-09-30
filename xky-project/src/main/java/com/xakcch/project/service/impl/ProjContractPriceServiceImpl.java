@@ -47,15 +47,16 @@ public class ProjContractPriceServiceImpl implements IProjContractPriceService
     }
 
     /**
-     * 批量保存：遍历传入的 priceList，有 id 则 update，无 id 且 price 不为空则 insert，price 为空且已有 id 则 delete。
-     * 保存后比对新旧单价，得出被改动的计费方式(billingId)集合，仅重算关联该项目的外部工作量单价。
+     * 批量保存：遍历传入的 priceList，有 id 则 update，无 id 且（单价或起步量）非空则 insert，
+     * 单价与起步量皆空且已有 id 则 delete。
+     * 保存后比对新旧（单价 + 起步量）签名，得出被改动的计费方式(billingId)集合，仅重算关联该项目的外部工作量。
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int savePrices(Long contractId, List<ProjContractPrice> priceList)
     {
-        // 1. 变更前快照：billingId -> price（用于比对得出变更集）
-        Map<Long, BigDecimal> oldPriceMap = new HashMap<>();
+        // 1. 变更前快照：billingId -> 签名（单价 | 起步量）
+        Map<Long, String> oldSigMap = new HashMap<>();
         List<ProjContractPrice> before = priceMapper.selectPriceListByContractId(contractId);
         if (before != null)
         {
@@ -63,7 +64,7 @@ public class ProjContractPriceServiceImpl implements IProjContractPriceService
             {
                 if (cp.getBillingId() != null)
                 {
-                    oldPriceMap.put(cp.getBillingId(), cp.getPrice());
+                    oldSigMap.put(cp.getBillingId(), priceSig(cp.getPrice(), cp.getContractMinQuantity()));
                 }
             }
         }
@@ -75,12 +76,14 @@ public class ProjContractPriceServiceImpl implements IProjContractPriceService
         {
             p.setContractId(contractId);
 
+            boolean priceEmpty = isEmptyPrice(p.getPrice());
+            boolean minEmpty = isEmptyPrice(p.getContractMinQuantity());
+
             if (p.getId() != null)
             {
-                // 已有记录的更新或删除
-                if (p.getPrice() == null || p.getPrice().compareTo(BigDecimal.ZERO) < 0)
+                // 已有记录：单价与起步量都清空 → 删除；否则更新
+                if (priceEmpty && minEmpty)
                 {
-                    // 清空了单价 → 删除
                     p.setUpdateBy(username);
                     priceMapper.deletePrice(p);
                 }
@@ -91,19 +94,18 @@ public class ProjContractPriceServiceImpl implements IProjContractPriceService
                 }
                 count++;
             }
-            else if (p.getPrice() != null && p.getPrice().compareTo(BigDecimal.ZERO) >= 0)
+            else if ((!priceEmpty || !minEmpty) && p.getBillingId() != null)
             {
-                // 新记录，有有效单价 → 插入（必须带 billingId）
-                if (p.getBillingId() == null) continue;
+                // 新记录：单价或起步量任一非空 → 插入
                 p.setCreateBy(username);
                 priceMapper.insertPrice(p);
                 count++;
             }
-            // price 为空的跳过（保持未配置状态）
+            // 两者皆空的跳过（保持未配置状态）
         }
 
         // 2. 变更后快照 + 比对，得出被改动的 billingId 集合
-        Map<Long, BigDecimal> newPriceMap = new HashMap<>();
+        Map<Long, String> newSigMap = new HashMap<>();
         List<ProjContractPrice> after = priceMapper.selectPriceListByContractId(contractId);
         if (after != null)
         {
@@ -111,28 +113,28 @@ public class ProjContractPriceServiceImpl implements IProjContractPriceService
             {
                 if (cp.getBillingId() != null)
                 {
-                    newPriceMap.put(cp.getBillingId(), cp.getPrice());
+                    newSigMap.put(cp.getBillingId(), priceSig(cp.getPrice(), cp.getContractMinQuantity()));
                 }
             }
         }
         Set<Long> changedBillingIds = new HashSet<>();
-        for (Map.Entry<Long, BigDecimal> e : oldPriceMap.entrySet())
+        for (Map.Entry<Long, String> e : oldSigMap.entrySet())
         {
-            BigDecimal np = newPriceMap.get(e.getKey());
-            if (!priceEquals(e.getValue(), np))
+            String ns = newSigMap.get(e.getKey());
+            if (!java.util.Objects.equals(e.getValue(), ns))
             {
                 changedBillingIds.add(e.getKey());
             }
         }
-        for (Long bid : newPriceMap.keySet())
+        for (Long bid : newSigMap.keySet())
         {
-            if (!oldPriceMap.containsKey(bid))
+            if (!oldSigMap.containsKey(bid))
             {
                 changedBillingIds.add(bid);
             }
         }
 
-        // 3. 对该合同关联的所有项目，仅重算被改动的计费方式对应的外部工作量单价
+        // 3. 对该合同关联的所有项目，仅重算被改动的计费方式对应的外部工作量单价/起步量
         if (!changedBillingIds.isEmpty())
         {
             List<Map<String, Object>> projects = projectMapper.selectProjectsByContractId(contractId);
@@ -156,11 +158,20 @@ public class ProjContractPriceServiceImpl implements IProjContractPriceService
         return count;
     }
 
-    /** 单价相等判断（含 null 语义：都为空视为相等） */
-    private boolean priceEquals(BigDecimal a, BigDecimal b)
+    /** 单价为空判定（null 或负数视为未配置） */
+    private boolean isEmptyPrice(BigDecimal v)
     {
-        if (a == null && b == null) return true;
-        if (a == null || b == null) return false;
-        return a.compareTo(b) == 0;
+        return v == null || v.compareTo(BigDecimal.ZERO) < 0;
+    }
+
+    /** 单价 + 起步量 的比对签名（null 归一化，值归一化去尾零，避免 1 与 1.00 误判为变化） */
+    private String priceSig(BigDecimal price, BigDecimal minQuantity)
+    {
+        return norm(price) + "|" + norm(minQuantity);
+    }
+
+    private String norm(BigDecimal v)
+    {
+        return v == null ? "" : v.stripTrailingZeros().toPlainString();
     }
 }

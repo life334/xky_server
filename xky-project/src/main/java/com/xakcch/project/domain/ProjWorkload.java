@@ -68,6 +68,9 @@ public class ProjWorkload extends BaseEntity
     /** 起步量（最低计价数量，不足按起步量计算） */
     private BigDecimal minQuantity;
 
+    /** 起步量来源（contract=合同起步量 dict=字典默认起步量 manual=手动覆盖），与 priceSource 对称 */
+    private String minQuantitySource;
+
     /** 采用的单价（元） */
     private BigDecimal unitPrice;
 
@@ -268,6 +271,16 @@ public class ProjWorkload extends BaseEntity
     public void setMinQuantity(BigDecimal minQuantity)
     {
         this.minQuantity = minQuantity;
+    }
+
+    public String getMinQuantitySource()
+    {
+        return minQuantitySource;
+    }
+
+    public void setMinQuantitySource(String minQuantitySource)
+    {
+        this.minQuantitySource = minQuantitySource;
     }
 
     public BigDecimal getUnitPrice()

@@ -19,6 +19,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="dictUnitPrice"    column="dict_unit_price"     />
         <result property="priceUnit"        column="price_unit"          />
         <result property="minQuantity"      column="min_quantity"        />
+        <result property="contractMinQuantity" column="contract_min_quantity" />
         <result property="createBy"         column="create_by"          />
         <result property="createTime"       column="create_time"        />
         <result property="updateBy"         column="update_by"          />
@@ -41,7 +42,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             b.billing_category  as billing_category,
             b.unit_price       as dict_unit_price,
             b.price_unit        as price_unit,
-            b.min_quantity      as min_quantity
+            b.min_quantity      as min_quantity,
+            cp.min_quantity     as contract_min_quantity
         from proj_category c
         left join proj_category pc on pc.id = c.parent_id and pc.del_flag = '0'
         left join proj_category_billing b on b.category_id = c.id
@@ -72,6 +74,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             b.unit_price       as dict_unit_price,
             b.price_unit        as price_unit,
             b.min_quantity      as min_quantity,
+            cp.min_quantity     as contract_min_quantity,
             cp.create_by,
             cp.create_time,
             cp.update_by,
@@ -91,6 +94,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             category_id,
             billing_id,
             price,
+            min_quantity,
             <if test="createBy != null and createBy != ''">create_by,</if>
             create_time
         )values(
@@ -98,6 +102,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             #{categoryId},
             #{billingId},
             #{price},
+            #{contractMinQuantity},
             <if test="createBy != null and createBy != ''">#{createBy},</if>
             now()
         )
@@ -108,6 +113,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         update proj_contract_price
         <set>
             price = #{price},
+            min_quantity = #{contractMinQuantity},
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
             update_time = now()
         </set>
