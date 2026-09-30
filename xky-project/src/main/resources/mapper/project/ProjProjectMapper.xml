@@ -34,11 +34,21 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="contractNo"          column="contract_no"          />
         <result property="relatedProjectCode"  column="related_project_code" />
         <result property="leaderNames"         column="leader_names"         />
+        <!-- 下钻弹窗展示字段 -->
+        <result property="contractAmount"      column="contract_amount"      />
+        <result property="internalOutput"      column="internal_output"      />
+        <result property="externalOutput"      column="external_output"      />
         <!-- 任务聚合字段 -->
         <result property="assignDate"          column="assign_date"          />
         <result property="durationRequire"     column="duration_require"     />
         <result property="totalDuration"       column="total_duration"       />
     </resultMap>
+
+    <!-- 「新增/录入日期」口径片（收口，别名恒为 p）：必须与 ProjDashboardMapper.v2NewDateExpr 保持一致。
+         全量统一按「项目创建日期」create_time::date（无论手动录入还是历史导入）。 -->
+    <sql id="newDateExpr">
+        p.create_time::date
+    </sql>
 
     <sql id="selectProjectVo">
         select p.id, p.project_code, p.project_name, p.engineering_project,
@@ -65,7 +75,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                ct.contract_name,
                ct.contract_no,
                coalesce(rp.project_code, p.related_project_code_text) as related_project_code,
-               coalesce(ln.leader_names, '') as leader_names
+               coalesce(ln.leader_names, '') as leader_names,
+               ct.contract_amount as contract_amount,
+               coalesce(wo.internal_output, 0) as internal_output,
+               coalesce(wo.external_output, 0) as external_output
         from proj_project p
         left join proj_category c on c.id = p.project_category_id
         left join proj_contract ct on ct.id = p.contract_id
@@ -76,6 +89,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             inner join sys_user u on u.user_id = l.user_id
             where l.project_id = p.id and l.del_flag = '0'
         ) ln on true
+        left join lateral (
+            select sum(coalesce(w.internal_output, 0)) as internal_output,
+                   sum(coalesce(w.external_output, 0)) as external_output
+            from proj_workload w
+            where w.project_id = p.id and w.del_flag = '0'
+        ) wo on true
         where p.del_flag = '0'
         <if test="keyword != null and keyword != ''">
             AND (p.project_code like concat('%', #{keyword}, '%')
@@ -116,6 +135,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="projectCategoryId != null">
             AND p.project_category_id = #{projectCategoryId}
         </if>
+        <!-- 项目类别多选（类别画像行 / 饼图桶下钻：「其它」桶为多个小类 id 的并集） -->
+        <if test="projectCategoryIds != null and projectCategoryIds.length &gt; 0">
+            AND p.project_category_id in
+            <foreach collection="projectCategoryIds" item="cid" open="(" separator="," close=")">
+                #{cid}
+            </foreach>
+        </if>
         <if test="clientUnit != null and clientUnit != ''">
             AND p.client_unit like concat('%', #{clientUnit}, '%')
         </if>
@@ -145,6 +171,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
         <if test="closeDateEnd != null and closeDateEnd != ''">
             AND p.close_time &lt; to_date(#{closeDateEnd}, 'YYYY-MM-DD') + interval '1 day'
+        </if>
+        <!-- 录入日期（新增口）范围（首页驾驶舱「本期新增」下钻 + 列表筛选），口径与看板完全一致 -->
+        <if test="newDateBegin != null and newDateBegin != ''">
+            AND <include refid="newDateExpr"/> &gt;= to_date(#{newDateBegin}, 'YYYY-MM-DD')
+        </if>
+        <if test="newDateEnd != null and newDateEnd != ''">
+            AND <include refid="newDateExpr"/> &lt; to_date(#{newDateEnd}, 'YYYY-MM-DD') + interval '1 day'
         </if>
         <!-- 项目来源筛选（manual=手动录入 / import=Excel 导入） -->
         <if test="dataSource != null and dataSource != ''">
@@ -199,7 +232,16 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                   and pm2.payment_type in ('advance', 'final')
                   and pm2.amount is not null and pm2.amount &gt; 0)
         </if>
-        order by p.id desc
+        <!-- 排序：下钻弹窗按指标排序（产值/合同额），默认按 id 倒序 -->
+        <choose>
+            <when test="outputOrder == 'contractAmount_desc'">order by ct.contract_amount desc nulls last, p.id desc</when>
+            <when test="outputOrder == 'contractAmount_asc'">order by ct.contract_amount asc nulls last, p.id desc</when>
+            <when test="outputOrder == 'internalOutput_desc'">order by coalesce(wo.internal_output, 0) desc, p.id desc</when>
+            <when test="outputOrder == 'internalOutput_asc'">order by coalesce(wo.internal_output, 0) asc, p.id desc</when>
+            <when test="outputOrder == 'externalOutput_desc'">order by coalesce(wo.external_output, 0) desc, p.id desc</when>
+            <when test="outputOrder == 'externalOutput_asc'">order by coalesce(wo.external_output, 0) asc, p.id desc</when>
+            <otherwise>order by p.id desc</otherwise>
+        </choose>
     </select>
 
     <select id="selectProjectById" parameterType="Long" resultMap="ProjProjectResult">
@@ -504,6 +546,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="projectCategoryId != null">
             AND p.project_category_id = #{projectCategoryId}
         </if>
+        <!-- 项目类别多选（类别画像行 / 饼图桶下钻：「其它」桶为多个小类 id 的并集） -->
+        <if test="projectCategoryIds != null and projectCategoryIds.length &gt; 0">
+            AND p.project_category_id in
+            <foreach collection="projectCategoryIds" item="cid" open="(" separator="," close=")">
+                #{cid}
+            </foreach>
+        </if>
         <if test="clientUnit != null and clientUnit != ''">
             AND p.client_unit like concat('%', #{clientUnit}, '%')
         </if>
@@ -531,6 +580,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
         <if test="closeDateEnd != null and closeDateEnd != ''">
             AND p.close_time &lt; to_date(#{closeDateEnd}, 'YYYY-MM-DD') + interval '1 day'
+        </if>
+        <!-- 录入日期（新增口）范围，与 selectProjectList 口径一致 -->
+        <if test="newDateBegin != null and newDateBegin != ''">
+            AND <include refid="newDateExpr"/> &gt;= to_date(#{newDateBegin}, 'YYYY-MM-DD')
+        </if>
+        <if test="newDateEnd != null and newDateEnd != ''">
+            AND <include refid="newDateExpr"/> &lt; to_date(#{newDateEnd}, 'YYYY-MM-DD') + interval '1 day'
         </if>
     </select>
 

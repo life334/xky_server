@@ -115,6 +115,15 @@ public class ProjProject extends BaseEntity
     @Excel(name = "项目负责人")
     private String leaderNames;
 
+    /** 合同金额（JOIN proj_contract，仅列表展示/下钻弹窗用） */
+    private BigDecimal contractAmount;
+
+    /** 内部产值合计（proj_workload 汇总，仅列表展示/下钻弹窗用） */
+    private BigDecimal internalOutput;
+
+    /** 外部产值合计（proj_workload 汇总，仅列表展示/下钻弹窗用） */
+    private BigDecimal externalOutput;
+
     /** 负责人用户ID数组（表单提交用） */
     private Long[] leaderIds;
 
@@ -185,6 +194,18 @@ public class ProjProject extends BaseEntity
 
     /** 办结日期范围结束（查询用，非持久化） */
     private String closeDateEnd;
+
+    /** 录入日期（新增口）范围起始（查询用，非持久化）——全量按「项目创建日期」create_time */
+    private String newDateBegin;
+
+    /** 录入日期（新增口）范围结束（查询用，非持久化） */
+    private String newDateEnd;
+
+    /** 项目类别ID集合（查询用，非持久化；类别画像/饼图桶下钻使用，含小类多选） */
+    private Long[] projectCategoryIds;
+
+    /** 排序字段（查询用，非持久化）：合同额/产值排序，如 contractAmount_desc / internalOutput_desc / externalOutput_desc */
+    private String outputOrder;
 
     public Long getId()
     {
@@ -613,6 +634,76 @@ public class ProjProject extends BaseEntity
     public void setCloseDateEnd(String closeDateEnd)
     {
         this.closeDateEnd = closeDateEnd;
+    }
+
+    public BigDecimal getContractAmount()
+    {
+        return contractAmount;
+    }
+
+    public void setContractAmount(BigDecimal contractAmount)
+    {
+        this.contractAmount = contractAmount;
+    }
+
+    public BigDecimal getInternalOutput()
+    {
+        return internalOutput;
+    }
+
+    public void setInternalOutput(BigDecimal internalOutput)
+    {
+        this.internalOutput = internalOutput;
+    }
+
+    public BigDecimal getExternalOutput()
+    {
+        return externalOutput;
+    }
+
+    public void setExternalOutput(BigDecimal externalOutput)
+    {
+        this.externalOutput = externalOutput;
+    }
+
+    public String getNewDateBegin()
+    {
+        return newDateBegin;
+    }
+
+    public void setNewDateBegin(String newDateBegin)
+    {
+        this.newDateBegin = newDateBegin;
+    }
+
+    public String getNewDateEnd()
+    {
+        return newDateEnd;
+    }
+
+    public void setNewDateEnd(String newDateEnd)
+    {
+        this.newDateEnd = newDateEnd;
+    }
+
+    public Long[] getProjectCategoryIds()
+    {
+        return projectCategoryIds;
+    }
+
+    public void setProjectCategoryIds(Long[] projectCategoryIds)
+    {
+        this.projectCategoryIds = projectCategoryIds;
+    }
+
+    public String getOutputOrder()
+    {
+        return outputOrder;
+    }
+
+    public void setOutputOrder(String outputOrder)
+    {
+        this.outputOrder = outputOrder;
     }
 
     @Override

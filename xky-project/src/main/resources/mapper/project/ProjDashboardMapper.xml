@@ -276,8 +276,10 @@
     <!-- ================================================================
          ===== v2（2026-09-27 契约）：summary / structure / trend / risk =====
          口径（契约 §0 总则）：
-           * 新增按 assign_date（修正历史 create_time 口径）；办结/产值按 close_time；
-             到账按 proj_payment.pay_time（非空即到账，全站统一）；合同额按 sign_date
+           * 新增按「项目创建日期」create_time::date（全量统一，见 v2NewDateExpr；
+             2026-09-30 起不再按来源分流）
+           * 办结/产值按 close_time；到账按 proj_payment.pay_time（非空即到账，全站统一）；
+             合同额按 sign_date
            * 超期预警仅 data_source='manual'（手动录入），历史导入项目豁免
            * 工作日日期算术一律在 Java 层（WorkdayUtils），SQL 只拉候选行
            * 单参数 @Param("q")：轻筛选 clientUnit/leaderId/categoryId 见 v2Filter
@@ -295,6 +297,13 @@
         <if test="q.categoryId != null">
             AND p.project_category_id = #{q.categoryId}
         </if>
+    </sql>
+
+    <!-- 「新增日期」口径片（收口，别名恒为 p）：所有「新增/按新增窗的合同额」指标必须 include 本片段，
+         禁止各处各写各的。口径（2026-09-30 起）：全量统一按「项目创建日期」create_time::date，
+         不再按来源分流（无论手动录入 manual 还是历史导入 import）。 -->
+    <sql id="v2NewDateExpr">
+        p.create_time::date
     </sql>
 
     <!-- 指令性任务排除片：仅用于「钱」的口径（外部产值 / 欠款 / 到账）。
@@ -357,15 +366,15 @@
         <include refid="v2ContractFilter"/>
     </select>
 
-    <!-- 本期/对比期 新增（assign_date）与办结（close_time），四值一查 -->
+    <!-- 本期/对比期 新增（v2NewDateExpr 创建日期）与办结（close_time），四值一查 -->
     <select id="periodProjectStats" resultType="map">
         SELECT
-            COUNT(*) FILTER (WHERE p.assign_date IS NOT NULL
-                AND p.assign_date &gt;= #{q.beginDate}::date
-                AND p.assign_date &lt;  #{q.endDate}::date + interval '1 day') AS "periodNew",
-            COUNT(*) FILTER (WHERE p.assign_date IS NOT NULL
-                AND p.assign_date &gt;= #{q.compareBeginDate}::date
-                AND p.assign_date &lt;  #{q.compareEndDate}::date + interval '1 day') AS "periodNewPrev",
+            COUNT(*) FILTER (WHERE <include refid="v2NewDateExpr"/> IS NOT NULL
+                AND <include refid="v2NewDateExpr"/> &gt;= #{q.beginDate}::date
+                AND <include refid="v2NewDateExpr"/> &lt;  #{q.endDate}::date + interval '1 day') AS "periodNew",
+            COUNT(*) FILTER (WHERE <include refid="v2NewDateExpr"/> IS NOT NULL
+                AND <include refid="v2NewDateExpr"/> &gt;= #{q.compareBeginDate}::date
+                AND <include refid="v2NewDateExpr"/> &lt;  #{q.compareEndDate}::date + interval '1 day') AS "periodNewPrev",
             COUNT(*) FILTER (WHERE p.close_time IS NOT NULL
                 AND p.close_time &gt;= #{q.beginDate}::date
                 AND p.close_time &lt;  #{q.endDate}::date + interval '1 day') AS "periodCompleted",
@@ -443,19 +452,19 @@
         SELECT id, name FROM proj_category WHERE del_flag = '0'
     </select>
 
-    <!-- 类型桶统计：数量/办结数（assign 窗）+ 内外产值（close 窗）+ 合同额（assign 窗项目），五指标一查 -->
+    <!-- 类型桶统计：数量/办结数（新增窗 v2NewDateExpr）+ 内外产值（close 窗）+ 合同额（新增窗项目），五指标一查 -->
     <select id="bucketProjectStats" resultType="map">
         SELECT p.project_category_id AS "categoryId",
-               COUNT(*) FILTER (WHERE p.assign_date &gt;= #{q.beginDate}::date
-                   AND p.assign_date &lt; #{q.endDate}::date + interval '1 day') AS "count",
+               COUNT(*) FILTER (WHERE <include refid="v2NewDateExpr"/> &gt;= #{q.beginDate}::date
+                   AND <include refid="v2NewDateExpr"/> &lt; #{q.endDate}::date + interval '1 day') AS "count",
                COUNT(*) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
                    AND p.close_time &lt; #{q.endDate}::date + interval '1 day') AS "closedCount",
                COALESCE(SUM(ws.int_out) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
                    AND p.close_time &lt; #{q.endDate}::date + interval '1 day'), 0) AS "internalOutput",
                COALESCE(SUM(CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN 0 ELSE COALESCE(ws.ext_out, 0) END) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
                    AND p.close_time &lt; #{q.endDate}::date + interval '1 day'), 0) AS "externalOutput",
-               COALESCE(SUM(COALESCE(ct.contract_amount, 0)) FILTER (WHERE p.assign_date &gt;= #{q.beginDate}::date
-                   AND p.assign_date &lt; #{q.endDate}::date + interval '1 day'), 0) AS "contractAmount"
+               COALESCE(SUM(COALESCE(ct.contract_amount, 0)) FILTER (WHERE <include refid="v2NewDateExpr"/> &gt;= #{q.beginDate}::date
+                   AND <include refid="v2NewDateExpr"/> &lt; #{q.endDate}::date + interval '1 day'), 0) AS "contractAmount"
         FROM proj_project p
         LEFT JOIN (
             SELECT project_id,
@@ -474,8 +483,8 @@
     <select id="leaderBucketMatrix" resultType="map">
         SELECT pl.user_id AS "leaderId",
                p.project_category_id AS "categoryId",
-               COUNT(*) FILTER (WHERE p.assign_date &gt;= #{q.beginDate}::date
-                   AND p.assign_date &lt; #{q.endDate}::date + interval '1 day') AS "count",
+               COUNT(*) FILTER (WHERE <include refid="v2NewDateExpr"/> &gt;= #{q.beginDate}::date
+                   AND <include refid="v2NewDateExpr"/> &lt; #{q.endDate}::date + interval '1 day') AS "count",
                COALESCE(SUM(ws.int_out) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
                    AND p.close_time &lt; #{q.endDate}::date + interval '1 day'), 0) AS "internalOutput",
                COALESCE(SUM(CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN 0 ELSE COALESCE(ws.ext_out, 0) END) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
@@ -544,7 +553,7 @@
         ORDER BY label
     </select>
 
-    <!-- 项目动态三系列：新增(assign_date，修正原 create_time) / 办结(close_time) / 到账金额 -->
+    <!-- 项目动态三系列：新增(v2NewDateExpr 创建日期) / 办结(close_time) / 到账金额 -->
     <select id="projectDynamicTrendFiltered" resultType="map">
         SELECT to_char(m, 'YYYY-MM') AS "label",
                COALESCE(np.cnt, 0) AS "newProjects",
@@ -556,11 +565,11 @@
             '1 month'::interval
         ) m
         LEFT JOIN (
-            SELECT date_trunc('month', p.assign_date) AS mo, COUNT(*) AS cnt
+            SELECT date_trunc('month', <include refid="v2NewDateExpr"/>) AS mo, COUNT(*) AS cnt
             FROM proj_project p
-            WHERE p.del_flag = '0' AND p.assign_date IS NOT NULL
+            WHERE p.del_flag = '0' AND <include refid="v2NewDateExpr"/> IS NOT NULL
             <include refid="v2Filter"/>
-            GROUP BY date_trunc('month', p.assign_date)
+            GROUP BY date_trunc('month', <include refid="v2NewDateExpr"/>)
         ) np ON np.mo = m
         LEFT JOIN (
             SELECT date_trunc('month', p.close_time) AS mo, COUNT(*) AS cnt

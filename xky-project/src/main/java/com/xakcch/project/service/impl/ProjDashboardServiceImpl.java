@@ -183,7 +183,7 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         snapshot.put("annualContract", metricWithDelta(annual, annualPrev, "同比"));
         snapshot.put("monthContract", metricWithDelta(month, monthPrev, "环比"));
 
-        // 新增/办结（四值一查，新增按 assign_date——修正原 create_time 口径）
+        // 新增/办结（四值一查；新增按「项目创建日期」create_time，见 v2NewDateExpr）
         Map<String, Object> ps = dashboardMapper.periodProjectStats(query);
         snapshot.put("periodNew", metricWithPrev(toInt(ps.get("periodNew")), toInt(ps.get("periodNewPrev"))));
         snapshot.put("periodCompleted", metricWithPrev(toInt(ps.get("periodCompleted")), toInt(ps.get("periodCompletedPrev"))));
@@ -264,6 +264,8 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         List<Map<String, Object>> closedByBucket = new ArrayList<>();
         // 主类型桶 → 小类 id（用于前端下钻；四个主类型与对应小类一一映射，qita 为 null）
         Map<String, String> bucketMainCategoryId = buildBucketMainCategoryId();
+        // 主类型桶 → 小类 id 数组（下钻弹窗用：四主桶=自身小类，qita=其余全部小类；与桶计数同源）
+        Map<String, List<Long>> bucketCategoryIds = buildBucketCategoryIds();
         for (String bk : BUCKET_ORDER)
         {
             Map<String, Object> b = buckets.get(bk);
@@ -273,6 +275,7 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
             stat.put("bucket", bk);
             stat.put("bucketName", BUCKET_LABEL.get(bk));
             stat.put("categoryId", bucketMainCategoryId.get(bk));
+            stat.put("categoryIds", bucketCategoryIds.get(bk));
             stat.put("count", cnt);
             stat.put("ratio", totalCount > 0 ? Math.round(cnt * 1000.0 / totalCount) / 10.0 : 0.0);
             stat.put("contractAmount", b.get("contractAmount"));
@@ -462,10 +465,13 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
             item.put("severity", (days > 180 || amount.compareTo(new BigDecimal("100000")) > 0) ? "high"
                     : days > 90 ? "medium" : "low");
             item.put("hint", "办结 " + days + " 天，欠款 ¥" + amount.toPlainString() + " 元");
+            item.put("closeTime", r.get("closeTime"));
             debtItems.add(item);
         }
         debtItems.sort((a, b) -> Integer.compare((Integer) b.get("days"), (Integer) a.get("days")));
         riskItems.addAll(debtItems.size() > 5 ? debtItems.subList(0, 5) : debtItems);
+        // 全量欠款项目（供「应收欠款按年」弹窗数据直传；前端按办结年份过滤）
+        data.put("debtProjects", debtItems);
 
         // 源2 工期超期（工作日口径，仅手动录入；在办+已办结合并，按超期工作日数降序 top5）
         List<OverdueItem> odItems = buildOverdueItems(dashboardMapper.selectOverdueCandidates(query));
@@ -479,8 +485,8 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         }
         int overdueCount = crossed.size();
         crossed.sort((a, b) -> Integer.compare(b.overdueDays, a.overdueDays));
-        List<OverdueItem> odTop = crossed.size() > 5 ? crossed.subList(0, 5) : crossed;
-        for (OverdueItem o : odTop)
+        List<Map<String, Object>> overdueAll = new ArrayList<>();
+        for (OverdueItem o : crossed)
         {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("type", "overdue");
@@ -493,8 +499,11 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
             item.put("days", o.overdueDays);
             item.put("amount", BigDecimal.ZERO);
             item.put("hint", (o.closed ? "已办结时超期 " : "超期 ") + o.overdueDays + " 个工作日");
-            riskItems.add(item);
+            overdueAll.add(item);
         }
+        riskItems.addAll(overdueAll.size() > 5 ? overdueAll.subList(0, 5) : overdueAll);
+        // 全量超期项目（供「风险分类」弹窗数据直传）
+        data.put("overdueProjects", overdueAll);
 
         // 源3 未关联合同（录入 N 个工作日后仍未关联，N=contractMissingWorkdays；仅手动录入）
         List<Map<String, Object>> cmRows = dashboardMapper.contractMissingCandidates(query);
@@ -525,6 +534,8 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         int contractMissingCount = cmItems.size();
         cmItems.sort((a, b) -> Integer.compare((Integer) b.get("days"), (Integer) a.get("days")));
         riskItems.addAll(cmItems.size() > 5 ? cmItems.subList(0, 5) : cmItems);
+        // 全量未关联合同项目（供「风险分类」弹窗数据直传）
+        data.put("contractMissingProjects", cmItems);
 
         // 三源合并按严重度排序，cap 15
         riskItems.sort((a, b) -> {
@@ -763,6 +774,31 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
             }
         }
         return bucketMainId;
+    }
+
+    /**
+     * 主类型桶 → 小类 id 数组（下钻弹窗用；与 loadCategoryBucketMap 同源，保证与桶计数口径一致）：
+     * 四个主类型各含自身小类，qita 收其余全部小类（含未映射类别）。
+     */
+    private Map<String, List<Long>> buildBucketCategoryIds()
+    {
+        Map<String, List<Long>> bucketIds = new HashMap<>();
+        for (String bk : BUCKET_ORDER)
+        {
+            bucketIds.put(bk, new ArrayList<>());
+        }
+        for (Map<String, Object> r : dashboardMapper.selectCategoryList())
+        {
+            Object id = r.get("id");
+            if (id == null)
+            {
+                continue;
+            }
+            String name = String.valueOf(r.get("name"));
+            String bucket = CATEGORY_NAME_TO_BUCKET.getOrDefault(name, BUCKET_QITA);
+            bucketIds.get(bucket).add(Long.valueOf(String.valueOf(id)));
+        }
+        return bucketIds;
     }
 
     private String bucketOf(Map<String, String> idToBucket, Object categoryId)
