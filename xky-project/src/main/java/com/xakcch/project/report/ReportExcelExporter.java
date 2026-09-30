@@ -5,8 +5,10 @@ import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.CellType;
@@ -56,6 +58,12 @@ public class ReportExcelExporter
     public static final String UNIT_MERGE_CONTRACT_AMOUNT_KEYWORD = "yhdz_report";
 
     /**
+     * 「到账金额/到账时间」按预付款、尾款拆行的内置模板文件关键字（模板4 scsr / 模板7 dyxk）：
+     * 同项目连续行除「到账金额/到账时间」两列外，其余字段列跨行合并为一个单元格。
+     */
+    private static final String[] PAY_SPLIT_TEMPLATE_KEYWORDS = {"scsr_report", "dyxk_report"};
+
+    /**
      * 内置模板原样导出
      *
      * @param out       输出流（响应体）
@@ -89,6 +97,16 @@ public class ReportExcelExporter
                 }
                 applyUnitMerge(sheet, fields, rows, isPayTimeSummaryTemplate(template),
                         isContractAmountMergeTemplate(template), dataZeroIdx);
+            }
+            // 到账金额/时间拆行模板（模板4/7）：同项目连续行除「到账金额/到账时间」两列外，其余列合并单元格
+            if (isPaySplitTemplate(template))
+            {
+                int splitDataZeroIdx = (template.getDataStartRow() == null ? 3 : template.getDataStartRow()) - 1;
+                if (splitDataZeroIdx < 0)
+                {
+                    splitDataZeroIdx = 0;
+                }
+                applyProjectGroupMerge(sheet, fields, rows, splitDataZeroIdx);
             }
             // ★ 数据行行高自适应：按各列实际内容长度（结合列宽/合并区域宽度）估算
             // 所需行数，超长内容换行完整显示；短内容保持模板基础行高不变
@@ -760,6 +778,101 @@ public class ReportExcelExporter
     {
         return template != null && template.getTemplateFile() != null
                 && template.getTemplateFile().toLowerCase().contains(UNIT_MERGE_CONTRACT_AMOUNT_KEYWORD);
+    }
+
+    /** 是否「到账金额/时间按预付款、尾款拆行」模板（模板4 scsr / 模板7 dyxk） */
+    private static boolean isPaySplitTemplate(ProjReportTemplate template)
+    {
+        if (template == null || template.getTemplateFile() == null)
+        {
+            return false;
+        }
+        String file = template.getTemplateFile().toLowerCase();
+        for (String kw : PAY_SPLIT_TEMPLATE_KEYWORDS)
+        {
+            if (file.contains(kw))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 到账拆行模板合并：同一项目（_grpKey 相同）的连续多行，除「到账金额(receivedAmount)」
+     * 与「到账时间(lastPayTime)」两列外，其余字段列跨行合并为一个单元格（保留首行值，其余行清空）。
+     * 序号列同样合并 ⇒ 一个项目只显示一个序号。
+     */
+    private static void applyProjectGroupMerge(Sheet sheet, List<ProjReportField> fields,
+            List<Map<String, Object>> rows, int dataStartRow)
+    {
+        if (rows == null || rows.isEmpty())
+        {
+            return;
+        }
+        Set<Integer> skipCols = new HashSet<>();
+        int maxCol = -1;
+        for (ProjReportField f : fields)
+        {
+            Integer ci = f.getColumnIndex();
+            if (ci == null || ci <= 0)
+            {
+                continue;
+            }
+            if (ci - 1 > maxCol)
+            {
+                maxCol = ci - 1;
+            }
+            if ("receivedAmount".equals(f.getFieldKey()) || "lastPayTime".equals(f.getFieldKey()))
+            {
+                skipCols.add(ci - 1);
+            }
+        }
+        if (dataStartRow < 0)
+        {
+            dataStartRow = 0;
+        }
+        int i = 0;
+        while (i < rows.size())
+        {
+            Object gk = rows.get(i).get("_grpKey");
+            int end = i;
+            while (end + 1 < rows.size())
+            {
+                Object nk = rows.get(end + 1).get("_grpKey");
+                if (gk == null || nk == null || !gk.equals(nk))
+                {
+                    break;
+                }
+                end++;
+            }
+            if (end > i)
+            {
+                int rowStart = dataStartRow + i;
+                int rowEnd = dataStartRow + end;
+                for (int ci = 0; ci <= maxCol; ci++)
+                {
+                    if (skipCols.contains(ci))
+                    {
+                        continue;
+                    }
+                    sheet.addMergedRegion(new CellRangeAddress(rowStart, rowEnd, ci, ci));
+                    for (int r = rowStart + 1; r <= rowEnd; r++)
+                    {
+                        Row rr = sheet.getRow(r);
+                        if (rr != null)
+                        {
+                            Cell c = rr.getCell(ci);
+                            if (c != null)
+                            {
+                                c.setCellValue("");
+                            }
+                        }
+                    }
+                }
+            }
+            i = end + 1;
+        }
     }
 
     /**

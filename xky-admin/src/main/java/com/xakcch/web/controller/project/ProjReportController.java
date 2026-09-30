@@ -154,7 +154,7 @@ public class ProjReportController extends BaseController
 
     // ==================== 导出 ====================
 
-    /** 导出前预览：命中行数 + 前 50 行 */
+    /** 导出前预览：命中行数 + 当前页数据（服务端分页，默认每页 20 条） */
     @PreAuthorize("@ss.hasPermi('report:report:list')")
     @PostMapping("/preview")
     public AjaxResult preview(@RequestBody Map<String, Object> body)
@@ -163,10 +163,28 @@ public class ProjReportController extends BaseController
         @SuppressWarnings("unchecked")
         Map<String, Object> filter = (Map<String, Object>) body.get("filter");
         injectMergeUnitCells(body, filter);
-        return AjaxResult.success(reportService.preview(templateId, filter));
+        return AjaxResult.success(reportService.preview(templateId, filter,
+                toInt(body.get("pageNum")), toInt(body.get("pageSize"))));
     }
 
-    /** 导出报表（文件流；projectCodes 非空时仅导出勾选工程编号） */
+    /** 请求体取整（缺失/非法返回 null，交由 Service 用默认值兜底） */
+    private Integer toInt(Object o)
+    {
+        if (o == null)
+        {
+            return null;
+        }
+        try
+        {
+            return Integer.valueOf(String.valueOf(o).trim());
+        }
+        catch (Exception e)
+        {
+            return null;
+        }
+    }
+
+    /** 导出报表（文件流；projectCodes 非空时仅导出勾选工程编号，否则 excludedCodes 非空时剔除这些编号，都为空=全量） */
     @PreAuthorize("@ss.hasPermi('report:report:export')")
     @Log(title = "报表导出", businessType = BusinessType.EXPORT)
     @PostMapping("/export")
@@ -177,8 +195,10 @@ public class ProjReportController extends BaseController
         Map<String, Object> filter = (Map<String, Object>) body.get("filter");
         @SuppressWarnings("unchecked")
         List<String> projectCodes = (List<String>) body.get("projectCodes");
+        @SuppressWarnings("unchecked")
+        List<String> excludedCodes = (List<String>) body.get("excludedCodes");
         injectMergeUnitCells(body, filter);
-        reportService.exportReport(templateId, filter, projectCodes, response);
+        reportService.exportReport(templateId, filter, projectCodes, excludedCodes, response);
     }
 
     /** 单位合并开关（默认不合并）：请求体 mergeUnitCells → filter 约定键 _mergeUnitCells，Service/导出器按此判定 */
@@ -232,7 +252,7 @@ public class ProjReportController extends BaseController
 
     // ==================== 上报领导 ====================
 
-    /** 导出并上报领导：勾选工程编号 + 备注 → 快照留档 + 记录级上报时间（已上报锁定跳过） */
+    /** 导出并上报领导：勾选/排除后的工程编号 + 备注 → 快照留档 + 记录级上报时间（已上报锁定跳过） */
     @PreAuthorize("@ss.hasPermi('report:report:export')")
     @Log(title = "报表上报", businessType = BusinessType.EXPORT)
     @PostMapping("/submit")
@@ -243,8 +263,10 @@ public class ProjReportController extends BaseController
         Map<String, Object> filter = (Map<String, Object>) body.get("filter");
         @SuppressWarnings("unchecked")
         List<String> projectCodes = (List<String>) body.get("projectCodes");
+        @SuppressWarnings("unchecked")
+        List<String> excludedCodes = (List<String>) body.get("excludedCodes");
         String remark = body.get("remark") == null ? null : body.get("remark").toString();
-        return AjaxResult.success(reportService.submitReport(templateId, filter, projectCodes, remark));
+        return AjaxResult.success(reportService.submitReport(templateId, filter, projectCodes, excludedCodes, remark));
     }
 
     /** 上报批次列表 */

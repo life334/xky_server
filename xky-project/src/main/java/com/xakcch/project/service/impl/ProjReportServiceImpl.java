@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -70,6 +71,17 @@ public class ProjReportServiceImpl implements IProjReportService
 
     @Autowired
     private ProjReportSubmitMapper submitMapper;
+
+    /** 预览默认每页条数（生产数据量大：预览只取一页，避免全量取数） */
+    private static final int DEFAULT_PREVIEW_PAGE_SIZE = 20;
+    /** 预览每页上限（防止前端传入过大 pageSize 一次拉爆） */
+    private static final int MAX_PREVIEW_PAGE_SIZE = 200;
+
+    /**
+     * 「到账金额/到账时间」按预付款、尾款拆行的模板文件关键字（模板4 scsr / 模板7 dyxk）：
+     * 同一项目若预付款与尾款均有到账，则拆成两行（各自金额/时间对应），其余列跨行合并。
+     */
+    private static final List<String> PAY_SPLIT_TEMPLATE_KEYWORDS = List.of("scsr_report", "dyxk_report");
 
     // ==================== 模板 ====================
 
@@ -312,53 +324,82 @@ public class ProjReportServiceImpl implements IProjReportService
     // ==================== 导出 ====================
 
     @Override
-    public Map<String, Object> preview(Long templateId, Map<String, Object> filter)
+    public Map<String, Object> preview(Long templateId, Map<String, Object> filter, Integer pageNum, Integer pageSize)
     {
         ProjReportTemplate template = getTemplate(templateId);
-        List<Map<String, Object>> rows = queryRows(filter);
-        // 单位合并模板：仅当用户勾选「按单位合并显示」时才按单位名称排序（默认不合并，保持原始顺序，与默认导出一致）
+        // 分页参数（默认每页 20 条；上限 200，防止一次拉爆）
+        int size = (pageSize == null || pageSize <= 0) ? DEFAULT_PREVIEW_PAGE_SIZE
+                : Math.min(pageSize, MAX_PREVIEW_PAGE_SIZE);
+        int page = (pageNum == null || pageNum <= 0) ? 1 : pageNum;
+        int offset = (page - 1) * size;
+
+        Map<String, Object> qf = buildQueryFilter(filter);
+        // 命中总数：独立计数查询（不再「全量取数后 size()」，这是预览慢的根因）
+        Long totalObj = reportDataMapper.selectProjectRowCount(qf);
+        int total = totalObj == null ? 0 : totalObj.intValue();
+
+        // 只取当前页（SQL 侧 limit/offset）；rowNo 按 offset 续号，跨页连续
+        List<Map<String, Object>> rows = reportDataMapper.selectProjectRows(qf, size, offset);
+        for (int i = 0; i < rows.size(); i++)
+        {
+            rows.get(i).put("rowNo", offset + i + 1);
+        }
+        // 单位合并模板：合并开关开启时按单位排序（SQL 已按委托单位排序，分页保持同单位连续，无需再排）
         if (isUnitMergeTemplate(template) && isMergeUnitCells(filter))
         {
-            prepareUnitMergeRows(rows);
+            // zdyw：到账时间列显示单位汇总描述（独立聚合查询，分页后仍为该单位全量口径，不失真）
+            if (isPayTimeSummaryKeyword(template))
+            {
+                applyUnitPaySummary(rows, qf);
+            }
+        }
+        // 到账金额/到账时间按预付款、尾款拆行（模板4/7，仅这两类；其它模板不受影响）
+        if (isPaySplitTemplate(template))
+        {
+            rows = expandPaySplitRows(rows);
         }
         // 按模板字段顺序解析展示值（与导出一致，所见即所得）
         List<ProjReportField> fields = template.getFieldList();
         // 合并模式且为「只定未验」（zdyw）模板：到账时间列显示单位汇总描述（与导出 Excel 一致）
         boolean paySummary = isMergeUnitCells(filter) && isPayTimeSummaryKeyword(template);
         List<List<Object>> displayRows = new ArrayList<>();
+        List<String> codes = new ArrayList<>();
+        List<Integer> groupSizes = new ArrayList<>();
         for (Map<String, Object> row : rows)
         {
             List<Object> d = new ArrayList<>();
             if (fields != null)
             {
-                for (ProjReportField f : fields)
+                for (ProjReportField fld : fields)
                 {
                     Object v;
-                    if (paySummary && "lastPayTime".equals(f.getFieldKey()) && row.get("_unitSummary") != null)
+                    if (paySummary && "lastPayTime".equals(fld.getFieldKey()) && row.get("_unitSummary") != null)
                     {
                         v = row.get("_unitSummary");
                     }
                     else
                     {
-                        v = ReportFieldPool.resolveValue(f, row);
+                        v = ReportFieldPool.resolveValue(fld, row);
                     }
                     d.add(v);
                 }
             }
             displayRows.add(d);
+            String code = toStr(row.get("projectCode"));
+            codes.add(code == null ? "" : code);
+            Object gs = row.get("_grpSize");
+            groupSizes.add(gs instanceof Number ? ((Number) gs).intValue() : 1);
         }
         Map<String, Object> result = new HashMap<>();
         result.put("template", template);
-        result.put("total", rows.size());
-        result.put("rows", displayRows.size() > 50 ? new ArrayList<>(displayRows.subList(0, 50)) : displayRows);
-        // 全量工程编号（与 rows 顺序一致；预览表格勾选/导出过滤用）
-        List<String> codes = new ArrayList<>();
-        for (Map<String, Object> row : rows)
-        {
-            String code = toStr(row.get("projectCode"));
-            codes.add(code == null ? "" : code);
-        }
+        result.put("total", total);
+        result.put("pageNum", page);
+        result.put("pageSize", size);
+        result.put("rows", displayRows);
+        // 当前页工程编号（与 rows 顺序一致；拆行后同一项目的多行共享同一编号，供前端合并勾选）
         result.put("codes", codes);
+        // 当前页每行的项目分组行数（>1 表示该行所属项目被拆成多行，前端据此合并「到账金额/时间」以外的列）
+        result.put("groupSizes", groupSizes);
         // 已上报状态 { projectCode: submitTime }，前端标记已上报行
         Map<String, Object> submitted = new HashMap<>();
         List<String> queryCodes = new ArrayList<>();
@@ -527,6 +568,13 @@ public class ProjReportServiceImpl implements IProjReportService
     public void exportReport(Long templateId, Map<String, Object> filter, List<String> projectCodes,
             HttpServletResponse response)
     {
+        exportReport(templateId, filter, projectCodes, null, response);
+    }
+
+    @Override
+    public void exportReport(Long templateId, Map<String, Object> filter, List<String> projectCodes,
+            List<String> excludedCodes, HttpServletResponse response)
+    {
         ProjReportTemplate template = getTemplate(templateId);
         List<ProjReportField> fields = template.getFieldList();
         if (fields == null || fields.isEmpty())
@@ -534,10 +582,21 @@ public class ProjReportServiceImpl implements IProjReportService
             throw new ServiceException("模板未配置字段，无法导出");
         }
         List<Map<String, Object>> rows = queryRows(filter);
-        // 预览勾选过滤：仅导出勾选工程编号（未勾选记录不导出）
+        // 勾选过滤：优先包含式(projectCodes)，否则排除式(excludedCodes)；都为空 = 全量导出。
+        // 预览已按「全量 - 用户取消勾选」的排除式提交，故「默认全量导出、可排除个别行」的语义保持不变。
         if (projectCodes != null && !projectCodes.isEmpty())
         {
             rows = filterRowsByCodes(rows, projectCodes);
+        }
+        else if (excludedCodes != null && !excludedCodes.isEmpty())
+        {
+            rows = removeRowsByCodes(rows, excludedCodes);
+            renumberRows(rows);
+        }
+        // 到账金额/时间拆行（模板4/7）：一行一项目 → 预付款/尾款各一行（序号沿用项目号，导出处跨行合并其它列）
+        if (isPaySplitTemplate(template))
+        {
+            rows = expandPaySplitRows(rows);
         }
         fields = enrichHeaderGroupFromSource(template, fields);
         // 单位合并模板：仅当用户勾选「按单位合并显示」（默认不合并）时才按单位排序 + 计算到账汇总描述
@@ -774,8 +833,27 @@ public class ProjReportServiceImpl implements IProjReportService
         };
     }
 
-    /** 查询数据行（剥离前端辅助键，如 _filterName），并注入行号 */
+    /** 查询数据行（剥离前端辅助键，如 _filterName），并注入行号（全量，导出/上报用） */
     private List<Map<String, Object>> queryRows(Map<String, Object> filter)
+    {
+        return queryRows(filter, null, null);
+    }
+
+    /** 查询数据行（分页重载）：limit/offset 为 null 时取全量；rowNo 按 offset 续号（跨页连续） */
+    private List<Map<String, Object>> queryRows(Map<String, Object> filter, Integer limit, Integer offset)
+    {
+        Map<String, Object> f = buildQueryFilter(filter);
+        List<Map<String, Object>> rows = reportDataMapper.selectProjectRows(f, limit, offset);
+        int base = (offset == null) ? 0 : offset;
+        for (int i = 0; i < rows.size(); i++)
+        {
+            rows.get(i).put("rowNo", base + i + 1);
+        }
+        return rows;
+    }
+
+    /** 构建查询筛选条件（剥离前端辅助键 '_xxx'，空值忽略，值统一转字符串） */
+    private Map<String, Object> buildQueryFilter(Map<String, Object> filter)
     {
         Map<String, Object> f = new HashMap<>();
         if (filter != null)
@@ -789,12 +867,7 @@ public class ProjReportServiceImpl implements IProjReportService
                 }
             }
         }
-        List<Map<String, Object>> rows = reportDataMapper.selectProjectRows(f);
-        for (int i = 0; i < rows.size(); i++)
-        {
-            rows.get(i).put("rowNo", i + 1);
-        }
-        return rows;
+        return f;
     }
 
     // ==================== 单位合并模板（内置 zdyw_report） ====================
@@ -882,15 +955,22 @@ public class ProjReportServiceImpl implements IProjReportService
                     total = total == null ? amt : total.add(amt);
                 }
             }
-            // 到账汇总描述：仅最近到账时间非空时生成（日期取该单位最近到账时间）
-            String summary = "";
-            Object payTime = rows.get(i).get("lastPayTime");
-            if (payTime instanceof Date)
+            // 到账汇总描述：日期取该单位内「最近到账时间」（与预览 selectUnitPaySummary 口径一致）
+            Date maxPay = null;
+            for (int r = i; r <= end; r++)
             {
-                String dateStr = sdf.format((Date) payTime);
+                Object pt = rows.get(r).get("lastPayTime");
+                if (pt instanceof Date && (maxPay == null || ((Date) pt).after(maxPay)))
+                {
+                    maxPay = (Date) pt;
+                }
+            }
+            String summary = "";
+            if (maxPay != null)
+            {
                 String amtStr = total == null ? "0"
                         : total.setScale(2, BigDecimal.ROUND_HALF_UP).stripTrailingZeros().toPlainString();
-                summary = dateStr + "到账" + amtStr + "元";
+                summary = sdf.format(maxPay) + "到账" + amtStr + "元";
             }
             for (int r = i; r <= end; r++)
             {
@@ -913,6 +993,153 @@ public class ProjReportServiceImpl implements IProjReportService
         {
             rows.get(i).put("rowNo", i + 1);
         }
+    }
+
+    // ==================== 到账拆行 / 单位到账汇总 / 排除式过滤 ====================
+
+    /** 是否「到账金额/时间按预付款、尾款拆行」模板（模板4 scsr / 模板7 dyxk） */
+    private boolean isPaySplitTemplate(ProjReportTemplate template)
+    {
+        if (template == null || template.getTemplateFile() == null)
+        {
+            return false;
+        }
+        String file = template.getTemplateFile().toLowerCase();
+        for (String kw : PAY_SPLIT_TEMPLATE_KEYWORDS)
+        {
+            if (file.contains(kw))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 到账金额/到账时间按到账类型拆行（仅模板4/7）：
+     *   同一项目若预付款与尾款均有到账 → 拆 2 行（预付款行在前、尾款行在后），
+     *     每行「到账金额」= 该类型到账金额、「到账时间」= 该类型到账时间；其余列沿用项目值（导出/预览据此跨行合并）。
+     *   只有一类到账 → 1 行（金额/时间即该类型，与合计一致）；无到账 → 1 行（到账金额/时间空）。
+     *   同一类型多笔 → SQL 侧已合计（金额求和 + 取最后一笔时间），不逐笔展开。
+     * 行上注入 _grpKey（项目编号）/ _grpSize（拆行数），供前端与导出器合并「到账金额/时间」以外的列。
+     */
+    private List<Map<String, Object>> expandPaySplitRows(List<Map<String, Object>> rows)
+    {
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (rows == null)
+        {
+            return out;
+        }
+        for (Map<String, Object> row : rows)
+        {
+            Object advAmt = row.get("advanceAmount");
+            Object advTime = row.get("advancePayTime");
+            Object finAmt = row.get("finalAmount");
+            Object finTime = row.get("finalPayTime");
+            // ⚠️ 金额列 SQL 用 sum(... else 0) 聚合，无该类到账时值为 0（非 null）
+            //    ⇒ 判定「有没有这类到账」必须看「金额非零 或 到账时间非空」，
+            //      否则每个有到账的项目都会被无脑拆成 2 行（第二行空行）。
+            boolean hasAdv = payPartPresent(advAmt, advTime);
+            boolean hasFin = payPartPresent(finAmt, finTime);
+
+            List<Object[]> parts = new ArrayList<>();
+            if (hasAdv)
+            {
+                parts.add(new Object[]{advAmt, advTime});
+            }
+            if (hasFin)
+            {
+                parts.add(new Object[]{finAmt, finTime});
+            }
+            // 分组键优先取项目主键 id（项目编号理论上可能重复，id 唯一）
+            Object idObj = row.get("id");
+            String grpKey = idObj != null ? String.valueOf(idObj) : toStr(row.get("projectCode"));
+            if (parts.isEmpty())
+            {
+                Map<String, Object> r = new LinkedHashMap<>(row);
+                r.put("_grpKey", grpKey);
+                r.put("_grpSize", 1);
+                out.add(r);
+            }
+            else
+            {
+                for (Object[] p : parts)
+                {
+                    Map<String, Object> r = new LinkedHashMap<>(row);
+                    // 覆盖为「该类型」的到账金额/时间（其余列保持项目级原值）
+                    r.put("receivedAmount", p[0]);
+                    r.put("lastPayTime", p[1]);
+                    r.put("_grpKey", grpKey);
+                    r.put("_grpSize", parts.size());
+                    out.add(r);
+                }
+            }
+        }
+        return out;
+    }
+
+    /** 该到账类型是否实际存在：到账时间非空 或 金额非零（金额列 SQL 缺省为 0，不能只判 null） */
+    private boolean payPartPresent(Object amount, Object payTime)
+    {
+        if (payTime instanceof Date)
+        {
+            return true;
+        }
+        BigDecimal amt = toNum(amount);
+        return amt != null && amt.signum() != 0;
+    }
+
+    /**
+     * zdyw 单位合并：把当前页各行的「到账时间」列替换为单位汇总描述（单位 → 到账合计 + 最近到账时间）。
+     * 数据来自独立聚合查询 selectUnitPaySummary（全量口径），分页后仍正确、不失真。
+     */
+    private void applyUnitPaySummary(List<Map<String, Object>> rows, Map<String, Object> qf)
+    {
+        if (rows == null || rows.isEmpty())
+        {
+            return;
+        }
+        List<Map<String, Object>> summaries = reportDataMapper.selectUnitPaySummary(qf);
+        Map<String, Map<String, Object>> byUnit = new HashMap<>();
+        for (Map<String, Object> s : summaries)
+        {
+            byUnit.put(toStr(s.get("unit")), s);
+        }
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy年M月d日");
+        for (Map<String, Object> row : rows)
+        {
+            String unit = toStr(row.get("clientUnit"));
+            Map<String, Object> s = byUnit.get(unit == null ? "" : unit);
+            String summary = "";
+            if (s != null && s.get("payTime") instanceof Date)
+            {
+                BigDecimal amt = toNum(s.get("amount"));
+                String amtStr = amt == null ? "0"
+                        : amt.setScale(2, BigDecimal.ROUND_HALF_UP).stripTrailingZeros().toPlainString();
+                summary = sdf.format((Date) s.get("payTime")) + "到账" + amtStr + "元";
+            }
+            row.put("_unitSummary", summary);
+        }
+    }
+
+    /** 按工程编号移除数据行（排除式导出：默认全量导出，仅剔除用户取消勾选的项目） */
+    private List<Map<String, Object>> removeRowsByCodes(List<Map<String, Object>> rows, List<String> codes)
+    {
+        if (codes == null || codes.isEmpty() || rows == null)
+        {
+            return rows;
+        }
+        Set<String> set = new HashSet<>(codes);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> row : rows)
+        {
+            String code = toStr(row.get("projectCode"));
+            if (code == null || !set.contains(code))
+            {
+                result.add(row);
+            }
+        }
+        return result;
     }
 
     /** 模板中「上报时间」类字段（与报表列同源；用于「上报状态」判定，保证两列口径一致） */
@@ -1042,17 +1269,13 @@ public class ProjReportServiceImpl implements IProjReportService
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> submitReport(Long templateId, Map<String, Object> filter,
-            List<String> projectCodes, String remark)
+            List<String> projectCodes, List<String> excludedCodes, String remark)
     {
         ProjReportTemplate template = getTemplate(templateId);
         List<ProjReportField> fields = template.getFieldList();
         if (fields == null || fields.isEmpty())
         {
             throw new ServiceException("模板未配置字段，无法上报");
-        }
-        if (projectCodes == null || projectCodes.isEmpty())
-        {
-            throw new ServiceException("请至少勾选一条记录");
         }
         // 仅「只定未验及补之前扣除项目」（zdyw_report）支持上报领导
         if (template.getTemplateFile() == null || !template.getTemplateFile()
@@ -1065,11 +1288,20 @@ public class ProjReportServiceImpl implements IProjReportService
         {
             throw new ServiceException("本月已上报过，不可重复上报，下月可再上报");
         }
-        // 1. 取数 + 勾选过滤（未勾选记录不导出、不记录上报时间）
-        List<Map<String, Object>> rows = filterRowsByCodes(queryRows(filter), projectCodes);
+        // 1. 取数 + 勾选过滤（包含式优先，其次排除式；未勾选/已排除记录不上报、不记录上报时间）
+        List<Map<String, Object>> rows = queryRows(filter);
+        if (projectCodes != null && !projectCodes.isEmpty())
+        {
+            rows = filterRowsByCodes(rows, projectCodes);
+        }
+        else if (excludedCodes != null && !excludedCodes.isEmpty())
+        {
+            rows = removeRowsByCodes(rows, excludedCodes);
+            renumberRows(rows);
+        }
         if (rows.isEmpty())
         {
-            throw new ServiceException("勾选的记录没有命中数据");
+            throw new ServiceException("请至少勾选一条记录");
         }
         fields = enrichHeaderGroupFromSource(template, fields);
         if (isUnitMergeTemplate(template))

@@ -15,66 +15,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <sql id="reportSubmitExpr">(sl.submit_time is not null or pay_sum.final_pay_time is not null or pay_sum.advance_pay_time is not null)</sql>
 
     <!--
-      项目台账行查询：一行一项目
-      JOIN 合同（p.contract_id） / 付款汇总（子查询） / 负责人（子查询，取第一人）
-      筛选 key 来自前端 filter_config.values，与 ReportFieldPool 字段 key 对应
+      项目台账 JOIN 片段（唯一真相源）：
+        合同 p.contract_id / 关联定线工程 / 上报记录 / 付款汇总 pay_sum / 负责人 / 外部产值 w_sum /
+        外部工作量文字 w_desc / 项目类别 cat
+      ⚠️ 列表(selectProjectRows) / 计数(selectProjectRowCount) / 单位到账汇总(selectUnitPaySummary)
+         三处共用，禁止各写一份（改一处漏改 ⇒ 命中数与明细对不上）。
     -->
-    <select id="selectProjectRows" resultType="java.util.HashMap">
-        select
-            p.id,
-            p.project_code as "projectCode",
-            p.project_name as "projectName",
-            p.engineering_project as "engineeringProject",
-            p.project_category_id as "projectCategoryId",
-            p.client_unit as "clientUnit",
-            p.contact_name as "contactName",
-            p.contact_phone as "contactPhone",
-            p.project_location as "projectLocation",
-            p.contract_id as "contractId",
-            p.status as "projectStatus",
-            p.extra_data::text as "projectExtraData",
-            p.assign_date as "assignDate",
-            p.duration_require as "durationRequire",
-            p.total_duration||'工作日' as "totalDuration",
-            p.create_time as "createTime",
-            p.close_time as "closeTime",
-            p.remark as "remark",
-            p.related_project_id as "relatedProjectId",
-            rp.project_code as "relatedProjectCode",
-            sl.submit_time as "submitTime",
-            sl2.submit_time as "relatedLastSubmitTime",
-            <!-- 「上报状态」计算列：供导出/预览取值（判定见 reportSubmitExpr，与「上报时间」列同源） -->
-            case when <include refid="reportSubmitExpr"/> then 'submitted' else 'unsubmitted' end as "submitStatus",
-            c.contract_no as "contractNo",
-            c.contract_name as "contractName",
-            c.contract_amount as "contractAmount",
-            c.contract_type as "contractType",
-            (select count(*) from proj_project px where px.contract_id = c.id and px.del_flag = '0') as "contractProjectCount",
-            c.sign_date as "signDate",
-            c.entrust_date as "entrustDate",
-            c.archive_date as "archiveDate",
-            c.contract_period as "contractPeriod",
-            c.payment_terms as "paymentTerms",
-            c.is_settled as "isSettled",
-            c.extra_data::text as "contractExtraData",
-            coalesce(pay_sum.total_received, 0) as "receivedAmount",
-            coalesce(pay_sum.refund_amount, 0) as "refundAmount",
-            pay_sum.max_pay_time as "lastPayTime",
-            <!-- 上报时间派生依据：尾款 / 预付款到账时间（历史导入项目无上报记录时使用） -->
-            pay_sum.final_pay_time as "finalPayTime",
-            pay_sum.advance_pay_time as "advancePayTime",
-            coalesce(pay_sum.total_invoice, 0) as "totalInvoiceAmount",
-            coalesce(w_sum.external_output, 0) as "projectSettleAmount",
-            coalesce(w_sum.internal_output, 0) as "projectInternalOutput",
-            w_desc.workload_desc as "workloadDesc",
-            greatest(coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0), 0) as "projectArrearsAmount",
-            case when coalesce(w_sum.external_output, 0) &gt; 0
-                 then greatest(coalesce(pay_sum.total_received, 0) - coalesce(w_sum.external_output, 0), 0)
-                 else 0 end as "projectOverpaidAmount",
-            leader.nick_name as "leaderName",
-            cat.name as "categoryName",
-            cat.parent_id as "categoryParentId"
-        from proj_project p
+    <sql id="reportJoins">
         left join proj_contract c on c.id = p.contract_id and c.del_flag = '0'
         <!-- 关联定线工程（补验线报表：管线定线列取关联工程编号/其上报时间） -->
         left join proj_project rp on rp.id = p.related_project_id and rp.del_flag = '0'
@@ -89,7 +36,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                    sum(coalesce(invoice_amount, 0)) as total_invoice,
                    <!-- 尾款到账时间 / 预付款到账时间（同一类型多笔取最后一笔），供「上报时间」派生 -->
                    max(case when payment_type = 'final' then pay_time end) as final_pay_time,
-                   max(case when payment_type = 'advance' then pay_time end) as advance_pay_time
+                   max(case when payment_type = 'advance' then pay_time end) as advance_pay_time,
+                   <!-- 预付款/尾款到账金额明细（模板4/7「到账金额」按类型拆行用；同一类型多笔合计） -->
+                   sum(case when payment_type = 'advance' then coalesce(amount, 0) else 0 end) as advance_amount,
+                   sum(case when payment_type = 'final' then coalesce(amount, 0) else 0 end) as final_amount
             from proj_payment
             where del_flag = '0'
             group by project_id
@@ -128,7 +78,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             group by w.project_id
         ) w_desc on w_desc.project_id = p.id
         left join proj_category cat on cat.id = p.project_category_id
-        where p.del_flag = '0'
+    </sql>
+
+    <!--
+      项目台账筛选条件片段（唯一真相源）：
+        列表 / 计数 / 单位到账汇总 三处共用，保证「命中 N 条」与明细、汇总口径完全一致。
+        筛选 key 来自前端 filter_config.values，与 ReportFieldPool 字段 key 对应（参数前缀 f.）
+    -->
+    <sql id="reportWhere">
         <if test="f.projectCode != null and f.projectCode != ''">
             and p.project_code like concat('%', #{f.projectCode}, '%')
         </if>
@@ -349,8 +306,105 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                  or p.project_name like concat('%', #{f.keyword}, '%')
                  or p.client_unit like concat('%', #{f.keyword}, '%'))
         </if>
+    </sql>
+
+    <!--
+      项目台账行查询：一行一项目
+      列表（分页）：limit/offset 由调用方传入；limit 为 null 时取全量（导出/上报用）
+      排序：委托单位（空值置后）+ 项目 id 倒序（稳定排序，分页不重不漏）
+    -->
+    <select id="selectProjectRows" resultType="java.util.HashMap">
+        select
+            p.id,
+            p.project_code as "projectCode",
+            p.project_name as "projectName",
+            p.engineering_project as "engineeringProject",
+            p.project_category_id as "projectCategoryId",
+            p.client_unit as "clientUnit",
+            p.contact_name as "contactName",
+            p.contact_phone as "contactPhone",
+            p.project_location as "projectLocation",
+            p.contract_id as "contractId",
+            p.status as "projectStatus",
+            p.extra_data::text as "projectExtraData",
+            p.assign_date as "assignDate",
+            p.duration_require as "durationRequire",
+            p.total_duration||'工作日' as "totalDuration",
+            p.create_time as "createTime",
+            p.close_time as "closeTime",
+            p.remark as "remark",
+            p.related_project_id as "relatedProjectId",
+            rp.project_code as "relatedProjectCode",
+            sl.submit_time as "submitTime",
+            sl2.submit_time as "relatedLastSubmitTime",
+            <!-- 「上报状态」计算列：供导出/预览取值（判定见 reportSubmitExpr，与「上报时间」列同源） -->
+            case when <include refid="reportSubmitExpr"/> then 'submitted' else 'unsubmitted' end as "submitStatus",
+            c.contract_no as "contractNo",
+            c.contract_name as "contractName",
+            c.contract_amount as "contractAmount",
+            c.contract_type as "contractType",
+            (select count(*) from proj_project px where px.contract_id = c.id and px.del_flag = '0') as "contractProjectCount",
+            c.sign_date as "signDate",
+            c.entrust_date as "entrustDate",
+            c.archive_date as "archiveDate",
+            c.contract_period as "contractPeriod",
+            c.payment_terms as "paymentTerms",
+            c.is_settled as "isSettled",
+            c.extra_data::text as "contractExtraData",
+            coalesce(pay_sum.total_received, 0) as "receivedAmount",
+            coalesce(pay_sum.refund_amount, 0) as "refundAmount",
+            pay_sum.max_pay_time as "lastPayTime",
+            <!-- 上报时间派生依据：尾款 / 预付款到账时间（历史导入项目无上报记录时使用） -->
+            pay_sum.final_pay_time as "finalPayTime",
+            pay_sum.advance_pay_time as "advancePayTime",
+            <!-- 到账金额拆行依据：预付款 / 尾款各自到账金额（模板4/7 用） -->
+            pay_sum.advance_amount as "advanceAmount",
+            pay_sum.final_amount as "finalAmount",
+            coalesce(pay_sum.total_invoice, 0) as "totalInvoiceAmount",
+            coalesce(w_sum.external_output, 0) as "projectSettleAmount",
+            coalesce(w_sum.internal_output, 0) as "projectInternalOutput",
+            w_desc.workload_desc as "workloadDesc",
+            greatest(coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0), 0) as "projectArrearsAmount",
+            case when coalesce(w_sum.external_output, 0) &gt; 0
+                 then greatest(coalesce(pay_sum.total_received, 0) - coalesce(w_sum.external_output, 0), 0)
+                 else 0 end as "projectOverpaidAmount",
+            leader.nick_name as "leaderName",
+            cat.name as "categoryName",
+            cat.parent_id as "categoryParentId"
+        from proj_project p
+        <include refid="reportJoins"/>
+        where p.del_flag = '0'
+        <include refid="reportWhere"/>
         -- 报表统一按委托单位排序（空值置后），同单位内保持新项目在前
         order by p.client_unit nulls last, p.id desc
+        <if test="limit != null">
+            limit #{limit} offset #{offset}
+        </if>
+    </select>
+
+    <!-- 命中行数（与 selectProjectRows 同 joins/where，供预览分页显示「命中 N 条」） -->
+    <select id="selectProjectRowCount" resultType="long">
+        select count(*)
+        from proj_project p
+        <include refid="reportJoins"/>
+        where p.del_flag = '0'
+        <include refid="reportWhere"/>
+    </select>
+
+    <!--
+      单位到账汇总（zdyw「只定未验」按单位合并时，「到账时间」列显示的单位汇总描述）：
+        单位 → 到账合计 + 该单位最近到账时间。与 ReportExcelExporter 的整组合并口径一致。
+    -->
+    <select id="selectUnitPaySummary" resultType="java.util.HashMap">
+        select
+            coalesce(p.client_unit, '') as "unit",
+            sum(coalesce(pay_sum.total_received, 0)) as "amount",
+            max(pay_sum.max_pay_time) as "payTime"
+        from proj_project p
+        <include refid="reportJoins"/>
+        where p.del_flag = '0'
+        <include refid="reportWhere"/>
+        group by coalesce(p.client_unit, '')
     </select>
 
 </mapper>

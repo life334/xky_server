@@ -64,8 +64,8 @@ public interface IProjReportService
 
     // ==================== 导出 ====================
 
-    /** 导出前预览：命中行数 + 前 50 行数据 */
-    Map<String, Object> preview(Long templateId, Map<String, Object> filter);
+    /** 导出前预览：命中行数 + 当前页数据（服务端分页，默认每页 20 条） */
+    Map<String, Object> preview(Long templateId, Map<String, Object> filter, Integer pageNum, Integer pageSize);
 
     /** 导出报表（内置模板原样填充 / 自定义模板动态列） */
     void exportReport(Long templateId, Map<String, Object> filter, HttpServletResponse response);
@@ -73,6 +73,13 @@ public interface IProjReportService
     /** 导出报表（projectCodes 非空时仅导出勾选工程编号；预览勾选过滤用） */
     void exportReport(Long templateId, Map<String, Object> filter, List<String> projectCodes,
             HttpServletResponse response);
+
+    /**
+     * 导出报表（排除式）：默认全量导出，excludedCodes 非空时仅剔除这些工程编号。
+     * 与包含式 projectCodes 互斥，包含式优先（预览分页后推荐使用排除式）。
+     */
+    void exportReport(Long templateId, Map<String, Object> filter, List<String> projectCodes,
+            List<String> excludedCodes, HttpServletResponse response);
 
     /** 按配置直接导出（不保存模板，临时使用） */
     void exportByConfig(ProjReportTemplate template, Map<String, Object> filter, HttpServletResponse response);
@@ -91,13 +98,15 @@ public interface IProjReportService
     // ==================== 上报领导 ====================
 
     /**
-     * 导出并上报领导：按勾选工程编号生成快照文件 + 记录批次与上报时间
+     * 导出并上报领导：按勾选/排除后的工程编号生成快照文件 + 记录批次与上报时间
      * （UNIQUE(project_code) 锁定上报时间，已上报记录跳过不修改）
      *
+     * @param projectCodes  包含式：非空时仅上报这些工程编号
+     * @param excludedCodes 排除式：projectCodes 为空时生效，从全量中剔除这些工程编号
      * @return { batchId, batchNo, newCount, skippedCount, totalCount, snapshotFileName }
      */
     Map<String, Object> submitReport(Long templateId, Map<String, Object> filter,
-            List<String> projectCodes, String remark);
+            List<String> projectCodes, List<String> excludedCodes, String remark);
 
     /** 上报批次列表 */
     List<ProjReportSubmitBatch> listSubmitBatches(ProjReportSubmitBatch query);
