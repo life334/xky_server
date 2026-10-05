@@ -111,6 +111,7 @@ public class ProjImportServiceImpl implements IProjImportService
         List<ImportPreviewRow> problemRows = new ArrayList<>();
         // 已存在工程编号预取：命中者导入时整组跳过（预览阶段即提示用户）
         Map<String, Long> existingIdByCode = new HashMap<>();
+        Map<Long, Date> dbCloseByProject = new HashMap<>();   // 已存在项目的库内办结时间现值
         List<String> allCodes = fullResp.getRows().stream()
             .map(ImportPreviewRow::getProjectCode)
             .filter(StringUtils::isNotBlank)
@@ -124,6 +125,8 @@ public class ProjImportServiceImpl implements IProjImportService
                 Object idObj = m.get("id");
                 if (codeObj != null && idObj != null) {
                     existingIdByCode.put(String.valueOf(codeObj), ((Number) idObj).longValue());
+                    Object ctObj = m.get("close_time");
+                    if (ctObj instanceof Date) dbCloseByProject.put(((Number) idObj).longValue(), (Date) ctObj);
                 }
             }
         }
@@ -203,6 +206,35 @@ public class ProjImportServiceImpl implements IProjImportService
             for (ImportPreviewRow r : e.getValue()) r.setPayChanged(true);
         }
         fullResp.setPayWriteCount(payWriteCnt);
+        // 「待补工作量/办结时间」已存在项目数（去重编号）：Excel 修表头（如 GPS固定点 列挪入工作量组）
+        // 或补列后重导，已存在编号也要能把工作量差异、缺失办结时间补进库 —— 否则「可导入 0」永远进不去。
+        //   · 工作量差异判定 = 按（子项号+类别+类型+计费类别）对齐后比 工作量/内部产值/外部产值（2位精度）
+        //   · 办结时间补写 = 仅库内为空时补，不覆盖现值
+        //   · ⚠️ 只统计「整组可回传」的组：待修正的问题行不随 rows 回传，部分回传会导致
+        //     「删全量工作量、只插部分」的数据丢失，commit 侧同样按整组回传守卫。
+        Map<Long, List<ProjWorkload>> dbWlByProject =
+            loadExistingWorkloads(new LinkedHashSet<>(existingIdByCode.values()));
+        java.util.Set<ImportPreviewRow> sendableRows = new java.util.HashSet<>(readyRows);
+        for (ImportPreviewRow r : fullResp.getRows()) {
+            if (Boolean.TRUE.equals(r.getPayOnly())) sendableRows.add(r);
+        }
+        int wlWriteCnt = 0;
+        for (Map.Entry<String, List<ImportPreviewRow>> e : rowsByCode.entrySet()) {
+            boolean existsGroup = e.getValue().stream().anyMatch(x -> Boolean.TRUE.equals(x.getExistsInDb()));
+            if (!existsGroup) continue;
+            if (!e.getValue().stream().allMatch(sendableRows::contains)) continue; // 组内有待修正行 → 本次不补工作量
+            Long gid = null;
+            for (ImportPreviewRow r : e.getValue()) {
+                if (r.getExistingProjectId() != null) { gid = r.getExistingProjectId(); break; }
+            }
+            List<ProjWorkload> newWl = buildGroupWorkloadEntities(gid, e.getValue(), null);
+            boolean wlDiff = workloadDiffers(dbWlByProject.get(gid), newWl);
+            boolean needClose = dbCloseByProject.get(gid) == null && firstFinishDate(e.getValue()) != null;
+            if (!wlDiff && !needClose) continue;
+            wlWriteCnt++;
+            for (ImportPreviewRow r : e.getValue()) r.setWorkChanged(true);
+        }
+        fullResp.setWorkloadWriteCount(wlWriteCnt);
         // 问题摘要
         ImportPreviewResponse.ProblemSummary ps = new ImportPreviewResponse.ProblemSummary();
         if (warnCnt > 0) ps.setWarningDesc(warnCnt + " 行数据存在未匹配字段（项目类别/负责人/计费类别等），请查看下方明细，修正Excel后重新上传");
@@ -223,6 +255,7 @@ public class ProjImportServiceImpl implements IProjImportService
         lightResp.setExistsCodes(existsCodes);
         lightResp.setPayOnlyCount(payOnlyCnt);
         lightResp.setPayWriteCount(payWriteCnt);
+        lightResp.setWorkloadWriteCount(wlWriteCnt);
         lightResp.setUnmatchedPayCodes(fullResp.getUnmatchedPayCodes());
         lightResp.setProblemSummary(ps);
         lightResp.getCategoryOptions().addAll(fullResp.getCategoryOptions());
@@ -872,6 +905,7 @@ public class ProjImportServiceImpl implements IProjImportService
         ImportCommitResult result = new ImportCommitResult();
         final int[] counter = {0, 0, 0}; // succ, skip, fail
         final int[] payWriteCnt = {0};   // 其中「已存在项目仅补写到账」的项目数（successCount 的子集）
+        final int[] wlWriteCnt = {0};    // 其中「已存在项目补写工作量/办结时间」的项目数（successCount 的子集）
         try {
             // 按工程编号分组（保持 Excel 顺序）：同编号多条记录 = 同一父项目的多个子项
             LinkedHashMap<String, List<ImportPreviewRow>> groups = new LinkedHashMap<>();
@@ -897,6 +931,7 @@ public class ProjImportServiceImpl implements IProjImportService
             // 档1：写库前一次性预解析（负责人建档 + 已存在编号预取），把组内逐行/逐组查询降为批前各一次
             Map<String, com.xakcch.common.core.domain.entity.SysUser> leaderByName = prefetchLeaders(rows, user);
             Map<String, Long> existingIdByCode = new HashMap<>();
+            Map<Long, Date> dbCloseByProject = new HashMap<>();   // 已存在项目的库内办结时间现值
             if (!groups.isEmpty()) {
                 List<Map<String, Object>> hits = projectMapper.selectProjectIdsByCodes(new ArrayList<>(groups.keySet()));
                 for (Map<String, Object> m : hits) {
@@ -904,9 +939,14 @@ public class ProjImportServiceImpl implements IProjImportService
                     Object idObj = m.get("id");
                     if (codeObj != null && idObj != null) {
                         existingIdByCode.put(String.valueOf(codeObj), ((Number) idObj).longValue());
+                        Object ctObj = m.get("close_time");
+                        if (ctObj instanceof Date) dbCloseByProject.put(((Number) idObj).longValue(), (Date) ctObj);
                     }
                 }
             }
+            // 已存在编号的库内工作量现值（一次带出）：判断「本次工作量与系统是否真有差异」
+            Map<Long, List<ProjWorkload>> dbWlByProject =
+                loadExistingWorkloads(new LinkedHashSet<>(existingIdByCode.values()));
             // 已存在编号的库内付款现值（一次带出）：判断「本次到账与系统是否真有差异」，
             // 无差异的编号直接跳过不写 —— 避免台账累计口径带来的重复行白写 update_time、并把开票状态刷回未开。
             Map<Long, Map<String, ProjPayment>> dbPaysByProject =
@@ -924,9 +964,21 @@ public class ProjImportServiceImpl implements IProjImportService
                         .allMatch(x -> Boolean.TRUE.equals(x.getPayOnly()));
                     String baseReason = isPayOnlyGroup
                         ? "工程编号已存在（项目ID=" + existedId + "），仅补充到账信息"
-                        : "工程编号已存在（项目ID=" + existedId + "），项目/工作量/负责人/任务整组跳过";
+                        : "工程编号已存在（项目ID=" + existedId + "），项目/负责人/任务整组跳过";
                     boolean payChanged = payDiffers(dbPaysByProject.get(existedId), mergedPays);
-                    String payErr = null;
+                    // 工作量/办结时间差异补写（Excel 修表头/补列后重导的补录路径）：
+                    //   · 整组行全部回传才允许重写（安全守卫：待修正的问题行不随 rows 回传，
+                    //     部分回传会造成「删全量工作量、只插部分」的数据丢失）
+                    //   · Excel 组没有工作量行时不动库（保守，不清空已有工作量）
+                    List<ProjWorkload> newWl = buildGroupWorkloadEntities(existedId, g.getValue(), user);
+                    boolean wlChanged = false;
+                    Date fillClose = null;
+                    if (!newWl.isEmpty() && isFullGroupRoundTripped(entry, g.getKey(), g.getValue())) {
+                        wlChanged = workloadDiffers(dbWlByProject.get(existedId), newWl);
+                        Date fin = firstFinishDate(g.getValue());
+                        if (fin != null && dbCloseByProject.get(existedId) == null) fillClose = fin;
+                    }
+                    String payErr = null, wlErr = null;
                     if (payChanged) {
                         try {
                             runInNewTx(() -> writePaymentsOnly(existedId, mergedPays, user));
@@ -936,28 +988,61 @@ public class ProjImportServiceImpl implements IProjImportService
                             payErr = m != null && m.contains("\n") ? m.split("\n")[0] : m;
                         }
                     }
-                    // 三态归类（口径与预览 payWriteCount 严格一致）：
-                    //   到账有差异且写入成功 → 计入「导入成功」——本次确实改动了系统数据
-                    //   到账无差异 / 本文件无到账 → 计入「跳过」——不需要任何写入
-                    //   到账写入失败 → 计入「失败」
-                    if (payErr != null) {
+                    if (wlChanged) {
+                        final List<ProjWorkload> wlToSave = newWl;
+                        final Long wlPid = existedId;
+                        try {
+                            runInNewTx(() -> {
+                                workloadMapper.deleteWorkloadsByProjectIds(new Long[]{ wlPid });
+                                workloadMapper.insertWorkloadBatch(wlToSave);
+                            });
+                        } catch (Exception ex) {
+                            String m = ex.getCause() != null && ex.getCause().getMessage() != null
+                                ? ex.getCause().getMessage() : ex.getMessage();
+                            wlErr = "工作量重写失败：" + (m != null && m.contains("\n") ? m.split("\n")[0] : m);
+                        }
+                    }
+                    if (fillClose != null) {
+                        final Date fd = fillClose;
+                        final Long cpId = existedId;
+                        try {
+                            runInNewTx(() -> projectMapper.fillCloseTimeIfNull(cpId, fd, user));
+                        } catch (Exception ex) {
+                            String m = ex.getCause() != null && ex.getCause().getMessage() != null
+                                ? ex.getCause().getMessage() : ex.getMessage();
+                            m = m != null && m.contains("\n") ? m.split("\n")[0] : m;
+                            wlErr = wlErr == null ? "办结时间补写失败：" + m : wlErr + "；办结时间补写失败：" + m;
+                        }
+                    }
+                    // 三态归类（口径与预览 payWriteCount/workloadWriteCount 一致）：
+                    //   到账/工作量/办结时间任一有差异且写入成功 → 「导入成功」——本次确实改动了系统数据
+                    //   全部无差异 / 本文件无相关数据 → 「跳过」——不需要任何写入；任一写入失败 → 「失败」
+                    if (payErr != null || wlErr != null) {
                         counter[2] += g.getValue().size();
+                        String why = payErr != null ? "到账信息写入失败：" + payErr : wlErr;
                         for (ImportPreviewRow row : g.getValue()) {
                             ImportCommitResult.RowDetail d = new ImportCommitResult.RowDetail();
                             d.setExcelRow(row.getExcelRow());
                             d.setProjectCode(row.getProjectCode());
-                            d.setReason(baseReason + "，到账信息写入失败：" + payErr);
+                            d.setReason(baseReason + "，" + why);
                             result.getFailedDetails().add(d);
                         }
-                    } else if (payChanged) {
+                    } else if (payChanged || wlChanged || fillClose != null) {
                         counter[0] += g.getValue().size();
-                        payWriteCnt[0]++;
+                        if (payChanged) payWriteCnt[0]++;
+                        if (wlChanged || fillClose != null) wlWriteCnt[0]++;
+                        StringBuilder ext = new StringBuilder();
+                        if (payChanged) ext.append("，已覆盖写入到账 ").append(mergedPays.size()).append(" 项");
+                        if (wlChanged) ext.append("，已重写工作量 ").append(newWl.size()).append(" 项");
+                        if (fillClose != null) ext.append("，已补办结时间 ")
+                            .append(new SimpleDateFormat("yyyy-MM-dd").format(fillClose));
                         for (ImportPreviewRow row : g.getValue()) {
                             ImportCommitResult.RowDetail d = new ImportCommitResult.RowDetail();
                             d.setExcelRow(row.getExcelRow());
                             d.setProjectCode(row.getProjectCode());
-                            d.setReason(baseReason + "，已覆盖写入到账 " + mergedPays.size() + " 项");
-                            result.getPayWriteDetails().add(d);
+                            d.setReason(baseReason + ext);
+                            if (payChanged) result.getPayWriteDetails().add(d);
+                            if (wlChanged || fillClose != null) result.getWorkWriteDetails().add(d);
                         }
                     } else {
                         counter[1] += g.getValue().size();
@@ -1049,9 +1134,11 @@ public class ProjImportServiceImpl implements IProjImportService
             result.setSkippedCount(counter[1]);
             result.setFailedCount(counter[2]);
             result.setPayWriteCount(payWriteCnt[0]);
+            result.setWorkloadWriteCount(wlWriteCnt[0]);
             if (result.getFailedDetails() == null) result.setFailedDetails(new ArrayList<>());
             if (result.getSkippedDetails() == null) result.setSkippedDetails(new ArrayList<>());
             if (result.getPayWriteDetails() == null) result.setPayWriteDetails(new ArrayList<>());
+            if (result.getWorkWriteDetails() == null) result.setWorkWriteDetails(new ArrayList<>());
             entry.commitResult = result;
             entry.committing.set(false);
         }
@@ -1516,6 +1603,93 @@ public class ProjImportServiceImpl implements IProjImportService
         return result;
     }
 
+    /** 构造「已存在项目」的应写工作量清单（不落库，供与库内现值比对）：与新建路径 buildSubItemWorkloads 同构 */
+    private List<ProjWorkload> buildGroupWorkloadEntities(Long projectId, List<ImportPreviewRow> group, String user) {
+        List<ProjWorkload> out = new ArrayList<>();
+        if (projectId == null || group == null) return out;
+        ProjProject stub = new ProjProject();
+        stub.setId(projectId);
+        int seq = 0;
+        for (ImportPreviewRow row : group) {
+            seq++;
+            out.addAll(buildSubItemWorkloads(stub, row, seq, user));
+        }
+        return out;
+    }
+
+    /** 批量加载项目的库内工作量现值：projectId → 工作量行列表（一次查询带出，避免逐项目查库） */
+    private Map<Long, List<ProjWorkload>> loadExistingWorkloads(Collection<Long> projectIds) {
+        Map<Long, List<ProjWorkload>> out = new HashMap<>();
+        if (projectIds == null || projectIds.isEmpty()) return out;
+        List<ProjWorkload> ws = workloadMapper.selectWorkloadsByProjectIds(projectIds.toArray(new Long[0]));
+        if (ws == null) return out;
+        for (ProjWorkload w : ws) {
+            if (w.getProjectId() == null) continue;
+            out.computeIfAbsent(w.getProjectId(), k -> new ArrayList<>()).add(w);
+        }
+        return out;
+    }
+
+    /** 取组内首个非空验收/办结日期（产值页「验收日期」列） */
+    private Date firstFinishDate(List<ImportPreviewRow> group) {
+        if (group == null) return null;
+        for (ImportPreviewRow r : group) {
+            if (r.getFinishDate() != null) return r.getFinishDate();
+        }
+        return null;
+    }
+
+    /**
+     * 该编号的行是否「整组回传」（按 Excel 行号集合与会话缓存比对，错误行不计入）。
+     * 工作量重写的安全守卫：待修正的问题行不随 rows 回传，若只回传部分行就删全量插部分，
+     * 会把组内其它行的工作量静默丢掉 —— 必须整组到齐才允许重写。
+     */
+    private boolean isFullGroupRoundTripped(SessionEntry entry, String code, List<ImportPreviewRow> sent) {
+        if (entry == null || entry.resp == null || entry.resp.getRows() == null) return false;
+        java.util.Set<Integer> sessionRows = new java.util.HashSet<>();
+        for (ImportPreviewRow r : entry.resp.getRows()) {
+            if (r.getProjectCode() == null || !r.getProjectCode().trim().equals(code)) continue;
+            if (r.getErrors() != null && !r.getErrors().isEmpty()) continue;
+            sessionRows.add(r.getExcelRow());
+        }
+        java.util.Set<Integer> sentRows = new java.util.HashSet<>();
+        for (ImportPreviewRow r : sent) sentRows.add(r.getExcelRow());
+        return sessionRows.equals(sentRows);
+    }
+
+    /**
+     * 本次应写工作量与库内现值是否存在差异：
+     * 键 =（子项号 + 类别 + 类型 + 计费类别）对齐排序后逐行比对；
+     * 值 = 工作量 + 内部产值 + 外部产值（均按 2 位精度，与 numeric 列口径一致）。
+     * Excel 组无工作量行 ⇒ 保守返回 false（不动库）；库内无工作量 ⇒ true（全新增）。
+     */
+    private boolean workloadDiffers(List<ProjWorkload> db, List<ProjWorkload> merged) {
+        if (merged == null || merged.isEmpty()) return false;
+        if (db == null || db.isEmpty()) return true;
+        if (db.size() != merged.size()) return true;
+        Comparator<ProjWorkload> byKey = Comparator
+            .comparing((ProjWorkload w) -> w.getSubItemNo() == null ? 0 : w.getSubItemNo())
+            .thenComparing(w -> w.getCategoryId() == null ? Long.valueOf(-1) : w.getCategoryId())
+            .thenComparing(w -> w.getBillingType() == null ? "" : w.getBillingType())
+            .thenComparing(w -> w.getBillingCategory() == null ? "" : w.getBillingCategory());
+        List<ProjWorkload> a = new ArrayList<>(db), b = new ArrayList<>(merged);
+        a.sort(byKey);
+        b.sort(byKey);
+        for (int i = 0; i < a.size(); i++) {
+            if (!amtEq2(a.get(i).getWorkload(), b.get(i).getWorkload())) return true;
+            if (!amtEq2(a.get(i).getInternalOutput(), b.get(i).getInternalOutput())) return true;
+            if (!amtEq2(a.get(i).getExternalOutput(), b.get(i).getExternalOutput())) return true;
+        }
+        return false;
+    }
+
+    /** 金额按 2 位精度比较（null 视为 0，与 numeric(12,2) 落库口径一致） */
+    private static boolean amtEq2(BigDecimal x, BigDecimal y) {
+        BigDecimal a = x == null ? BigDecimal.ZERO : x;
+        BigDecimal b = y == null ? BigDecimal.ZERO : y;
+        return a.setScale(2, RoundingMode.HALF_UP).compareTo(b.setScale(2, RoundingMode.HALF_UP)) == 0;
+    }
+
     /** 付款合并：同类型金额累加成一条；复用项目时与库内已有付款累加；最终一次批量 upsert */
     /** 合并组内所有行的到账项：同类型金额累加成一条（仅组内合并，不涉及库内已有数据） */
     private List<ImportPreviewPayment> mergeGroupPayments(List<ImportPreviewRow> group) {
@@ -1563,7 +1737,8 @@ public class ProjImportServiceImpl implements IProjImportService
 
     /**
      * 本次合并后的到账与库内现值是否存在差异 —— 决定是否真的需要写库。
-     * 判定字段：付款类型（作为键）+ 金额 + 到账时间（按天比较，避免 Date 时分秒差异误判）。
+     * 判定字段：付款类型（作为键）+ 金额（按库列 numeric(12,2) 精度比对，避免 Excel 公式
+     * 浮点尾差 3132.1156… vs 库内 3132.12 造成「待补到账」死循环）+ 到账时间（按天比较）。
      * 台账是累计口径，跨文件/重复导入常带上与库里完全相同的到账行，此类属幂等重复，应视为「无差异」。
      */
     private boolean payDiffers(Map<String, ProjPayment> dbPays, List<ImportPreviewPayment> merged) {
@@ -1574,7 +1749,11 @@ public class ProjImportServiceImpl implements IProjImportService
             ProjPayment db = dbPays == null ? null : dbPays.get(key);
             if (db == null) return true;                    // 库里没有该类型的付款 → 新增
             if (db.getAmount() == null || pm.getAmount() == null
-                || db.getAmount().compareTo(pm.getAmount()) != 0) return true;   // 金额不同
+                || db.getAmount().setScale(2, RoundingMode.HALF_UP)
+                    .compareTo(pm.getAmount().setScale(2, RoundingMode.HALF_UP)) != 0) {
+                return true;   // 金额不同（按库列 numeric(12,2) 精度比对：Excel 单元格常存公式浮点
+                               // 原值如 3132.1156…，写库即被舍入，若不按同精度比对会永远判「有差异」）
+            }
             if (db.getPayTime() == null || pm.getPayTime() == null) {
                 if (db.getPayTime() != pm.getPayTime()) return true;            // 一有一无 → 有差异
             } else if (!dayFmt.format(db.getPayTime()).equals(dayFmt.format(pm.getPayTime()))) {
@@ -1597,7 +1776,7 @@ public class ProjImportServiceImpl implements IProjImportService
             ProjPayment pp = new ProjPayment();
             pp.setProjectId(projectId);
             pp.setPaymentType(pm.getPaymentType());
-            pp.setAmount(pm.getAmount());
+            pp.setAmount(pm.getAmount().setScale(2, RoundingMode.HALF_UP)); // 与 payDiffers 比对口径一致
             pp.setPayTime(pm.getPayTime());
             pp.setPayUnit(pm.getPayUnit());
             pp.setPayMethod(pm.getPayMethod());

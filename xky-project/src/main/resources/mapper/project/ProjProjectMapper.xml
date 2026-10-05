@@ -637,13 +637,20 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <!-- 按工程编号集合批量查询已存在项目（导入前预取） -->
     <select id="selectProjectIdsByCodes" resultType="java.util.LinkedHashMap">
-        select id, project_code
+        select id, project_code, close_time
         from proj_project
         where del_flag = '0' and project_code in
         <foreach item="code" collection="codes" open="(" separator="," close=")">
             #{code}
         </foreach>
     </select>
+
+    <!-- 导入补写：仅当库内办结时间为空时填充（不覆盖现值） -->
+    <update id="fillCloseTimeIfNull">
+        update proj_project
+        set close_time = #{closeTime}, update_by = #{updateBy}, update_time = now()
+        where id = #{projectId} and close_time is null and del_flag = '0'
+    </update>
 
     <!-- ==================== 指令性任务（项目性质） ==================== -->
 

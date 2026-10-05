@@ -32,6 +32,9 @@ public class ImportPreviewResponse implements Serializable
      */
     private Integer payWriteCount = 0;
 
+    /** 待补工作量的「已存在项目」数（去重编号）：工作量明细有差异 或 办结时间缺失需补，提交时补写。 */
+    private Integer workloadWriteCount = 0;
+
     private ProblemSummary problemSummary;
 
     private List<CategoryOption> categoryOptions = new ArrayList<>();
@@ -63,6 +66,8 @@ public class ImportPreviewResponse implements Serializable
     public void setUnmatchedPayCodes(List<String> c) { this.unmatchedPayCodes = c; }
     public Integer getPayWriteCount() { return payWriteCount; }
     public void setPayWriteCount(Integer n) { this.payWriteCount = n; }
+    public Integer getWorkloadWriteCount() { return workloadWriteCount; }
+    public void setWorkloadWriteCount(Integer n) { this.workloadWriteCount = n; }
     public ProblemSummary getProblemSummary() { return problemSummary; }
     public void setProblemSummary(ProblemSummary ps) { this.problemSummary = ps; }
     public List<CategoryOption> getCategoryOptions() { return categoryOptions; }

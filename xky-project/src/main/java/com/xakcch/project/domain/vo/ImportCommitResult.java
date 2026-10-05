@@ -17,12 +17,16 @@ public class ImportCommitResult implements Serializable
     private Long costMs;
     /** 其中「已存在项目仅补写到账」的项目数（successCount 的子集，用于结果页说明） */
     private Integer payWriteCount = 0;
+    /** 其中「已存在项目补写工作量/办结时间」的项目数（successCount 的子集） */
+    private Integer workloadWriteCount = 0;
     /** 状态：running（后台导入中）/ done（已完成）/ expired（会话过期） */
     private String status;
     private List<RowDetail> failedDetails = new ArrayList<>();
     private List<RowDetail> skippedDetails = new ArrayList<>();
     /** 仅补写到账（工程编号已存在、到账有变化并已写入）的行明细，与 successCount 对应 */
     private List<RowDetail> payWriteDetails = new ArrayList<>();
+    /** 补写工作量/办结时间（工程编号已存在、工作量有变化或办结时间缺失并已写入）的行明细 */
+    private List<RowDetail> workWriteDetails = new ArrayList<>();
 
     public Long getLogId() { return logId; }
     public void setLogId(Long v) { this.logId = v; }
@@ -44,6 +48,10 @@ public class ImportCommitResult implements Serializable
     public void setSkippedDetails(List<RowDetail> v) { this.skippedDetails = v; }
     public List<RowDetail> getPayWriteDetails() { return payWriteDetails; }
     public void setPayWriteDetails(List<RowDetail> v) { this.payWriteDetails = v; }
+    public Integer getWorkloadWriteCount() { return workloadWriteCount; }
+    public void setWorkloadWriteCount(Integer v) { this.workloadWriteCount = v; }
+    public List<RowDetail> getWorkWriteDetails() { return workWriteDetails; }
+    public void setWorkWriteDetails(List<RowDetail> v) { this.workWriteDetails = v; }
 
     public static class RowDetail implements Serializable {
         private static final long serialVersionUID = 1L;

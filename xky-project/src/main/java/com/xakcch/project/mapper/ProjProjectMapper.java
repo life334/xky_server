@@ -41,9 +41,18 @@ public interface ProjProjectMapper
      * 按工程编号集合批量查询已存在项目（导入前预取，避免逐组查重）
      *
      * @param codes 工程编号集合
-     * @return [{ id, project_code }]
+     * @return [{ id, project_code, close_time }]
      */
     public List<Map<String, Object>> selectProjectIdsByCodes(@Param("codes") List<String> codes);
+
+    /**
+     * 导入补写：仅当库内办结时间为空时填充（不覆盖现值）
+     *
+     * @return 影响行数（0 = 库内已有办结时间，未改动）
+     */
+    public int fillCloseTimeIfNull(@Param("projectId") Long projectId,
+                                   @Param("closeTime") java.util.Date closeTime,
+                                   @Param("updateBy") String updateBy);
 
     /**
      * 新增项目

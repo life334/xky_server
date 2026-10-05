@@ -68,6 +68,12 @@ public class ImportPreviewRow
      */
     private Boolean payChanged = false;
 
+    /**
+     * 该编号在库中已存在时，本文件的工作量明细（或办结时间）与库内现值是否存在差异：
+     * true ⇒ 提交时会重写该项目的工作量明细（删旧插新）/ 补填缺失的办结时间。
+     */
+    private Boolean workChanged = false;
+
     public Integer getExcelRow() { return excelRow; }
     public void setExcelRow(Integer excelRow) { this.excelRow = excelRow; }
     public String getProjectCode() { return projectCode; }
@@ -116,6 +122,8 @@ public class ImportPreviewRow
     public void setExistingProjectId(Long existingProjectId) { this.existingProjectId = existingProjectId; }
     public Boolean getPayOnly() { return payOnly; }
     public void setPayOnly(Boolean payOnly) { this.payOnly = payOnly; }
+    public Boolean getWorkChanged() { return workChanged; }
+    public void setWorkChanged(Boolean v) { this.workChanged = v; }
     public Boolean getPayChanged() { return payChanged; }
     public void setPayChanged(Boolean payChanged) { this.payChanged = payChanged; }
 }
