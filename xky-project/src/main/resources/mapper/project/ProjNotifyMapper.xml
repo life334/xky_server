@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjNotifyMapper">
+
+    <resultMap type="com.xakcch.project.domain.ProjNotify" id="ProjNotifyResult">
+        <id     property="id"               column="id"/>
+        <result property="notifyType"       column="notify_type"/>
+        <result property="todoKind"         column="todo_kind"/>
+        <result property="bizType"          column="biz_type"/>
+        <result property="bizId"            column="biz_id"/>
+        <result property="projectId"        column="project_id"/>
+        <result property="projectCode"      column="project_code"/>
+        <result property="projectName"      column="project_name"/>
+        <result property="title"            column="title"/>
+        <result property="content"          column="content"/>
+        <result property="receiverId"       column="receiver_id"/>
+        <result property="receiverRoleId"  column="receiver_role_id"/>
+        <result property="routePath"        column="route_path"/>
+        <result property="routeQuery"       column="route_query"/>
+        <result property="priority"         column="priority"/>
+        <result property="status"           column="status"/>
+        <result property="dueTime"          column="due_time"/>
+        <result property="readTime"         column="read_time"/>
+        <result property="doneTime"         column="done_time"/>
+        <result property="ignoreReason"     column="ignore_reason"/>
+        <result property="delFlag"          column="del_flag"/>
+        <result property="createBy"         column="create_by"/>
+        <result property="createTime"       column="create_time"/>
+        <result property="updateBy"         column="update_by"/>
+        <result property="updateTime"       column="update_time"/>
+    </resultMap>
+
+    <sql id="selectNotifyVo">
+        select id, notify_type, todo_kind, biz_type, biz_id, project_id, project_code, project_name,
+               title, content, receiver_id, receiver_role_id, route_path, route_query,
+               priority, status, due_time, read_time, done_time, ignore_reason,
+               del_flag, create_by, create_time, update_by, update_time
+        from proj_notify
+    </sql>
+
+    <insert id="insertNotify" parameterType="com.xakcch.project.domain.ProjNotify" useGeneratedKeys="true" keyProperty="id">
+        insert into proj_notify (
+            notify_type, todo_kind, biz_type, biz_id, project_id, project_code, project_name,
+            title, content, receiver_id, receiver_role_id, route_path, route_query,
+            priority, status, due_time, create_by, create_time
+        ) values (
+            #{notifyType}, #{todoKind}, #{bizType}, #{bizId}, #{projectId}, #{projectCode}, #{projectName},
+            #{title}, #{content}, #{receiverId}, #{receiverRoleId}, #{routePath}, #{routeQuery},
+            #{priority}, #{status}, #{dueTime}, #{createBy}, now()
+        )
+        on conflict (biz_type, biz_id, receiver_id) where del_flag = '0' do nothing
+    </insert>
+
+    <select id="selectNotifyList" resultMap="ProjNotifyResult">
+        <include refid="selectNotifyVo"/>
+        where del_flag = '0' and receiver_id = #{receiverId}
+        <if test="notifyType != null and notifyType != ''">
+            and notify_type = #{notifyType}
+        </if>
+        <if test="statusList != null and statusList.size() > 0">
+            and status in
+            <foreach collection="statusList" item="s" open="(" separator="," close=")">
+                #{s}
+            </foreach>
+        </if>
+        order by create_time desc, id desc
+    </select>
+
+    <select id="selectNotifySummary" resultType="com.xakcch.project.domain.vo.NotifySummaryVo">
+        select
+            coalesce(sum(case when notify_type = 'todo' and status in ('unread','read') then 1 else 0 end), 0) as "todoCount",
+            coalesce(sum(case when notify_type = 'message' and status = 'unread' then 1 else 0 end), 0) as "messageCount",
+            coalesce(sum(case when notify_type = 'todo' and status in ('unread','read') and priority = 'high' then 1 else 0 end), 0) as "highTodoCount"
+        from proj_notify
+        where del_flag = '0' and receiver_id = #{receiverId}
+    </select>
+
+    <select id="selectMaxId" resultType="Long">
+        select coalesce(max(id), 0) from proj_notify
+        where del_flag = '0' and receiver_id = #{receiverId}
+    </select>
+
+    <select id="selectIncrementTodos" resultMap="ProjNotifyResult">
+        <include refid="selectNotifyVo"/>
+        where del_flag = '0' and receiver_id = #{receiverId}
+          and notify_type = 'todo' and status in ('unread','read')
+          and id > #{afterId}
+        order by id desc
+        limit 20
+    </select>
+
+    <update id="markRead">
+        update proj_notify set status = 'read', read_time = now(), update_time = now()
+        where id = #{id} and receiver_id = #{receiverId} and status = 'unread' and del_flag = '0'
+    </update>
+
+    <update id="markAllRead">
+        update proj_notify set status = 'read', read_time = now(), update_time = now()
+        where receiver_id = #{receiverId} and status = 'unread' and del_flag = '0'
+        <if test="notifyType != null and notifyType != ''">
+            and notify_type = #{notifyType}
+        </if>
+    </update>
+
+    <update id="ignoreTodo">
+        update proj_notify set status = 'ignored', ignore_reason = #{reason}, update_time = now()
+        where id = #{id} and receiver_id = #{receiverId} and notify_type = 'todo'
+          and status in ('unread','read') and del_flag = '0'
+    </update>
+
+    <update id="autoCompleteDocTodos">
+        update proj_notify n set status = 'done', done_time = now(), update_time = now()
+        where n.del_flag = '0' and n.notify_type = 'todo' and n.todo_kind = 'doc'
+          and n.status in ('unread','read')
+        <if test="receiverId != null">
+            and n.receiver_id = #{receiverId}
+        </if>
+          and exists (select 1 from proj_material m
+                      where m.project_id = n.project_id and m.del_flag = '0'
+                        and COALESCE(m.result_type, '') != '')
+    </update>
+
+    <update id="autoCompleteSettleTodos">
+        update proj_notify n set status = 'done', done_time = now(), update_time = now()
+        where n.del_flag = '0' and n.notify_type = 'todo' and n.todo_kind = 'settle'
+          and n.status in ('unread','read')
+        <if test="receiverId != null">
+            and n.receiver_id = #{receiverId}
+        </if>
+          and exists (select 1 from proj_workload w
+                      where w.project_id = n.project_id and w.del_flag = '0'
+                        and w.billing_type = 'external' and COALESCE(w.workload, 0) > 0)
+    </update>
+
+    <update id="escalateOverdueTodos">
+        update proj_notify set priority = 'high', update_time = now()
+        where del_flag = '0' and notify_type = 'todo' and status in ('unread','read')
+          and priority = 'normal'
+          and create_time &lt; now() - (#{dueDays} * interval '1 day')
+        <if test="receiverId != null">
+            and receiver_id = #{receiverId}
+        </if>
+    </update>
+
+    <select id="selectReceiversByRoleKeys" resultType="map">
+        select ur.user_id as "userId", ur.role_id as "roleId", r.role_key as "roleKey"
+        from sys_user_role ur
+        join sys_role r on r.role_id = ur.role_id
+        join sys_user u on u.user_id = ur.user_id
+        where r.del_flag = '0' and r.status = '0' and u.del_flag = '0' and u.status = '0'
+          and r.role_key in
+        <foreach collection="roleKeys" item="k" open="(" separator="," close=")">
+            #{k}
+        </foreach>
+    </select>
+
+</mapper>

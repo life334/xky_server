@@ -3,6 +3,7 @@ package com.xakcch.project.report;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -327,6 +328,7 @@ public class ReportExcelExporter
             // 合计行
             if ("Y".equals(template.getHasSummaryRow()) && !rows.isEmpty())
             {
+                List<Object> sums = buildSummaryRow(template, fields, rows);
                 Row sum = sheet.createRow(currentRow);
                 sum.setHeight((short) 300);
                 for (int i = 0; i < colCount; i++)
@@ -339,22 +341,10 @@ public class ReportExcelExporter
                         ds.cloneStyleFrom(dataStyle);
                         c.setCellStyle(ds);
                     }
-                    if (i == 0)
+                    Object sv = i < sums.size() ? sums.get(i) : null;
+                    if (sv != null)
                     {
-                        c.setCellValue("合计");
-                    }
-                    else if ("number".equals(fieldType(f)))
-                    {
-                        BigDecimal total = BigDecimal.ZERO;
-                        for (Map<String, Object> row : rows)
-                        {
-                            Object v = ReportFieldPool.resolveValue(f, row);
-                            if (v instanceof Number)
-                            {
-                                total = total.add(new BigDecimal(v.toString()));
-                            }
-                        }
-                        c.setCellValue(total.doubleValue());
+                        setCellValue(wb, c, sv);
                     }
                 }
             }
@@ -382,6 +372,17 @@ public class ReportExcelExporter
         if (dataZeroIdx < 0)
         {
             dataZeroIdx = 0;
+        }
+
+        // ★ 清除模板自带的、位于数据区及其下方的合并区域（如页脚「制表：…」跨行大格、模板样例数据的合并单元格）。
+        //    sheet.removeRow 不会移除合并区域；遗留后数据行一旦写到这些位置，会被旧合并区吞掉整行内容（只显示左上角值）。
+        //    本导出器自己的合并（applyUnitMerge / applyProjectGroupMerge）在填数据之后重新添加，不受影响。
+        for (int mi = sheet.getNumMergedRegions() - 1; mi >= 0; mi--)
+        {
+            if (sheet.getMergedRegion(mi).getFirstRow() >= dataZeroIdx)
+            {
+                sheet.removeMergedRegion(mi);
+            }
         }
 
         // ★ 先保存样式行中各列的样式（后续删除行时 styleRow 引用会失效）
@@ -493,31 +494,20 @@ public class ReportExcelExporter
                 Cell cell = sum.createCell(e.getKey() - 1);
                 cell.setCellStyle(e.getValue());
             }
-            for (ProjReportField f : fields)
+            List<Object> sums = buildSummaryRow(template, fields, rows);
+            for (int fi = 0; fi < fields.size(); fi++)
             {
+                ProjReportField f = fields.get(fi);
                 Integer colIdx = f.getColumnIndex();
                 if (colIdx == null || colIdx <= 0)
                 {
                     continue;
                 }
-                int ci = colIdx - 1;
-                Cell cell = sum.getCell(ci);
-                if (ci == 0)
+                Object v = fi < sums.size() ? sums.get(fi) : null;
+                Cell cell = sum.getCell(colIdx - 1);
+                if (v != null && cell != null)
                 {
-                    cell.setCellValue("合计");
-                }
-                else if ("number".equals(fieldType(f)))
-                {
-                    BigDecimal total = BigDecimal.ZERO;
-                    for (Map<String, Object> row : rows)
-                    {
-                        Object v = ReportFieldPool.resolveValue(f, row);
-                        if (v instanceof Number)
-                        {
-                            total = total.add(new BigDecimal(v.toString()));
-                        }
-                    }
-                    cell.setCellValue(total.doubleValue());
+                    setCellValue(wb, cell, v);
                 }
             }
         }
@@ -554,6 +544,52 @@ public class ReportExcelExporter
             return "date";
         }
         return "string";
+    }
+
+    /**
+     * 合计行数值（导出 Excel 与预览页共用同一口径）：按 fields 顺序返回。
+     * 首个字段固定为「合计」文案；数值型字段（见 fieldType）为全量求和；其余为 null（空白）。
+     */
+    public static List<Object> buildSummaryRow(ProjReportTemplate template,
+            List<ProjReportField> fields, List<Map<String, Object>> rows)
+    {
+        List<Object> out = new ArrayList<>();
+        if (fields == null)
+        {
+            return out;
+        }
+        for (int fi = 0; fi < fields.size(); fi++)
+        {
+            ProjReportField f = fields.get(fi);
+            if (fi == 0)
+            {
+                out.add("合计");
+                continue;
+            }
+            if ("number".equals(fieldType(f)))
+            {
+                BigDecimal total = BigDecimal.ZERO;
+                boolean any = false;
+                if (rows != null)
+                {
+                    for (Map<String, Object> row : rows)
+                    {
+                        Object v = ReportFieldPool.resolveValue(f, row);
+                        if (v instanceof Number)
+                        {
+                            total = total.add(new BigDecimal(v.toString()));
+                            any = true;
+                        }
+                    }
+                }
+                out.add(any ? Double.valueOf(total.doubleValue()) : null);
+            }
+            else
+            {
+                out.add(null);
+            }
+        }
+        return out;
     }
 
     /**

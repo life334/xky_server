@@ -400,6 +400,13 @@ public class ProjReportServiceImpl implements IProjReportService
         result.put("codes", codes);
         // 当前页每行的项目分组行数（>1 表示该行所属项目被拆成多行，前端据此合并「到账金额/时间」以外的列）
         result.put("groupSizes", groupSizes);
+        // 合计行（与导出 fillDataRows 同口径）：模板配置了合计行时按全量筛选数据计算，
+        // 让预览页可见即将导出的合计（此前仅导出的 Excel 里有、预览看不到）
+        if ("Y".equals(template.getHasSummaryRow()) && total > 0 && fields != null && !fields.isEmpty())
+        {
+            List<Map<String, Object>> allRows = reportDataMapper.selectProjectRows(qf, total, 0);
+            result.put("summaryRow", ReportExcelExporter.buildSummaryRow(template, fields, allRows));
+        }
         // 已上报状态 { projectCode: submitTime }，前端标记已上报行
         Map<String, Object> submitted = new HashMap<>();
         List<String> queryCodes = new ArrayList<>();

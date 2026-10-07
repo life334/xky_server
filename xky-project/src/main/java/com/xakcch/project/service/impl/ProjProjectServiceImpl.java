@@ -12,6 +12,8 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import com.xakcch.common.exception.ServiceException;
 import com.xakcch.common.utils.SecurityUtils;
 import com.xakcch.common.utils.WorkdayUtils;
@@ -33,6 +35,7 @@ import com.xakcch.project.mapper.ProjTaskMapper;
 import com.xakcch.project.mapper.ProjWorkloadMapper;
 import com.xakcch.project.service.IProjProjectService;
 import com.xakcch.project.service.IProjDashboardService;
+import com.xakcch.project.service.IProjNotifyService;
 import com.xakcch.project.service.IProjPriceRecalcService;
 import com.xakcch.project.service.IProjMandateService;
 import com.xakcch.system.mapper.SysUserMapper;
@@ -61,6 +64,9 @@ public class ProjProjectServiceImpl implements IProjProjectService
 
     @Autowired
     private IProjDashboardService dashboardService;
+
+    @Autowired
+    private IProjNotifyService notifyService;
 
     @Autowired
     private ProjLeaderMapper leaderMapper;
@@ -345,6 +351,8 @@ public class ProjProjectServiceImpl implements IProjProjectService
         material.setContactName(project.getContactName());
         material.setContactPhone(project.getContactPhone());
         materialMapper.insertMaterial(material);
+        // 事务提交后派发通知（档案管理/生产管理待办 + 管理员/质量管理消息；幂等）
+        registerCloseNotify(id);
         return rows;
     }
 
@@ -378,8 +386,55 @@ public class ProjProjectServiceImpl implements IProjProjectService
         if ("closed".equals(targetStatus))
         {
             snapshotTotalDuration(project);
+            // 事务提交后派发通知（与办结按钮同一收口）
+            registerCloseNotify(id);
         }
         return projectMapper.updateProjectStatus(id, targetStatus);
+    }
+
+    /**
+     * 注册"办结事务提交后"的通知派发（afterCommit，防回滚已推送）
+     */
+    private void registerCloseNotify(Long projectId)
+    {
+        final String operator;
+        try
+        {
+            operator = SecurityUtils.getUsername();
+        }
+        catch (Exception ex)
+        {
+            // 非登录上下文（如导入批处理）触发时无操作人
+            registerNotifySynchronization(projectId, "system");
+            return;
+        }
+        registerNotifySynchronization(projectId, operator);
+    }
+
+    private void registerNotifySynchronization(Long projectId, String operator)
+    {
+        if (!TransactionSynchronizationManager.isSynchronizationActive())
+        {
+            // 无事务上下文（理论不出现）：直接派发
+            notifyService.onProjectClosed(projectId, operator);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization()
+        {
+            @Override
+            public void afterCommit()
+            {
+                try
+                {
+                    notifyService.onProjectClosed(projectId, operator);
+                }
+                catch (Exception ex)
+                {
+                    // 通知失败不影响办结主流程
+                    ex.printStackTrace();
+                }
+            }
+        });
     }
 
     /**
