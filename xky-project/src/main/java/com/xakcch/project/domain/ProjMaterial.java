@@ -102,6 +102,9 @@ public class ProjMaterial extends BaseEntity
     /** 项目来源（筛选：manual=手动录入 / import=Excel 导入） */
     private transient String dataSource;
 
+    /** 委托单位性质（筛选：JOIN proj_project.client_unit_nature，字典 proj_client_unit_nature） */
+    private transient String clientUnitNature;
+
     /** 办结日期范围-开始（筛选） */
     private transient String closeDateBegin;
 
@@ -336,6 +339,8 @@ public class ProjMaterial extends BaseEntity
     public void setContractId(Long contractId) { this.contractId = contractId; }
     public String getDataSource() { return dataSource; }
     public void setDataSource(String dataSource) { this.dataSource = dataSource; }
+    public String getClientUnitNature() { return clientUnitNature; }
+    public void setClientUnitNature(String clientUnitNature) { this.clientUnitNature = clientUnitNature; }
     public String getCloseDateBegin() { return closeDateBegin; }
     public void setCloseDateBegin(String closeDateBegin) { this.closeDateBegin = closeDateBegin; }
     public String getCloseDateEnd() { return closeDateEnd; }

@@ -732,6 +732,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
         // ---- 业务字段（固定顺序，与用户确认的默认显示一致） ----
         addColumn(columns, "projectCode", "工程编号", "text", "business", true, "projectCode");
         addColumn(columns, "clientUnit", "委托单位", "text", "business", true, "clientUnit");
+        addColumn(columns, "clientUnitNature", "委托单位性质", "dict", "business", true, "clientUnitNature");
         addColumn(columns, "contactName", "联系人", "text", "business", true, "contactName");
         addColumn(columns, "contactPhone", "联系电话", "text", "business", true, "contactPhone");
         addColumn(columns, "engineeringProject", "项目类别", "text", "business", true, "engineeringProject");
@@ -751,7 +752,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
 
         // ---- 物理表新增列自动发现（不在固定清单中的列 → 业务组末尾，默认隐藏） ----
         Set<String> known = new HashSet<>(Arrays.asList(
-            "project_code", "client_unit", "contact_name", "contact_phone", "engineering_project",
+            "project_code", "client_unit", "client_unit_nature", "contact_name", "contact_phone", "engineering_project",
             "project_location", "status", "assign_date", "duration_require", "total_duration",
             "project_name", "remark", "id", "create_by", "create_time", "update_by", "update_time",
             "del_flag", "extra_data", "project_category_id", "contract_id", "related_project_id",

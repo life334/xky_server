@@ -40,6 +40,15 @@ public class ProjProject extends BaseEntity
     @Excel(name = "委托单位")
     private String clientUnit;
 
+    /**
+     * 委托单位性质（字典 proj_client_unit_nature）
+     * government=政府机关 / institution=事业单位 / state_owned=国有企业 / private=民营企业 /
+     * collective=集体企业 / foreign=外资（含合资） / other=其他
+     * 注意：与 projectNature（项目性质：常规 / 指令性任务）无关，二者独立。
+     * 刻意不加 @Excel——导入不读取该列，避免污染导入模板表头。
+     */
+    private String clientUnitNature;
+
     /** 联系人 */
     @Excel(name = "联系人")
     private String contactName;
@@ -265,6 +274,16 @@ public class ProjProject extends BaseEntity
     public void setClientUnit(String clientUnit)
     {
         this.clientUnit = clientUnit;
+    }
+
+    public String getClientUnitNature()
+    {
+        return clientUnitNature;
+    }
+
+    public void setClientUnitNature(String clientUnitNature)
+    {
+        this.clientUnitNature = clientUnitNature;
     }
 
     public String getContactName()

@@ -141,6 +141,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="dataSource != null and dataSource != ''">
             AND p.data_source = #{dataSource}
         </if>
+        <!-- 委托单位性质筛选（字典 proj_client_unit_nature，取项目表字段） -->
+        <if test="clientUnitNature != null and clientUnitNature != ''">
+            AND p.client_unit_nature = #{clientUnitNature}
+        </if>
         <!-- 办结日期范围（改为按项目办结时间 close_time 过滤，替代已废弃的交付时间 submit_time） -->
         <if test="closeDateBegin != null and closeDateBegin != ''">
             AND p.close_time &gt;= to_date(#{closeDateBegin}, 'YYYY-MM-DD')

@@ -30,7 +30,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 WHEN cl.next_collect_time IS NOT NULL AND cl.next_collect_time &lt; current_date THEN 'overdue'
                 ELSE 'calling'
             END AS "collectStatus",
-            COALESCE(p.project_nature, 'normal') AS "projectNature"
+            COALESCE(p.project_nature, 'normal') AS "projectNature",
+            p.client_unit_nature AS "clientUnitNature"
         FROM proj_project p
         LEFT JOIN (
             SELECT project_id,
@@ -96,6 +97,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
         <if test="clientUnit != null and clientUnit != ''">
             AND t."clientUnit" LIKE concat('%', #{clientUnit}, '%')
+        </if>
+        <!-- 委托单位性质（字典 proj_client_unit_nature，取项目表字段） -->
+        <if test="clientUnitNature != null and clientUnitNature != ''">
+            AND t."clientUnitNature" = #{clientUnitNature}
         </if>
         <!-- 全局搜索：工程编号 / 项目名称 / 客户全称 -->
         <if test="keyword != null and keyword != ''">
@@ -234,6 +239,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="clientUnit != null and clientUnit != ''">
             AND p.client_unit LIKE concat('%', #{clientUnit}, '%')
         </if>
+        <!-- 委托单位性质（字典 proj_client_unit_nature） -->
+        <if test="clientUnitNature != null and clientUnitNature != ''">
+            AND p.client_unit_nature = #{clientUnitNature}
+        </if>
         <!-- 全局搜索：工程编号 / 项目名称 / 客户全称 -->
         <if test="keyword != null and keyword != ''">
             AND (p.project_code LIKE concat('%', #{keyword}, '%')
@@ -336,6 +345,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="clientUnit != null and clientUnit != ''">
             AND p.client_unit LIKE concat('%', #{clientUnit}, '%')
         </if>
+        <if test="clientUnitNature != null and clientUnitNature != ''">
+            AND p.client_unit_nature = #{clientUnitNature}
+        </if>
         <if test="projectCategoryId != null and projectCategoryId != ''">
             AND p.project_category_id = cast(#{projectCategoryId} as bigint)
         </if>
@@ -360,7 +372,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
 <!--
       到账窗口统计（供「本月已回款 / 区间已回款」卡片使用）
-      口径：只跟随列表筛选中的「项目级子集」——keyword / 委托单位 / 负责人 / 完成时间（办结时间）；
+      口径：只跟随列表筛选中的「项目级子集」——keyword / 委托单位 / 委托单位性质 / 负责人 / 完成时间（办结时间）；
             账龄、催收状态、项目名称等条件不参与（到账流水驱动链路上无对应列），
             与同一链路的卡片下钻 selectReceivedDetail 保持完全一致。
       curBegin/curEnd   ：当前窗口（默认=本月；用户填了「到账时间」区间时=该区间）
@@ -377,6 +389,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
         <if test="clientUnit != null and clientUnit != ''">
             AND p.client_unit LIKE concat('%', #{clientUnit}, '%')
+        </if>
+        <if test="clientUnitNature != null and clientUnitNature != ''">
+            AND p.client_unit_nature = #{clientUnitNature}
         </if>
         <if test="closeTimeBegin != null and closeTimeBegin != ''">
             AND p.close_time &gt;= to_date(#{closeTimeBegin}, 'YYYY-MM-DD')

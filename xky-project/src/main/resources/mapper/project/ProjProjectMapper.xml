@@ -11,6 +11,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="engineeringProject"  column="engineering_project"  />
         <result property="projectCategoryId"   column="project_category_id"  />
         <result property="clientUnit"          column="client_unit"          />
+        <result property="clientUnitNature"    column="client_unit_nature"   />
         <result property="contactName"         column="contact_name"         />
         <result property="contactPhone"        column="contact_phone"        />
         <result property="projectLocation"     column="project_location"     />
@@ -52,7 +53,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <sql id="selectProjectVo">
         select p.id, p.project_code, p.project_name, p.engineering_project,
-               p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
+               p.project_category_id, p.client_unit, p.client_unit_nature, p.contact_name, p.contact_phone,
                p.project_location, p.contract_id, p.data_source, p.status, p.project_nature,
                p.close_time,
                p.assign_date, p.duration_require, p.total_duration,
@@ -64,7 +65,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <select id="selectProjectList" parameterType="ProjProject" resultMap="ProjProjectResult">
         select p.id, p.project_code, p.project_name, p.engineering_project,
-               p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
+               p.project_category_id, p.client_unit, p.client_unit_nature, p.contact_name, p.contact_phone,
                p.project_location, p.contract_id, p.data_source, p.status, p.project_nature,
                p.close_time,
                p.assign_date, p.duration_require, p.total_duration,
@@ -189,6 +190,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="projectNature != null and projectNature != ''">
             AND p.project_nature = #{projectNature}
         </if>
+        <!-- 委托单位性质筛选（字典 proj_client_unit_nature） -->
+        <if test="clientUnitNature != null and clientUnitNature != ''">
+            AND p.client_unit_nature = #{clientUnitNature}
+        </if>
         <if test="params.statusList != null">
             AND p.status in
             <foreach collection="params.statusList" item="s" open="(" separator="," close=")">
@@ -246,7 +251,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <select id="selectProjectById" parameterType="Long" resultMap="ProjProjectResult">
         select p.id, p.project_code, p.project_name, p.engineering_project,
-               p.project_category_id, p.client_unit, p.contact_name, p.contact_phone,
+               p.project_category_id, p.client_unit, p.client_unit_nature, p.contact_name, p.contact_phone,
                p.project_location, p.contract_id, p.data_source, p.status, p.project_nature,
                p.close_time,
                p.assign_date, p.duration_require, p.total_duration,
@@ -292,6 +297,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="engineeringProject != null">engineering_project,</if>
             <if test="projectCategoryId != null">project_category_id,</if>
             <if test="clientUnit != null">client_unit,</if>
+            <if test="clientUnitNature != null">client_unit_nature,</if>
             <if test="contactName != null">contact_name,</if>
             <if test="contactPhone != null">contact_phone,</if>
             <if test="projectLocation != null">project_location,</if>
@@ -315,6 +321,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="engineeringProject != null">#{engineeringProject},</if>
             <if test="projectCategoryId != null">#{projectCategoryId},</if>
             <if test="clientUnit != null">#{clientUnit},</if>
+            <if test="clientUnitNature != null">#{clientUnitNature},</if>
             <if test="contactName != null">#{contactName},</if>
             <if test="contactPhone != null">#{contactPhone},</if>
             <if test="projectLocation != null">#{projectLocation},</if>
@@ -364,6 +371,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="engineeringProject != null">engineering_project = #{engineeringProject},</if>
             <if test="projectCategoryId != null">project_category_id = #{projectCategoryId},</if>
             <if test="clientUnit != null">client_unit = #{clientUnit},</if>
+            <if test="clientUnitNature != null">client_unit_nature = #{clientUnitNature},</if>
             <if test="contactName != null">contact_name = #{contactName},</if>
             <if test="contactPhone != null">contact_phone = #{contactPhone},</if>
             <if test="projectLocation != null">project_location = #{projectLocation},</if>
@@ -564,6 +572,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
         <if test="projectNature != null and projectNature != ''">
             AND p.project_nature = #{projectNature}
+        </if>
+        <!-- 委托单位性质筛选（与 selectProjectList 口径一致，保证胶囊计数与列表同步） -->
+        <if test="clientUnitNature != null and clientUnitNature != ''">
+            AND p.client_unit_nature = #{clientUnitNature}
         </if>
         <if test="params.statusList != null">
             AND p.status in

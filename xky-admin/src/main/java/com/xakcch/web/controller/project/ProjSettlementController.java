@@ -68,6 +68,7 @@ public class ProjSettlementController extends BaseController
         List<Map<String, Object>> columns = new ArrayList<>();
         // 项目级 + 人员级 + 叶子级通用字段（默认可见性 = 当前页面展示列）
         addColumn(columns, "projectCode", "工程编号", "text", true, "projectCode");
+        addColumn(columns, "relatedProjectCode", "关联定线", "text", true, "relatedProjectCode");
         addColumn(columns, "projectName", "项目名称", "text", false, "projectName");
         addColumn(columns, "clientUnit", "委托单位", "text", true, "clientUnit");
         addColumn(columns, "projectLocation", "工程地点", "text", true, "projectLocation");
@@ -621,6 +622,8 @@ public class ProjSettlementController extends BaseController
         node.put("id", "p" + p.getId());
         node.put("projectId", p.getId());
         node.put("projectCode", p.getProjectCode());
+        // 关联定线编号（验线项目关联的定线工程；selectProjectList 已 coalesce 关联项目编号与手输文本）
+        node.put("relatedProjectCode", p.getRelatedProjectCode());
         node.put("projectName", p.getProjectName());
         node.put("clientUnit", p.getClientUnit());
         node.put("projectLocation", p.getProjectLocation());
