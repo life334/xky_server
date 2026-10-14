@@ -479,12 +479,19 @@
         GROUP BY p.project_category_id
     </select>
 
-    <!-- 负责人×类型矩阵（多人项目允许重复计数，图上注明） -->
+    <!--
+      负责人×类型矩阵（多人项目允许重复计数，图上注明）
+      ⚠️ 三个指标统一按「项目办结日期」p.close_time 落入统计周期（2026-10-14 起）：
+         「项目数」原用 v2NewDateExpr（项目创建日期），但历史导入项目的 create_time 均被写成
+         导入当天 ⇒ 本月/本季/本年 筛出同一批项目、数字恒等，被误判为「未随统计周期联动」。
+         改与内/外产值同口径后，整张表随统计周期一致变化（语义 = 本期办结量）。
+         ⇒ 本 select 的 count 不复用 v2NewDateExpr；v2NewDateExpr 本身仍是全局新增口径，勿动。
+    -->
     <select id="leaderBucketMatrix" resultType="map">
         SELECT pl.user_id AS "leaderId",
                p.project_category_id AS "categoryId",
-               COUNT(*) FILTER (WHERE <include refid="v2NewDateExpr"/> &gt;= #{q.beginDate}::date
-                   AND <include refid="v2NewDateExpr"/> &lt; #{q.endDate}::date + interval '1 day') AS "count",
+               COUNT(*) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
+                   AND p.close_time &lt; #{q.endDate}::date + interval '1 day') AS "count",
                COALESCE(SUM(ws.int_out) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date
                    AND p.close_time &lt; #{q.endDate}::date + interval '1 day'), 0) AS "internalOutput",
                COALESCE(SUM(CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN 0 ELSE COALESCE(ws.ext_out, 0) END) FILTER (WHERE p.close_time &gt;= #{q.beginDate}::date

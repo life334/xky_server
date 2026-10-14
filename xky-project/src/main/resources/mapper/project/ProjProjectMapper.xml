@@ -136,12 +136,25 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="projectCategoryId != null">
             AND p.project_category_id = #{projectCategoryId}
         </if>
-        <!-- 项目类别多选（类别画像行 / 饼图桶下钻：「其它」桶为多个小类 id 的并集） -->
+        <!-- 项目类别多选（类别画像行 / 饼图桶下钻：「其它」桶为多个小类 id 的并集）。
+             ⚠️「其它」桶的口径含「未分类」（project_category_id 为空）项目 ⇒ 下钻须带
+             categoryIncludeNull=true 同步纳入，否则桶内数字有值、点开明细为空（NULL 不匹配任何 IN）。 -->
         <if test="projectCategoryIds != null and projectCategoryIds.length &gt; 0">
-            AND p.project_category_id in
-            <foreach collection="projectCategoryIds" item="cid" open="(" separator="," close=")">
-                #{cid}
-            </foreach>
+            <choose>
+                <when test="categoryIncludeNull != null and categoryIncludeNull == 'true'">
+                    AND (p.project_category_id is null OR p.project_category_id in
+                    <foreach collection="projectCategoryIds" item="cid" open="(" separator="," close=")">
+                        #{cid}
+                    </foreach>
+                    )
+                </when>
+                <otherwise>
+                    AND p.project_category_id in
+                    <foreach collection="projectCategoryIds" item="cid" open="(" separator="," close=")">
+                        #{cid}
+                    </foreach>
+                </otherwise>
+            </choose>
         </if>
         <if test="clientUnit != null and clientUnit != ''">
             AND p.client_unit like concat('%', #{clientUnit}, '%')
@@ -554,12 +567,25 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="projectCategoryId != null">
             AND p.project_category_id = #{projectCategoryId}
         </if>
-        <!-- 项目类别多选（类别画像行 / 饼图桶下钻：「其它」桶为多个小类 id 的并集） -->
+        <!-- 项目类别多选（类别画像行 / 饼图桶下钻：「其它」桶为多个小类 id 的并集）。
+             ⚠️「其它」桶的口径含「未分类」（project_category_id 为空）项目 ⇒ 下钻须带
+             categoryIncludeNull=true 同步纳入，否则桶内数字有值、点开明细为空（NULL 不匹配任何 IN）。 -->
         <if test="projectCategoryIds != null and projectCategoryIds.length &gt; 0">
-            AND p.project_category_id in
-            <foreach collection="projectCategoryIds" item="cid" open="(" separator="," close=")">
-                #{cid}
-            </foreach>
+            <choose>
+                <when test="categoryIncludeNull != null and categoryIncludeNull == 'true'">
+                    AND (p.project_category_id is null OR p.project_category_id in
+                    <foreach collection="projectCategoryIds" item="cid" open="(" separator="," close=")">
+                        #{cid}
+                    </foreach>
+                    )
+                </when>
+                <otherwise>
+                    AND p.project_category_id in
+                    <foreach collection="projectCategoryIds" item="cid" open="(" separator="," close=")">
+                        #{cid}
+                    </foreach>
+                </otherwise>
+            </choose>
         </if>
         <if test="clientUnit != null and clientUnit != ''">
             AND p.client_unit like concat('%', #{clientUnit}, '%')

@@ -314,7 +314,8 @@ public class ReportFieldPool
         }
         switch (key) {
             case "receivedAmount" -> {
-                BigDecimal received = num(row.get("receivedAmount"));
+                // 指令性任务：到账为 0/空 → 回退取「项目原始外部产值」（判定收口在 effectiveReceivedAmount）
+                BigDecimal received = effectiveReceivedAmount(row);
                 if (isScsr && (received == null || received.compareTo(BigDecimal.ZERO) == 0)) {
                     return null;
                 }
@@ -323,7 +324,7 @@ public class ReportFieldPool
             case "invoiceFlag" -> {
                 BigDecimal invoice = num(row.get("totalInvoiceAmount"));
                 if (isScsr) {
-                    BigDecimal received = num(row.get("receivedAmount"));
+                    BigDecimal received = effectiveReceivedAmount(row);
                     if (received == null || received.compareTo(BigDecimal.ZERO) == 0) {
                         return null;
                     }
@@ -379,10 +380,12 @@ public class ReportFieldPool
                 return BigDecimal.valueOf(days / 30.44).setScale(1, BigDecimal.ROUND_HALF_UP);
             }
         }
-        // 「验线（2/3）」计算列：到账金额 × 2/3（保留两位，四舍五入）
+        // 「验线（2/3）」计算列：有效到账金额 × 2/3（保留两位，四舍五入）
         // 赋值随模板不同对调：
         //   - 模板1「只定未验及补之前扣除项目」(zdyw)：需预留 = 到账×2/3，需补 = 空
         //   - 模板6「补验线」(byx)：需预留 = 空，需补 = 到账×2/3
+        // ⚠️ 「到账」取有效到账（指令性任务到账=0 时已回退为原始外部产值，见 effectiveReceivedAmount）
+        //    ⇒ 需预留/需补跟随兜底值，与「到账金额」列同一口径
         boolean isByx = field.getTemplateId() != null && field.getTemplateId() == 6L;
         if ("reservedAmount".equals(key))
         {
@@ -390,7 +393,7 @@ public class ReportFieldPool
             {
                 return null;
             }
-            BigDecimal received = num(row.get("receivedAmount"));
+            BigDecimal received = effectiveReceivedAmount(row);
             if (received == null)
             {
                 return null;
@@ -404,7 +407,7 @@ public class ReportFieldPool
             {
                 return null;
             }
-            BigDecimal received = num(row.get("receivedAmount"));
+            BigDecimal received = effectiveReceivedAmount(row);
             if (received == null)
             {
                 return null;
@@ -529,6 +532,37 @@ public class ReportFieldPool
 
         // 直接取行值
         return row.get(key);
+    }
+
+    /**
+     * 「有效到账金额」：常规取到账金额（row.receivedAmount）；
+     * 当项目为<b>指令性任务</b>（proj_project.project_nature = 'mandate'）且到账为 0/空时，
+     * 回退取<b>项目原始外部产值</b>（proj_workload.external_output 合计；
+     * 该值在报表 SQL 的 w_sum 子查询内<b>未</b>剔除 mandate，别名 projectRawExternalOutput）。
+     *
+     * <p>口径唯一收口于此，以下三处共用，保证预览 / 导出 / 上报快照完全一致：</p>
+     * <ul>
+     *   <li>模板 1/4/5/6/7「到账金额」列取值</li>
+     *   <li>模板 4/7「发票情况」列的「到账为 0 ⇒ 留空」判定</li>
+     *   <li>模板 1/6「需预留 / 需补」= 有效到账 × 2/3</li>
+     * </ul>
+     */
+    private static BigDecimal effectiveReceivedAmount(Map<String, Object> row)
+    {
+        BigDecimal received = num(row.get("receivedAmount"));
+        if (received != null && received.signum() != 0)
+        {
+            return received;
+        }
+        if ("mandate".equals(str(row.get("projectNature"))))
+        {
+            BigDecimal raw = num(row.get("projectRawExternalOutput"));
+            if (raw != null && raw.signum() != 0)
+            {
+                return raw;
+            }
+        }
+        return received;
     }
 
     /**

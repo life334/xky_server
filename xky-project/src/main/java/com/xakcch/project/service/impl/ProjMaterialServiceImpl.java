@@ -126,9 +126,8 @@ public class ProjMaterialServiceImpl implements IProjMaterialService
         if (isBlank(data.getPickupType()))
             throw new ServiceException("请选择领取类型（电子版 / 纸质版 / 电子+纸质版）");
 
-        // 交付时间即领取时间，刷新为当前领取时刻（避免历史记录都是同一旧时间）
+        // 领取时间只记在流转记录（operate_time）；资料登记时间（submit_time）由登记时填写、写一次即锁，不再随领取刷新
         Date now = new Date();
-        data.setSubmitTime(now);
         // 更新主表本次领取信息（是否担保 / 担保人姓名 / 登记备注 / 归档标志等）
         // 资料状态不落库：由「领取流转的 pickup_type 并集」实时派生（见 ProjMaterialMapper.materialStatusExpr）
         data.setId(materialId);
@@ -228,7 +227,7 @@ public class ProjMaterialServiceImpl implements IProjMaterialService
         addColumn(columns, "engineeringProject", "项目类别", "text", "business", true, "engineeringProject");
         addColumn(columns, "projectLocation", "工程地点", "text", "business", true, "projectLocation");
         addColumn(columns, "projectName", "项目名称", "text", "business", true, "projectName");
-        addColumn(columns, "submitTime", "交付时间", "date", "business", true, "submitTime");
+        addColumn(columns, "submitTime", "登记时间", "date", "business", true, "submitTime");
         addColumn(columns, "contactName", "联系人", "text", "business", true, "contactName");
         addColumn(columns, "contactPhone", "联系电话", "text", "business", true, "contactPhone");
         addColumn(columns, "resultType", "成果类型", "dict", "business", true, "resultType");

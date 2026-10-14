@@ -195,11 +195,17 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         // 本期超期（超期线落在周期内且已被越过，工作日口径；对比期同式）
         List<Map<String, Object>> odRows = dashboardMapper.selectOverdueCandidates(query);
         List<OverdueItem> odItems = buildOverdueItems(odRows);
-        int periodOverdue = countOverdueInPeriod(odItems, query.getBeginDate(), query.getEndDate());
+        List<OverdueItem> periodOverdueItems = collectOverdueInPeriod(odItems, query.getBeginDate(), query.getEndDate());
+        int periodOverdue = periodOverdueItems.size();
         int periodOverduePrev = countOverdueInPeriod(odItems, query.getCompareBeginDate(), query.getCompareEndDate());
         snapshot.put("periodOverdue", metricWithPrev(periodOverdue, periodOverduePrev));
 
         data.put("snapshot", snapshot);
+
+        // 本期超期明细：与磁贴数字**同源**（同一次 collectOverdueInPeriod），直传弹窗用。
+        // ⚠️ 不能走项目列表 overdue 筛选——那是「在办超期」口径（crossed && !closed），
+        //    会把「本期内超期、后已办结」的项目全部漏掉，导致磁贴有数字、弹窗空白。
+        data.put("periodOverdueProjects", buildOverdueDetailRows(periodOverdueItems));
 
         // ---- KPI ----
         Map<String, Object> kpiStats = dashboardMapper.projectKpiStats(query);
@@ -484,23 +490,8 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
             }
         }
         int overdueCount = crossed.size();
-        crossed.sort((a, b) -> Integer.compare(b.overdueDays, a.overdueDays));
-        List<Map<String, Object>> overdueAll = new ArrayList<>();
-        for (OverdueItem o : crossed)
-        {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("type", "overdue");
-            item.put("severity", o.overdueDays > 15 ? "high" : o.overdueDays > 7 ? "medium" : "low");
-            item.put("projectId", o.projectId);
-            item.put("projectCode", o.projectCode);
-            item.put("projectName", o.projectName);
-            item.put("clientUnit", o.clientUnit);
-            item.put("leaderNames", o.leaderNames);
-            item.put("days", o.overdueDays);
-            item.put("amount", BigDecimal.ZERO);
-            item.put("hint", (o.closed ? "已办结时超期 " : "超期 ") + o.overdueDays + " 个工作日");
-            overdueAll.add(item);
-        }
+        // 明细行与段1「本期超期」弹窗共用同一构造（结构一致 ⇒ 前端共用 overdue 列预设）
+        List<Map<String, Object>> overdueAll = buildOverdueDetailRows(crossed);
         riskItems.addAll(overdueAll.size() > 5 ? overdueAll.subList(0, 5) : overdueAll);
         // 全量超期项目（供「风险分类」弹窗数据直传）
         data.put("overdueProjects", overdueAll);
@@ -671,6 +662,8 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         String leaderNames;
         boolean closed;
         LocalDate deadline;
+        /** 办结日期（未办结为 null） */
+        LocalDate closeTime;
         boolean crossed;
         int overdueDays;
     }
@@ -707,6 +700,7 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
             if (close != null)
             {
                 item.closed = true;
+                item.closeTime = close;
                 item.crossed = item.deadline.isBefore(close);
                 item.overdueDays = item.crossed ? Math.max(WorkdayUtils.countWorkdays(item.deadline, close, cal) - 1, 0) : 0;
             }
@@ -720,24 +714,71 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         return items;
     }
 
-    /** 周期内超期数：超期线落在 [begin, min(today, end)] 且已被越过 */
-    private int countOverdueInPeriod(List<OverdueItem> items, String beginStr, String endStr)
+    /**
+     * 周期内超期项：超期线（应完成日）落在 [begin, min(today, end)] 且已被越过。
+     * <p>含「本期内超期、后已办结」的项目（办结时越过也应完成线，语义 = 本期发生过超期）。
+     * 本方法是磁贴数字与弹窗明细的<b>唯一出处</b>，两者永远 1:1 对齐。
+     */
+    private List<OverdueItem> collectOverdueInPeriod(List<OverdueItem> items, String beginStr, String endStr)
     {
+        List<OverdueItem> hit = new ArrayList<>();
+        if (items == null || items.isEmpty())
+        {
+            return hit;
+        }
         LocalDate begin = parseDate(beginStr, LocalDate.now().withDayOfYear(1));
         LocalDate end = parseDate(endStr, LocalDate.now().withDayOfYear(LocalDate.now().lengthOfYear()));
         LocalDate today = LocalDate.now();
         LocalDate upper = end.isAfter(today) ? today : end;
-        int count = 0;
         for (OverdueItem o : items)
         {
             if (o.crossed
                     && !o.deadline.isBefore(begin)
                     && !o.deadline.isAfter(upper))
             {
-                count++;
+                hit.add(o);
             }
         }
-        return count;
+        return hit;
+    }
+
+    /** 周期内超期数（= collectOverdueInPeriod 的规模） */
+    private int countOverdueInPeriod(List<OverdueItem> items, String beginStr, String endStr)
+    {
+        return collectOverdueInPeriod(items, beginStr, endStr).size();
+    }
+
+    /**
+     * 超期项 → 明细弹窗行（按超期工作日数降序）。
+     * <p>结构与段5「工期超期项目」直传行完全一致 ⇒ 前端共用 {@code overdue} 列预设与行点击开详情抽屉。
+     */
+    private List<Map<String, Object>> buildOverdueDetailRows(List<OverdueItem> items)
+    {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        if (items == null || items.isEmpty())
+        {
+            return rows;
+        }
+        List<OverdueItem> sorted = new ArrayList<>(items);
+        sorted.sort((a, b) -> Integer.compare(b.overdueDays, a.overdueDays));
+        for (OverdueItem o : sorted)
+        {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("type", "overdue");
+            item.put("severity", o.overdueDays > 15 ? "high" : o.overdueDays > 7 ? "medium" : "low");
+            item.put("projectId", o.projectId);
+            item.put("projectCode", o.projectCode);
+            item.put("projectName", o.projectName);
+            item.put("clientUnit", o.clientUnit);
+            item.put("leaderNames", o.leaderNames);
+            item.put("days", o.overdueDays);
+            item.put("amount", BigDecimal.ZERO);
+            item.put("deadline", o.deadline == null ? null : o.deadline.format(DTF));
+            item.put("closeTime", o.closeTime == null ? null : o.closeTime.format(DTF));
+            item.put("hint", (o.closed ? "已办结时超期 " : "超期 ") + o.overdueDays + " 个工作日");
+            rows.add(item);
+        }
+        return rows;
     }
 
     /** 工作日历 map：候选行日期字段最小值 → 今天 */

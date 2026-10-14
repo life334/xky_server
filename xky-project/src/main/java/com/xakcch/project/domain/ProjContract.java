@@ -116,6 +116,14 @@ public class ProjContract extends BaseEntity
     /** 合同金额上限 */
     private transient BigDecimal contractAmountMax;
 
+    /**
+     * 按项目过滤（非数据库字段）。
+     * <p>项目与合同的关系是 proj_project.contract_id → proj_contract.id（一个项目 0/1 份合同，
+     * 一份合同可被多个项目引用）。项目详情抽屉「合同」tab 传该参数，取「本项目关联的合同」。
+     * 若不传则不过滤，保持列表页/导出的原有全量语义。
+     */
+    private transient Long projectId;
+
     // ===== 付款汇总字段（列表展示用，非持久化） =====
 
     /** 付款总笔数（聚合关联项目） */
@@ -353,6 +361,8 @@ public class ProjContract extends BaseEntity
     public void setContractAmountMin(BigDecimal contractAmountMin) { this.contractAmountMin = contractAmountMin; }
     public BigDecimal getContractAmountMax() { return contractAmountMax; }
     public void setContractAmountMax(BigDecimal contractAmountMax) { this.contractAmountMax = contractAmountMax; }
+    public Long getProjectId() { return projectId; }
+    public void setProjectId(Long projectId) { this.projectId = projectId; }
     public Integer getPaidCount() { return paidCount; }
     public void setPaidCount(Integer paidCount) { this.paidCount = paidCount; }
     public BigDecimal getPaidTotal() { return paidTotal; }

@@ -220,6 +220,15 @@ public class ProjProject extends BaseEntity
     /** 项目类别ID集合（查询用，非持久化；类别画像/饼图桶下钻使用，含小类多选） */
     private Long[] projectCategoryIds;
 
+    /**
+     * 「其它」桶下钻标记（查询用，非持久化）：为 true 时，类别过滤连同「未分类」
+     * （project_category_id 为空）的项目一并纳入。
+     * 背景：看板按「类别名 → 桶」映射，映射不上的类别与「无类别」项目恒落「其它」桶；
+     * 若下钻只按小类 id 的 IN 列表过滤，无类别项目（NULL 不匹配任何 IN）会被排除
+     * ⇒ 桶内数字有值、点开明细为空。故「其它」桶下钻须带上本标记。
+     */
+    private String categoryIncludeNull;
+
     /** 排序字段（查询用，非持久化）：合同额/产值排序，如 contractAmount_desc / internalOutput_desc / externalOutput_desc */
     private String outputOrder;
 
@@ -730,6 +739,16 @@ public class ProjProject extends BaseEntity
     public void setProjectCategoryIds(Long[] projectCategoryIds)
     {
         this.projectCategoryIds = projectCategoryIds;
+    }
+
+    public String getCategoryIncludeNull()
+    {
+        return categoryIncludeNull;
+    }
+
+    public void setCategoryIncludeNull(String categoryIncludeNull)
+    {
+        this.categoryIncludeNull = categoryIncludeNull;
     }
 
     public String getOutputOrder()

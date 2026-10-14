@@ -70,6 +70,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                create_by, create_time, update_by, update_time, remark
         from proj_contract
         where del_flag = '0'
+        <!-- 按项目过滤：取「本项目关联的合同」（项目详情抽屉「合同」tab 用）。
+             项目↔合同关系 = proj_project.contract_id → proj_contract.id，故用 exists 反查。
+             ⚠️ 不传 projectId 时不过滤，列表页/多选下钻等仍保持全量语义。 -->
+        <if test="projectId != null">
+            AND exists (select 1 from proj_project pj
+                        where pj.contract_id = proj_contract.id
+                          and pj.del_flag = '0'
+                          and pj.id = #{projectId})
+        </if>
         <if test="contractNo != null and contractNo != ''">
             AND contract_no like concat('%', #{contractNo}, '%')
         </if>

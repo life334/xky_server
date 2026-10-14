@@ -87,6 +87,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             select wk.project_id,
                    sum(case when coalesce(pj.project_nature, 'normal') = 'mandate' then 0
                             else coalesce(wk.external_output, 0) end) as external_output,
+                   <!--
+                     原始外部产值（不剔除指令性任务）：报表「到账金额」列的兜底来源。
+                     指令性任务（project_nature='mandate'）到账为 0/空时，「到账金额」显示该值
+                     （取值见 ReportFieldPool#effectiveReceivedAmount）。
+                   -->
+                   sum(coalesce(wk.external_output, 0)) as raw_external_output,
                    sum(coalesce(wk.internal_output, 0)) as internal_output
             from proj_workload wk
             join proj_project pj on pj.id = wk.project_id
@@ -372,6 +378,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             p.project_location as "projectLocation",
             p.contract_id as "contractId",
             p.status as "projectStatus",
+            <!-- 项目性质：normal / mandate(指令性任务)；「到账金额」兜底判定用（见 ReportFieldPool#effectiveReceivedAmount） -->
+            p.project_nature as "projectNature",
             p.extra_data::text as "projectExtraData",
             p.assign_date as "assignDate",
             p.duration_require as "durationRequire",
@@ -409,6 +417,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             pay_sum.final_amount as "finalAmount",
             coalesce(pay_sum.total_invoice, 0) as "totalInvoiceAmount",
             coalesce(w_sum.external_output, 0) as "projectSettleAmount",
+            <!-- 原始外部产值（不剔除指令性任务）：指令性任务到账=0/空 时「到账金额」列的兜底值 -->
+            coalesce(w_sum.raw_external_output, 0) as "projectRawExternalOutput",
             coalesce(w_sum.internal_output, 0) as "projectInternalOutput",
             w_desc.workload_desc as "workloadDesc",
             greatest(coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0), 0) as "projectArrearsAmount",

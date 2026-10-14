@@ -237,7 +237,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         update proj_material
         <set>
             <if test="projectId != null">project_id = #{projectId},</if>
-            <if test="submitTime != null">submit_time = #{submitTime},</if>
+            <if test="submitTime != null">submit_time = coalesce(submit_time, #{submitTime}),</if>
             <if test="contactName != null">contact_name = #{contactName},</if>
             <if test="contactPhone != null">contact_phone = #{contactPhone},</if>
             <if test="resultType != null">result_type = #{resultType},</if>
@@ -249,8 +249,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="guarantorFlag != null and guarantorFlag == 'Y'.toString() and guarantorId != null">guarantor_id = #{guarantorId},</if>
             <if test="guarantorName != null and guarantorName != ''">guarantor_name = #{guarantorName},</if>
             <if test="archiveFlag != null and archiveFlag != ''">archive_flag = #{archiveFlag},</if>
-            <if test="archiveFlag != null and archiveFlag == 'Y'.toString()">archive_time = now(),</if>
             <if test="archiveFlag != null and archiveFlag == 'N'.toString()">archive_time = null,</if>
+            <if test="archiveFlag != null and archiveFlag == 'Y'.toString()">archive_time = coalesce(archive_time, #{archiveTime}, now()),</if>
             <if test="extraData != null and extraData != ''">extra_data = #{extraData}::jsonb,</if>
             <if test="remark != null">remark = #{remark},</if>
             <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
