@@ -358,6 +358,10 @@ public class ProjReportServiceImpl implements IProjReportService
         {
             rows = expandPaySplitRows(rows);
         }
+        // 勾选「导出并上报领导」时：未上报且无到账的行，「上报时间」列按【当前年月】显示（仅展示，不改上报状态）
+        // ⚠️ 与实际上报落库口径一致：proj_report_submit_log.submit_time 写入 now()（上报那一刻的年月），
+        //    故不再从筛选日期区间推「报表年月」（曾导致筛选含 1 月起始日时显示 2026-01 的错误）
+        String submitMonthFallback = isFillSubmitMonth(filter) ? currentSubmitYearMonth() : null;
         // 按模板字段顺序解析展示值（与导出一致，所见即所得）
         List<ProjReportField> fields = template.getFieldList();
         // 合并模式且为「只定未验」（zdyw）模板：到账时间列显示单位汇总描述（与导出 Excel 一致）
@@ -379,7 +383,7 @@ public class ProjReportServiceImpl implements IProjReportService
                     }
                     else
                     {
-                        v = ReportFieldPool.resolveValue(fld, row);
+                        v = ReportFieldPool.resolveValue(fld, row, submitMonthFallback);
                     }
                     d.add(v);
                 }
@@ -419,9 +423,10 @@ public class ProjReportServiceImpl implements IProjReportService
         }
         // 上报状态来源 { projectCode: 'log' | 'history' }：
         //   log     = 真实上报（proj_report_submit_log 有记录且 batch_id 非空，即走过「导出并上报领导」）
-        //   history = 历史导入补录（有记录但 batch_id 为空）或未落库的派生兜底（时间列有值）
-        // 口径说明：只按「有无上报记录」判定会出现「上报时间有值、上报状态却显示未上报」的自相矛盾，
-        //          故状态与「上报时间」列同源（有上报时间即已上报），同时保留来源供前端区分展示。
+        //   history = 历史导入补录（有记录但 batch_id 为空）
+        // 口径说明：状态与「上报时间」列同源（有上报记录即已上报），同时保留来源供前端区分展示。
+        //           ⚠️ 2026-10-13 去掉到账兜底后，第二个循环（hasReportTimeValue）对模板1 已空转，
+        //             未落库派生值只剩「关联工程上报时间」等（模板6）仍可能命中 history。
         Map<String, Object> submitSource = new HashMap<>();
         if (!queryCodes.isEmpty())
         {
@@ -631,6 +636,8 @@ public class ProjReportServiceImpl implements IProjReportService
         }
         // 导出年月（标题实时替换 + 文件名占位符共用）
         String[] yearMonth = exportYearMonth(template, filter);
+        // 勾选「导出并上报领导」时：未上报且无到账的行，「上报时间」列按【当前年月】填充（与落库 now() 一致）
+        String submitMonthFallback = isFillSubmitMonth(filter) ? currentSubmitYearMonth() : null;
         String fileName = buildExportFileName(template, filter, suffix);
 
         try
@@ -646,7 +653,7 @@ public class ProjReportServiceImpl implements IProjReportService
             }
             else
             {
-                ReportExcelExporter.exportBuiltin(out, template, fields, rows, yearMonth, mergeUnitCells);
+                ReportExcelExporter.exportBuiltin(out, template, fields, rows, yearMonth, mergeUnitCells, submitMonthFallback);
             }
             out.flush();
         }
@@ -895,6 +902,40 @@ public class ProjReportServiceImpl implements IProjReportService
     private boolean isMergeUnitCells(Map<String, Object> filter)
     {
         return filter != null && Boolean.TRUE.equals(filter.get("_mergeUnitCells"));
+    }
+
+    /** 是否勾选「导出并上报领导」：控制未上报行的「上报时间」列是否按报表年月填充（默认否） */
+    private boolean isFillSubmitMonth(Map<String, Object> filter)
+    {
+        return filter != null && Boolean.TRUE.equals(filter.get("_fillSubmitMonth"));
+    }
+
+    /** 把 [年, 月] 数组格式化为 yyyy-MM（月份补零）；非法返回 null */
+    private String formatYearMonth(String[] ym)
+    {
+        if (ym == null || ym.length < 2)
+        {
+            return null;
+        }
+        try
+        {
+            return String.format("%04d-%02d", Integer.parseInt(ym[0].trim()), Integer.parseInt(ym[1].trim()));
+        }
+        catch (Exception e)
+        {
+            return null;
+        }
+    }
+
+    /**
+     * 当前年月（yyyy-MM）：勾选「导出并上报领导」时，未上报行「上报时间」列的填充值。
+     * 与实际上报落库口径严格一致 —— proj_report_submit_log.submit_time 写入 now()（上报那一刻），
+     * 且「当月是否已上报」判定亦基于 YearMonth.now()。故该值只取当前年月，与筛选条件无关。
+     */
+    private String currentSubmitYearMonth()
+    {
+        java.time.YearMonth now = java.time.YearMonth.now();
+        return String.format("%04d-%02d", now.getYear(), now.getMonthValue());
     }
 
     /** 是否「只定未验」（zdyw）模板：合并时到账时间列显示单位汇总描述 */
@@ -1333,7 +1374,8 @@ public class ProjReportServiceImpl implements IProjReportService
         {
             String[] yearMonth = exportYearMonth(template, filter);
             // 上报快照为官方留档格式：始终按单位合并（与历史快照口径一致），不受导出开关影响
-            ReportExcelExporter.exportBuiltin(fos, template, fields, rows, yearMonth, true);
+            // 上报即「勾选上报」场景：未上报且无到账的行，「上报时间」列按【当前年月】填充（与落库 now() 一致）
+            ReportExcelExporter.exportBuiltin(fos, template, fields, rows, yearMonth, true, currentSubmitYearMonth());
         }
         catch (ServiceException e)
         {

@@ -12,9 +12,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.xakcch.common.exception.ServiceException;
 import com.xakcch.common.utils.StringUtils;
+import com.xakcch.project.domain.ProjContract;
 import com.xakcch.project.domain.ProjNotify;
 import com.xakcch.project.domain.ProjProject;
 import com.xakcch.project.domain.vo.NotifySummaryVo;
+import com.xakcch.project.mapper.ProjContractMapper;
 import com.xakcch.project.mapper.ProjNotifyMapper;
 import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.service.IProjNotifyService;
@@ -45,11 +47,20 @@ public class ProjNotifyServiceImpl implements IProjNotifyService
             "role-doc", "doc",
             "role-product", "settle");
 
+    /** 档案管理员角色 key（合同待签署待办接收方） */
+    private static final String ROLE_DOC = "role-doc";
+
+    /** 合同新增事件接收角色（sys_config 可配，默认 role-doc） */
+    private static final String CONFIG_RECEIVERS_CONTRACT = "notify.receivers.contract_created";
+
     @Autowired
     private ProjNotifyMapper notifyMapper;
 
     @Autowired
     private ProjProjectMapper projectMapper;
+
+    @Autowired
+    private ProjContractMapper contractMapper;
 
     @Autowired
     private ISysConfigService configService;
@@ -144,6 +155,90 @@ public class ProjNotifyServiceImpl implements IProjNotifyService
         }
     }
 
+    /**
+     * 合同新增事件派发（事务提交后调用）。
+     * 非档案管理员创建合同 → 给档案管理员（role-doc）派发「合同待签署」待办，落地 /contract/list。
+     * 操作人本人即档案管理员时跳过；合同导入不经过本入口，天然不推送。
+     */
+    @Override
+    public void onContractCreated(Long contractId, String operator, Long operatorUserId)
+    {
+        if (contractId == null)
+        {
+            return;
+        }
+        // 操作人自身含 role-doc ⇒ 本人就是档案管理员，无需提醒自己
+        if (operatorUserId != null)
+        {
+            List<String> opRoles = notifyMapper.selectRoleKeysByUserId(operatorUserId);
+            if (opRoles != null && opRoles.contains(ROLE_DOC))
+            {
+                return;
+            }
+        }
+        ProjContract contract = contractMapper.selectContractById(contractId);
+        if (contract == null)
+        {
+            log.warn("[notify] 合同新增派发跳过：合同不存在 id={}", contractId);
+            return;
+        }
+        String roleCfg = configService.selectConfigByKey(CONFIG_RECEIVERS_CONTRACT);
+        if (StringUtils.isEmpty(roleCfg))
+        {
+            roleCfg = ROLE_DOC;
+        }
+        List<String> roleKeys = Arrays.stream(roleCfg.split(","))
+                .map(String::trim).filter(s -> !s.isEmpty()).distinct().toList();
+        if (roleKeys.isEmpty())
+        {
+            return;
+        }
+        List<Map<String, Object>> receivers = notifyMapper.selectReceiversByRoleKeys(roleKeys);
+        if (receivers == null || receivers.isEmpty())
+        {
+            log.info("[notify] 合同新增派发跳过：角色 {} 下无有效用户", roleKeys);
+            return;
+        }
+        String no = StringUtils.defaultString(contract.getContractNo(), "");
+        String name = StringUtils.defaultString(contract.getContractName(),
+                no.isEmpty() ? ("合同#" + contractId) : no);
+        String creator = StringUtils.defaultString(operator, "系统");
+        // 冗余列复用：project_code=合同编号、project_name=合同名称 ⇒ 通知卡片副标题自动显示「合同名称（编号）」
+        String routeQuery = (no.isEmpty() ? ("contractId=" + contractId) : ("contractNo=" + no)) + "&from=notify";
+        int sent = 0;
+        for (Map<String, Object> rc : receivers)
+        {
+            Long userId = toLong(rc.get("userId"));
+            Long roleId = toLong(rc.get("roleId"));
+            if (userId == null)
+            {
+                continue;
+            }
+            ProjNotify n = new ProjNotify();
+            n.setNotifyType("todo");
+            n.setTodoKind("contract");
+            n.setBizType("contract_created");
+            n.setBizId(contractId);
+            n.setProjectCode(no.isEmpty() ? null : no);
+            n.setProjectName(name);
+            n.setTitle("合同待签署");
+            n.setContent("「" + creator + "」新增了合同「" + name + "」"
+                    + (no.isEmpty() ? "" : "（" + no + "）") + "，请进行签署并上传签署件。");
+            n.setReceiverId(userId);
+            n.setReceiverRoleId(roleId);
+            n.setRoutePath("/contract/list");
+            n.setRouteQuery(routeQuery);
+            n.setPriority("normal");
+            n.setStatus("unread");
+            n.setCreateBy(creator);
+            sent += notifyMapper.insertNotify(n);
+        }
+        if (sent > 0)
+        {
+            log.info("[notify] 合同新增通知已派发 {} 条：{}（{}）", sent, name, no);
+        }
+    }
+
     @Override
     public NotifySummaryVo summary(Long userId)
     {
@@ -201,9 +296,11 @@ public class ProjNotifyServiceImpl implements IProjNotifyService
     {
         int docDone = notifyMapper.autoCompleteDocTodos(null);
         int settleDone = notifyMapper.autoCompleteSettleTodos(null);
+        int contractDone = notifyMapper.autoCompleteContractTodos(null);
         int escalated = notifyMapper.escalateOverdueTodos(null, getIntConfig(CONFIG_TODO_DUE, 3));
-        log.info("[notify] 每日sweep：资料待办完成 {}，结算待办完成 {}，超期升级 {}", docDone, settleDone, escalated);
-        return docDone + settleDone + escalated;
+        log.info("[notify] 每日sweep：资料待办完成 {}，结算待办完成 {}，合同待办完成 {}，超期升级 {}",
+                docDone, settleDone, contractDone, escalated);
+        return docDone + settleDone + contractDone + escalated;
     }
 
     /** 当前用户即时 sweep（角标/列表查询前执行，保证"做完立刻消"） */
@@ -211,6 +308,7 @@ public class ProjNotifyServiceImpl implements IProjNotifyService
     {
         notifyMapper.autoCompleteDocTodos(userId);
         notifyMapper.autoCompleteSettleTodos(userId);
+        notifyMapper.autoCompleteContractTodos(userId);
         notifyMapper.escalateOverdueTodos(userId, getIntConfig(CONFIG_TODO_DUE, 3));
     }
 

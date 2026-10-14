@@ -80,13 +80,26 @@ public class ReportExcelExporter
             List<ProjReportField> fields, List<Map<String, Object>> rows,
             String[] yearMonth, boolean mergeUnitCells) throws Exception
     {
+        exportBuiltin(out, template, fields, rows, yearMonth, mergeUnitCells, null);
+    }
+
+    /**
+     * 导出内置模板（完整参数版）。
+     *
+     * @param submitMonthFallback 「上报时间」列在未上报且无到账时的兜底年月（yyyy-MM）；
+     *                            勾选「导出并上报领导」时传报表年月，其余传 null（保持留空）
+     */
+    public static void exportBuiltin(OutputStream out, ProjReportTemplate template,
+            List<ProjReportField> fields, List<Map<String, Object>> rows,
+            String[] yearMonth, boolean mergeUnitCells, String submitMonthFallback) throws Exception
+    {
         Workbook wb = openTemplate(template);
         try
         {
             Sheet sheet = wb.getSheetAt(0);
             // 标题中的年月实时替换（如"地下空间工程中心2026年7月…" → 筛选年月）
             replaceTitleYearMonth(wb, template, yearMonth);
-            fillDataRows(wb, sheet, template, fields, rows, false);
+            fillDataRows(wb, sheet, template, fields, rows, false, submitMonthFallback);
             // 按委托单位合并（仅用户勾选时生效）：同单位多条合并单位名称单元格
             // 到账时间按模板类型：zdyw（只定未验）整组合并写汇总描述，byx（补验线）逐条显示
             if (mergeUnitCells)
@@ -366,7 +379,8 @@ public class ReportExcelExporter
      * 采用"删除+重建"而非"原地修改"，规避 HSSFWorkbook 修改已有记录的序列化问题。
      */
     private static void fillDataRows(Workbook wb, Sheet sheet, ProjReportTemplate template,
-            List<ProjReportField> fields, List<Map<String, Object>> rows, boolean addSummary) throws Exception
+            List<ProjReportField> fields, List<Map<String, Object>> rows, boolean addSummary,
+            String submitMonthFallback) throws Exception
     {
         int dataZeroIdx = (template.getDataStartRow() == null ? 3 : template.getDataStartRow()) - 1;
         if (dataZeroIdx < 0)
@@ -472,7 +486,7 @@ public class ReportExcelExporter
                     continue;
                 }
                 Cell cell = row.getCell(colIdx - 1);
-                Object v = ReportFieldPool.resolveValue(f, rows.get(i));
+                Object v = ReportFieldPool.resolveValue(f, rows.get(i), submitMonthFallback);
                 setCellValue(wb, cell, v);
             }
         }

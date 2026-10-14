@@ -162,7 +162,7 @@ public class ProjReportController extends BaseController
         Long templateId = Long.valueOf(String.valueOf(body.get("templateId")));
         @SuppressWarnings("unchecked")
         Map<String, Object> filter = (Map<String, Object>) body.get("filter");
-        injectMergeUnitCells(body, filter);
+        injectReportFlags(body, filter);
         return AjaxResult.success(reportService.preview(templateId, filter,
                 toInt(body.get("pageNum")), toInt(body.get("pageSize"))));
     }
@@ -197,17 +197,25 @@ public class ProjReportController extends BaseController
         List<String> projectCodes = (List<String>) body.get("projectCodes");
         @SuppressWarnings("unchecked")
         List<String> excludedCodes = (List<String>) body.get("excludedCodes");
-        injectMergeUnitCells(body, filter);
+        injectReportFlags(body, filter);
         reportService.exportReport(templateId, filter, projectCodes, excludedCodes, response);
     }
 
-    /** 单位合并开关（默认不合并）：请求体 mergeUnitCells → filter 约定键 _mergeUnitCells，Service/导出器按此判定 */
-    private void injectMergeUnitCells(Map<String, Object> body, Map<String, Object> filter)
+    /**
+     * 请求体开关写入 filter 约定键（下划线前缀，随 filter 传递但不会持久化到筛选方案）：
+     * mergeUnitCells=按单位合并；fillSubmitMonth=未上报行「上报时间」按报表年月显示（勾选上报时前端传 true）
+     */
+    private void injectReportFlags(Map<String, Object> body, Map<String, Object> filter)
     {
         Object mergeUnitCells = body.get("mergeUnitCells");
         if (mergeUnitCells != null && filter != null)
         {
             filter.put("_mergeUnitCells", mergeUnitCells);
+        }
+        Object fillSubmitMonth = body.get("fillSubmitMonth");
+        if (fillSubmitMonth != null && filter != null)
+        {
+            filter.put("_fillSubmitMonth", fillSubmitMonth);
         }
     }
 

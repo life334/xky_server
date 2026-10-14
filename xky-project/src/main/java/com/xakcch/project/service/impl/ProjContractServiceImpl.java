@@ -10,7 +10,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import com.xakcch.common.exception.ServiceException;
+import com.xakcch.common.utils.SecurityUtils;
 import com.xakcch.project.domain.ProjContract;
 import com.xakcch.project.domain.ProjFieldDef;
 import com.xakcch.project.domain.ProjMaterial;
@@ -20,6 +23,7 @@ import com.xakcch.project.mapper.ProjFieldDefMapper;
 import com.xakcch.project.mapper.ProjMaterialMapper;
 import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.service.IProjContractService;
+import com.xakcch.project.service.IProjNotifyService;
 
 /**
  * 合同表 服务层实现
@@ -40,6 +44,9 @@ public class ProjContractServiceImpl implements IProjContractService
 
     @Autowired
     private ProjFieldDefMapper fieldDefMapper;
+
+    @Autowired
+    private IProjNotifyService notifyService;
 
     /**
      * 合同状态流转规则（字典 proj_contract_status：进行中 / 待返回 / 已完成 / 已取消）
@@ -106,7 +113,56 @@ public class ProjContractServiceImpl implements IProjContractService
     {
         int rows = contractMapper.insertContract(contract);
         tryAutoArchive(contract.getId());
+        // 新增合同 → 事务提交后给档案管理员派发「合同待签署」待办
+        // ⚠️ 合同导入走 ProjContractImportServiceImpl 直连 mapper，不经过本方法，故不会推送（已与客户确认）
+        if (rows > 0 && contract.getId() != null)
+        {
+            registerContractNotify(contract.getId());
+        }
         return rows;
+    }
+
+    /**
+     * 注册"合同新增事务提交后"的通知派发（afterCommit，防回滚已推送）。
+     * 操作人角色判定在通知服务内完成：操作人自身含 role-doc 则跳过。
+     */
+    private void registerContractNotify(Long contractId)
+    {
+        final String operator;
+        final Long operatorUserId;
+        try
+        {
+            operator = SecurityUtils.getUsername();
+            operatorUserId = SecurityUtils.getUserId();
+        }
+        catch (Exception ex)
+        {
+            // 非登录上下文（理论不出现）：按无操作人处理，角色判定跳过
+            notifyService.onContractCreated(contractId, "system", null);
+            return;
+        }
+        if (!TransactionSynchronizationManager.isSynchronizationActive())
+        {
+            // 无事务上下文：直接派发
+            notifyService.onContractCreated(contractId, operator, operatorUserId);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization()
+        {
+            @Override
+            public void afterCommit()
+            {
+                try
+                {
+                    notifyService.onContractCreated(contractId, operator, operatorUserId);
+                }
+                catch (Exception ex)
+                {
+                    // 通知失败不影响合同建档主流程
+                    ex.printStackTrace();
+                }
+            }
+        });
     }
 
     /**

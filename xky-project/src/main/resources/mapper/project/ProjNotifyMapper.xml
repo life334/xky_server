@@ -144,6 +144,20 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
     </update>
 
+    <update id="autoCompleteContractTodos">
+        update proj_notify n set status = 'done', done_time = now(), update_time = now()
+        where n.del_flag = '0' and n.notify_type = 'todo' and n.todo_kind = 'contract'
+          and n.status in ('unread','read')
+        <if test="receiverId != null">
+            and n.receiver_id = #{receiverId}
+        </if>
+          and exists (select 1 from proj_contract c
+                      where c.id = n.biz_id and c.del_flag = '0'
+                        and (c.status = 'completed'
+                             or exists (select 1 from proj_contract_attachment a
+                                        where a.contract_id = c.id and a.del_flag = '0')))
+    </update>
+
     <select id="selectReceiversByRoleKeys" resultType="map">
         select ur.user_id as "userId", ur.role_id as "roleId", r.role_key as "roleKey"
         from sys_user_role ur
@@ -154,6 +168,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <foreach collection="roleKeys" item="k" open="(" separator="," close=")">
             #{k}
         </foreach>
+    </select>
+
+    <select id="selectRoleKeysByUserId" resultType="String">
+        select r.role_key
+        from sys_user_role ur
+        join sys_role r on r.role_id = ur.role_id
+        where r.del_flag = '0' and r.status = '0'
+          and ur.user_id = #{userId}
     </select>
 
 </mapper>

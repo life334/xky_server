@@ -22,6 +22,18 @@ public interface IProjNotifyService
     public void onProjectClosed(Long projectId, String operator);
 
     /**
+     * 合同新增事件：非档案管理员创建合同时，给档案管理员（role-doc）派发「合同待签署」待办。
+     * <p>跳过规则：操作人自身已含 role-doc（本人即档案管理员，无需提醒自己）。
+     * 导入路径不经过 service 层 insertContract，故天然不推送。
+     * 幂等：biz_type='contract_created' + biz_id=合同id + receiver_id 唯一索引去重。
+     *
+     * @param contractId     合同 id
+     * @param operator       操作人（创建人，记 create_by）
+     * @param operatorUserId 操作人用户 id（可为空；用于判定是否档案管理员）
+     */
+    public void onContractCreated(Long contractId, String operator, Long operatorUserId);
+
+    /**
      * 角标摘要（含自动弹出策略；查询前先做即时 sweep：自动完成 + 超期升级）
      */
     public NotifySummaryVo summary(Long userId);

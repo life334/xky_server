@@ -35,8 +35,11 @@ public class SysWorkdayCalendarController extends BaseController
     /**
      * 查询某日期区间的全部日历记录（无分页，供页面渲染和前端计算使用）
      * startDate/endDate 可空（默认查全部，建议传年份区间）
+     *
+     * 说明：登录即可读 —— 工作日历属"参考数据"，项目列表/任务列表等页面实时计算「工作日总时长」都要用；
+     *       与「用户下拉选项 /system/user/options」「项目类别树 /project/category/treeselect」同惯例（均不校验业务权限）。
+     *       维护类操作（新增/修改/删除/生成/批量）仍各自校验 system:workday:* 权限，不受影响。
      */
-    @PreAuthorize("@ss.hasPermi('system:workday:list')")
     @GetMapping("/all")
     public AjaxResult all(@RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate)

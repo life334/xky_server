@@ -186,7 +186,7 @@ INSERT INTO proj_report_field (template_id, field_key, field_label, field_source
   (5, 'contractAmount',  '工程总价', 'join',    'proj_contract', 7, 14, 8, '0'),
   (5, 'receivedAmount',  '到账金额', 'agg',     NULL,            8, 14, 9, '0'),
   (5, 'lastPayTime',     '到账时间', 'agg',     NULL,            9, 14, 10, '0'),
-  (5, 'remark',          '备注(定线号)', 'subject', NULL,        10, 20, 18, '0');
+  (5, 'relatedProjectCode', '备注(定线号)', 'subject', NULL,     10, 20, 18, '0');
 -- 未映射列：G(7)工作量、K(11)银行、L(12)现金、M(13)POS、N(14)内部工作量、O(15)工程、P(16)定验已收外部、Q(17)*2/3
 
 -- 多级表头分组

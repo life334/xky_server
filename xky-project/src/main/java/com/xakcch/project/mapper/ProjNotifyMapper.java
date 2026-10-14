@@ -78,6 +78,12 @@ public interface ProjNotifyMapper
     public int autoCompleteSettleTodos(@Param("receiverId") Long receiverId);
 
     /**
+     * 自动完成「合同待签署」待办：
+     * 对应合同 proj_contract.status='completed'，或已存在签署附件（proj_contract_attachment）
+     */
+    public int autoCompleteContractTodos(@Param("receiverId") Long receiverId);
+
+    /**
      * 待办超期升级为 high
      */
     public int escalateOverdueTodos(@Param("receiverId") Long receiverId,
@@ -89,4 +95,12 @@ public interface ProjNotifyMapper
      * @return 每项含 "userId" / "roleId" / "roleKey"（驼峰键）
      */
     public List<Map<String, Object>> selectReceiversByRoleKeys(@Param("roleKeys") List<String> roleKeys);
+
+    /**
+     * 查询某用户的角色 key 集合（用于判定操作人是否为档案管理员）
+     *
+     * @param userId 用户 id；null 时返回空集合
+     * @return role_key 列表（已过滤停用/删除角色）
+     */
+    public List<String> selectRoleKeysByUserId(@Param("userId") Long userId);
 }

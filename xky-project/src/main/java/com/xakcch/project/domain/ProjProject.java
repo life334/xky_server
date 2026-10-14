@@ -133,6 +133,13 @@ public class ProjProject extends BaseEntity
     /** 外部产值合计（proj_workload 汇总，仅列表展示/下钻弹窗用） */
     private BigDecimal externalOutput;
 
+    /**
+     * 在办超期工作日数（仅列表展示用，运行期回填，不入库）。
+     * >0 表示在办且已越过应完成线，值为已超期的工作日数；null/0 表示未超期。
+     * 口径唯一出处：ProjDashboardServiceImpl 的工作日算法（仅手动录入 data_source='manual'）。
+     */
+    private Integer overdueDays;
+
     /** 负责人用户ID数组（表单提交用） */
     private Long[] leaderIds;
 
@@ -683,6 +690,16 @@ public class ProjProject extends BaseEntity
     public void setExternalOutput(BigDecimal externalOutput)
     {
         this.externalOutput = externalOutput;
+    }
+
+    public Integer getOverdueDays()
+    {
+        return overdueDays;
+    }
+
+    public void setOverdueDays(Integer overdueDays)
+    {
+        this.overdueDays = overdueDays;
     }
 
     public String getNewDateBegin()

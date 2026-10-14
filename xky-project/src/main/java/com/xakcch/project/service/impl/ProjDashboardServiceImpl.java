@@ -573,20 +573,28 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
     @Override
     public List<Long> getOngoingOverdueProjectIds()
     {
-        List<Long> ids = new ArrayList<>();
+        return new ArrayList<>(getOngoingOverdueDays().keySet());
+    }
+
+    /**
+     * 在办超期项目 → 超期工作日数（id → 天数）。
+     * 与 {@link #getOngoingOverdueProjectIds()} 同源：同一份 buildOverdueItems 结果，
+     * 列表页逐行标记与驾驶舱下钻筛选口径永远一致（工作日算术只允许存在于本类）。
+     */
+    @Override
+    public Map<Long, Integer> getOngoingOverdueDays()
+    {
+        Map<Long, Integer> map = new LinkedHashMap<>();
         List<OverdueItem> items = buildOverdueItems(dashboardMapper.selectOverdueCandidates(new ProjDashboardQuery()));
         for (OverdueItem o : items)
         {
             // 在办超期：未办结 且 今天已越过应完成线
-            if (o.crossed && !o.closed)
+            if (o.crossed && !o.closed && o.projectId instanceof Number)
             {
-                if (o.projectId instanceof Number)
-                {
-                    ids.add(Long.valueOf(((Number) o.projectId).longValue()));
-                }
+                map.put(Long.valueOf(((Number) o.projectId).longValue()), o.overdueDays);
             }
         }
-        return ids;
+        return map;
     }
 
     // ============================================================

@@ -58,4 +58,12 @@ public interface IProjDashboardService
      * @return 超期项目 id 列表（close_time 为空且今天已越过应完成线的项目）
      */
     public java.util.List<Long> getOngoingOverdueProjectIds();
+
+    /**
+     * 在办超期项目 → 超期工作日数（id → 超期天数），工作日口径，仅手动录入 data_source='manual'。
+     * 供项目列表页逐行打「超期」标记复用，逻辑唯一出处与本接口 {@link #getOngoingOverdueProjectIds()} 同一份。
+     *
+     * @return 在办超期项目 id → 已超期工作日数（仅含 close_time 为空且今天已越过应完成线的项目）
+     */
+    public java.util.Map<Long, Integer> getOngoingOverdueDays();
 }

@@ -143,7 +143,25 @@ public class ProjProjectServiceImpl implements IProjProjectService
                 project.getParams().put("overdueIds", overdueIds);
             }
         }
-        return projectMapper.selectProjectList(project);
+        List<ProjProject> list = projectMapper.selectProjectList(project);
+        // 逐行标记「在办超期」（背景/字体高亮用）：口径来自驾驶舱唯一算法，与 overdue 筛选同源。
+        // 仅当前页行做映射，避免逐行查库；候选集为空时零成本（当前库全为导入项目，恒为空）。
+        java.util.Map<Long, Integer> overdueDays = dashboardService.getOngoingOverdueDays();
+        if (!overdueDays.isEmpty())
+        {
+            for (ProjProject p : list)
+            {
+                if (p.getId() != null)
+                {
+                    Integer d = overdueDays.get(p.getId());
+                    if (d != null)
+                    {
+                        p.setOverdueDays(d);
+                    }
+                }
+            }
+        }
+        return list;
     }
 
     /**
@@ -190,6 +208,8 @@ public class ProjProjectServiceImpl implements IProjProjectService
         // 指令性任务自动打标：委托单位命中规则关键词 ⇒ 项目性质 = mandate
         // （仅新建时判定，避免覆盖人工在项目列表里的批量调整）
         project.setProjectNature(mandateService.resolveNature(project.getClientUnit()));
+        // 项目类别：名称↔ID 互转（保证 engineering_project 与 project_category_id 永远一致）
+        resolveCategoryAndLeaders(project);
         // 总时长自动计算（安排日期 → 今天，仅工作日；未办结时保存即重算）
         recalcTotalDuration(project);
         int rows = projectMapper.insertProject(project);
@@ -237,6 +257,8 @@ public class ProjProjectServiceImpl implements IProjProjectService
         boolean contractChanged = (oldContractId == null && newContractId != null)
             || (oldContractId != null && !oldContractId.equals(newContractId));
 
+        // 项目类别：名称↔ID 互转（编辑改「项目类别」文本时同步刷新 project_category_id）
+        resolveCategoryAndLeaders(project);
         // 总时长自动计算（安排日期 → 今天，仅工作日；已办结/已归档保持冻结值）
         recalcTotalDuration(project);
         int rows = projectMapper.updateProject(project);
@@ -544,13 +566,36 @@ public class ProjProjectServiceImpl implements IProjProjectService
      */
     private void resolveCategoryAndLeaders(ProjProject project)
     {
-        // 类别名称 → ID
-        if (project.getCategoryName() != null && !project.getCategoryName().isEmpty())
+        // 项目类别：以「项目类别名称 engineeringProject」为准反查外键 ID，
+        // 保证 engineering_project（文本，列表/报表列展示）与 project_category_id（外键，筛选口径）永远一致。
+        String ep = project.getEngineeringProject();
+        if (ep != null && !ep.trim().isEmpty())
         {
-            ProjCategory category = categoryMapper.selectCategoryByName(project.getCategoryName());
-            if (category != null)
+            ProjCategory byName = categoryMapper.selectCategoryByName(ep.trim());
+            if (byName != null)
             {
-                project.setProjectCategoryId(category.getId());
+                project.setProjectCategoryId(byName.getId());
+                project.setCategoryName(byName.getName());
+            }
+        }
+        else if (ep == null && project.getProjectCategoryId() != null)
+        {
+            // 仅给了 ID 未给名称 → 反查回填名称（注：显式传空串="主动清空"，不在此回填）
+            ProjCategory byId = categoryMapper.selectCategoryById(project.getProjectCategoryId());
+            if (byId != null)
+            {
+                project.setEngineeringProject(byId.getName());
+                project.setCategoryName(byId.getName());
+            }
+        }
+        // 兼容历史调用方：仅传了 categoryName（无文本、无 ID）→ 反查 ID
+        if (project.getProjectCategoryId() == null
+            && project.getCategoryName() != null && !project.getCategoryName().isEmpty())
+        {
+            ProjCategory byCn = categoryMapper.selectCategoryByName(project.getCategoryName());
+            if (byCn != null)
+            {
+                project.setProjectCategoryId(byCn.getId());
             }
         }
         // 负责人姓名 → 用户ID（支持逗号分隔多人）

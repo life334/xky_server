@@ -48,7 +48,10 @@ public class ReportFieldPool
         addField("rowNo", "序号", "agg", "项目信息", "number", false, null);
         addField("projectCode", "工程编号", "subject", "项目信息", "string", true, null);
         addField("projectName", "项目名称", "subject", "项目信息", "string", true, null);
-        addField("engineeringProject", "项目类别", "subject", "项目信息", "string", true, null);
+        // 项目类别（历史文本列 engineering_project）：仅作「列/字段设计器」可选，**不作为筛选字段** ——
+        // 它与 projectCategoryId 同语义（项目所属类别）且显示名相同，若同时进入左侧「可选筛选字段」会造成重复。
+        // 报表筛选统一走规范外键 projectCategoryId（按类别 id 精确匹配）。
+        addField("engineeringProject", "项目类别", "subject", "项目信息", "string", false, null);
         addField("clientUnit", "委托单位", "subject", "项目信息", "string", true, null);
         addField("contactName", "联系人", "subject", "项目信息", "string", true, null);
         addField("contactPhone", "联系电话", "subject", "项目信息", "string", true, null);
@@ -96,11 +99,11 @@ public class ReportFieldPool
         addField("verifySystemNo", "系统编号(验线占位)", "agg", "管线验线", "string", false, null);
         addField("verifyReportTime", "上报时间(验线占位)", "agg", "管线验线", "date", false, null);
         // 管线定线上报领导时间（年-月）：内置模板「只定未验及补之前扣除项目」col4 专用，
-        // 三档派生：上报记录锁定时间 > 尾款到账时间 > 预付款到账时间；都没有则为空
-        // （不回退「当前年月」，避免导出表格里出现编造的上报时间）
+        // 唯一来源：上报记录（proj_report_submit_log.submit_time，含历史补录行）
+        // ⚠️ 2026-10-13 起不再由尾款/预付款到账时间派生；无记录时也不回退「当前年月」
         addField("submitTimeYm", "上报时间", "subject", "管线定线", "date", false, null);
         // 上报状态（已上报 / 未上报）：判定依据与「上报时间」列严格同源
-        //   （有上报记录 或 有尾款到账时间 或 有预付款到账时间 = 已上报，见 ReportDataMapper.xml#reportSubmitExpr）
+        //   （有上报记录 = 已上报；2026-10-13 起不再含到账时间，见 ReportDataMapper.xml#reportSubmitExpr）
         // filterable=true ⇒ 报表页「筛选设置」可勾选它按状态过滤，预览 / 导出 / 上报批次三处同口径
         addField("submitStatus", "上报状态", "subject", "管线定线", "select", true,
                 toOptions(new String[][]{{"submitted", "已上报"}, {"unsubmitted", "未上报"}}));
@@ -110,6 +113,11 @@ public class ReportFieldPool
         // （办结时间 closeTime 已移至「项目信息」组并开放筛选）
         addField("relatedProjectCode", "关联工程编号", "subject", "管线定线", "string", false, null);
         addField("relatedLastSubmitTime", "关联工程上报时间", "subject", "管线定线", "date", false, null);
+        // 关联定线项目「时间段」筛选字段（模板5「验线上报产值统计表」/ 模板6「管线定验线报表（补验线）」）：
+        //   判定日期 = 关联定线项目的时间段（系统关联项目取其创建时间；手工输入的编号取其编号里的年份）
+        //   详见 ReportDataMapper.xml#relatedProjStartExpr / relatedProjEndExpr
+        //   仅作筛选字段（filterable=true），未映射为报表列
+        addField("relatedProjectCreate", "关联定线项目时间", "subject", "管线定线", "date", true, null);
 
         // 项目维度结算字段：结算金额 = 外部产值合计；内部产值仅内部参考，不与外部产值相加
         addField("projectSettleAmount", "项目结算金额", "agg", "项目结算", "number", true, null);
@@ -197,6 +205,15 @@ public class ReportFieldPool
      * @return 单元格值（String / BigDecimal / Date，null 则导出空）
      */
     public static Object resolveValue(ProjReportField field, Map<String, Object> row)
+    {
+        return resolveValue(field, row, null);
+    }
+
+    /**
+     * 见两参重载。submitMonthFallback：未上报且无到账时「上报时间」列的兜底年月（yyyy-MM），
+     * 仅「导出并上报领导」场景传值；传 null 时保持留空（避免编造）。
+     */
+    public static Object resolveValue(ProjReportField field, Map<String, Object> row, String submitMonthFallback)
     {
         if (field == null || row == null)
         {
@@ -400,24 +417,22 @@ public class ReportFieldPool
         {
             return null;
         }
-        // 管线定线「上报时间」（年-月），三档优先级：
-        //   1) 已通过「导出并上报领导」上报 → 取 proj_report_submit_log 锁定时间（终身上报一次，不可改）
-        //   2) 未上报但有到账记录 → 有尾款取尾款到账时间，无尾款取预付款到账时间
-        //      （历史导入项目的上报时间依据：导入不写上报记录，只能由到账时间反推；
-        //        同一类型多笔时 SQL 取最后一笔 max(pay_time)）
-        //   3) 都没有 → 空（不回退"当前年月"，避免导出表格里出现编造的上报时间）
+        // 管线定线「上报时间」（年-月）= 系统上报记录月份（唯一来源）：
+        //   1) 有上报记录（proj_report_submit_log.submit_time，含历史导入补录行）→ 取该记录时间
+        //      （终身上报一次不可改；补录行亦视为历史已上报）
+        //   2) 无记录 → 仅当本次为「导出并上报领导」（勾选上报）时，按报表年月填充
+        //   3) 无记录且非上报场景 → 空
+        // ⚠️ 2026-10-13 起：不再把尾款/预付款到账时间当作上报时间（到账 ≠ 上报）
         if ("submitTimeYm".equals(key))
         {
             Date submit = date(row.get("submitTime"));
-            if (submit == null)
+            if (submit != null)
             {
-                submit = date(row.get("finalPayTime"));
+                return new java.text.SimpleDateFormat("yyyy-MM").format(submit);
             }
-            if (submit == null)
-            {
-                submit = date(row.get("advancePayTime"));
-            }
-            return submit == null ? null : new java.text.SimpleDateFormat("yyyy-MM").format(submit);
+            // 无上报记录：仅当本次为「导出并上报领导」（勾选上报）时，按报表年月填充；
+            // 否则保持留空（不回退当前年月，避免导出表格里出现编造的上报时间）
+            return (submitMonthFallback == null || submitMonthFallback.isEmpty()) ? null : submitMonthFallback;
         }
         // 上报状态：直接取 SQL 计算列 submitStatus（与「上报时间」列同一表达式，不可能不一致）
         // 该字段也可被勾为导出列，故返回中文取值而非 submitted/unsubmitted
