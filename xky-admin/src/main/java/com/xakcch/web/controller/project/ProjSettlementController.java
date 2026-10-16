@@ -431,6 +431,12 @@ public class ProjSettlementController extends BaseController
                     Long subNo = toLong(subItemNoObj);
                     if (subNo != null) w.setSubItemNo(subNo.intValue());
                 }
+                Object dupNoObj = wl.get("dupNo");
+                if (dupNoObj != null)
+                {
+                    Long dupNo = toLong(dupNoObj);
+                    if (dupNo != null) w.setDupNo(dupNo.intValue());
+                }
                 w.setSubItemName((String) wl.getOrDefault("subItemName", ""));
                 w.setCreateBy(username);
                 workloadMapper.upsertWorkload(w);
@@ -493,6 +499,12 @@ public class ProjSettlementController extends BaseController
                     Long subNo = toLong(subItemNoObj);
                     if (subNo != null) w.setSubItemNo(subNo.intValue());
                 }
+                Object dupNoObj = wl.get("dupNo");
+                if (dupNoObj != null)
+                {
+                    Long dupNo = toLong(dupNoObj);
+                    if (dupNo != null) w.setDupNo(dupNo.intValue());
+                }
                 w.setSubItemName((String) wl.getOrDefault("subItemName", ""));
                 w.setCreateBy(username);
                 workloadMapper.upsertWorkload(w);
@@ -537,31 +549,41 @@ public class ProjSettlementController extends BaseController
 
     /**
      * 计算内部产值合计（含「管线新测 + 管线修测」保底 6000）
-     * 规则：内部工作量中任一存在「管线新测」或「管线修测」时，
-     *      内部产值合计 = 其他内部产值 + max(管线新测产值 + 管线修测产值, 6000)。
+     * 规则（2026-10-15 起）：保底按「栏」= (userId, subItemNo) 各自计算 ——
+     *      每栏内部产值 = 该栏其他内部产值 + max(该栏「管线新测」+「管线修测」产值, 6000)；
+     *      内部产值合计 = 各栏之和。
      *      保底差额只体现在合计中，不改变各行的 internalOutput。
+     *      ⚠️ 与 ProjWorkloadMapper.xml#outputProjectAgg 同口径（内层分栏保底、外层求和）。
      *
      * @param workloads 该项目全部工作量
      * @return 内部产值合计（含保底）
      */
     private BigDecimal calcInternalOutputTotal(List<ProjWorkload> workloads)
     {
-        BigDecimal total = BigDecimal.ZERO;
-        BigDecimal reviseSum = BigDecimal.ZERO;
-        boolean hasRevise = false;
+        // 栏 key -> 该栏内部产值合计；栏 key -> 该栏「管线新测/修测」产值合计
+        Map<String, BigDecimal> laneTotal = new LinkedHashMap<>();
+        Map<String, BigDecimal> laneRevise = new LinkedHashMap<>();
         for (ProjWorkload w : workloads)
         {
             if (w.getInternalOutput() == null) continue;
-            total = total.add(w.getInternalOutput());
+            String key = w.getUserId() + "#" + w.getSubItemNo();
+            BigDecimal out = w.getInternalOutput();
+            laneTotal.merge(key, out, BigDecimal::add);
             if ("管线新测".equals(w.getBillingCategory()) || "管线修测".equals(w.getBillingCategory()))
             {
-                reviseSum = reviseSum.add(w.getInternalOutput());
-                hasRevise = true;
+                laneRevise.merge(key, out, BigDecimal::add);
             }
         }
-        if (hasRevise && reviseSum.compareTo(INTERNAL_REVISE_MIN) < 0)
+        BigDecimal total = BigDecimal.ZERO;
+        for (Map.Entry<String, BigDecimal> e : laneTotal.entrySet())
         {
-            total = total.subtract(reviseSum).add(INTERNAL_REVISE_MIN);
+            BigDecimal laneSum = e.getValue();
+            BigDecimal reviseSum = laneRevise.get(e.getKey());
+            if (reviseSum != null && reviseSum.compareTo(INTERNAL_REVISE_MIN) < 0)
+            {
+                laneSum = laneSum.subtract(reviseSum).add(INTERNAL_REVISE_MIN);
+            }
+            total = total.add(laneSum);
         }
         return total;
     }

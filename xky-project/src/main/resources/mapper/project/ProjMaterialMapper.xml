@@ -30,6 +30,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="projectCode"       column="project_code"      />
         <result property="engineeringProject" column="engineering_project"/>
         <result property="projectLocation"   column="project_location"  />
+        <result property="clientUnit"        column="client_unit"       />
         <result property="receiveTime"       column="receive_time"      />
     </resultMap>
 
@@ -80,7 +81,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                <include refid="materialStatusExpr"><property name="alias" value="m"/></include> as status,
                m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
-               p.project_name, p.project_code, p.engineering_project, p.project_location,
+               p.project_name, p.project_code, p.engineering_project, p.project_location, p.client_unit,
                (select f.operate_time from proj_material_flow f
                 where f.material_id = m.id and f.flow_type = '领取' and f.del_flag = '0'
                 order by f.operate_time desc limit 1) as receive_time
@@ -163,7 +164,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                <include refid="materialStatusExpr"><property name="alias" value="m"/></include> as status,
                m.extra_data::text as extra_data, m.del_flag,
                m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
-               p.project_name, p.project_code, p.engineering_project, p.project_location
+               p.project_name, p.project_code, p.engineering_project, p.project_location, p.client_unit
         from proj_material m
         left join proj_project p on p.id = m.project_id
         where m.id = #{id}

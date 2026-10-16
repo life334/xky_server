@@ -59,6 +59,9 @@ public class ProjWorkload extends BaseEntity
     /** 子项序号（项目内自增，历史导入同工程编号多记录时区分子项） */
     private Integer subItemNo;
 
+    /** 同一子项内重复计费类别的行内序号（默认 1；同栏同类别重复录入时依次 2,3…） */
+    private Integer dupNo;
+
     /** 子项名称（=项目类别名称，工作量列表展示用） */
     private String subItemName;
 
@@ -243,6 +246,16 @@ public class ProjWorkload extends BaseEntity
         this.subItemNo = subItemNo;
     }
 
+    public Integer getDupNo()
+    {
+        return dupNo;
+    }
+
+    public void setDupNo(Integer dupNo)
+    {
+        this.dupNo = dupNo;
+    }
+
     public String getSubItemName()
     {
         return subItemName;
@@ -361,6 +374,7 @@ public class ProjWorkload extends BaseEntity
             .append("billingType", getBillingType())
             .append("billingCategory", getBillingCategory())
             .append("subItemNo", getSubItemNo())
+            .append("dupNo", getDupNo())
             .append("subItemName", getSubItemName())
             .append("priceUnit", getPriceUnit())
             .append("minQuantity", getMinQuantity())

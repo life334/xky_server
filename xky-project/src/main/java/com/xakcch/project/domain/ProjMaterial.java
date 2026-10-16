@@ -81,6 +81,9 @@ public class ProjMaterial extends BaseEntity
     /** 项目名称（JOIN proj_project） */
     private String projectName;
 
+    /** 委托单位（JOIN proj_project.client_unit） */
+    private String clientUnit;
+
     /** 领取时间（从 proj_material_flow 最近一条领取记录取） */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date receiveTime;
@@ -319,6 +322,16 @@ public class ProjMaterial extends BaseEntity
         this.projectName = projectName;
     }
 
+    public String getClientUnit()
+    {
+        return clientUnit;
+    }
+
+    public void setClientUnit(String clientUnit)
+    {
+        this.clientUnit = clientUnit;
+    }
+
     public Date getReceiveTime()
     {
         return receiveTime;
@@ -358,6 +371,7 @@ public class ProjMaterial extends BaseEntity
             .append("projectCode", getProjectCode())
             .append("engineeringProject", getEngineeringProject())
             .append("projectLocation", getProjectLocation())
+            .append("clientUnit", getClientUnit())
             .append("submitTime", getSubmitTime())
             .append("contactName", getContactName())
             .append("contactPhone", getContactPhone())

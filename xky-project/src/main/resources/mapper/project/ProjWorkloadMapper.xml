@@ -20,6 +20,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="billingType"       column="billing_type"      />
         <result property="billingCategory"   column="billing_category"  />
         <result property="subItemNo"         column="sub_item_no"       />
+        <result property="dupNo"             column="dup_no"            />
         <result property="subItemName"       column="sub_item_name"     />
         <result property="priceUnit"         column="price_unit"        />
         <result property="minQuantity"       column="min_quantity"      />
@@ -44,7 +45,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
+               w.billing_type, w.billing_category, w.sub_item_no, w.dup_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark
         from proj_workload w
@@ -57,7 +58,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
+               w.billing_type, w.billing_category, w.sub_item_no, w.dup_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -90,7 +91,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
+               w.billing_type, w.billing_category, w.sub_item_no, w.dup_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -119,6 +120,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="billingType != null and billingType != ''">billing_type,</if>
             <if test="billingCategory != null and billingCategory != ''">billing_category,</if>
             <if test="subItemNo != null">sub_item_no,</if>
+            <if test="dupNo != null">dup_no,</if>
             <if test="subItemName != null and subItemName != ''">sub_item_name,</if>
             <if test="priceUnit != null">price_unit,</if>
             <if test="minQuantity != null">min_quantity,</if>
@@ -143,6 +145,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="billingType != null and billingType != ''">#{billingType},</if>
             <if test="billingCategory != null and billingCategory != ''">#{billingCategory},</if>
             <if test="subItemNo != null">#{subItemNo},</if>
+            <if test="dupNo != null">#{dupNo},</if>
             <if test="subItemName != null and subItemName != ''">#{subItemName},</if>
             <if test="priceUnit != null">#{priceUnit},</if>
             <if test="minQuantity != null">#{minQuantity},</if>
@@ -172,6 +175,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="billingType != null and billingType != ''">billing_type = #{billingType},</if>
             <if test="billingCategory != null and billingCategory != ''">billing_category = #{billingCategory},</if>
             <if test="subItemNo != null">sub_item_no = #{subItemNo},</if>
+            <if test="dupNo != null">dup_no = #{dupNo},</if>
             <if test="subItemName != null and subItemName != ''">sub_item_name = #{subItemName},</if>
             <if test="priceUnit != null">price_unit = #{priceUnit},</if>
             <if test="minQuantity != null">min_quantity = #{minQuantity},</if>
@@ -232,7 +236,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             internal_price, external_price,
             internal_output, external_output,
             workload, price_source,
-            billing_type, billing_category, sub_item_no, sub_item_name,
+            billing_type, billing_category, sub_item_no, dup_no, sub_item_name,
             price_unit, min_quantity, unit_price, min_quantity_source,
             extra_data, remark,
             create_by, create_time
@@ -257,6 +261,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 <otherwise>0</otherwise>
             </choose>,
             <choose>
+                <when test="item.dupNo != null">#{item.dupNo}</when>
+                <otherwise>1</otherwise>
+            </choose>,
+            <choose>
                 <when test="item.subItemName != null and item.subItemName != ''">#{item.subItemName}</when>
                 <otherwise>''</otherwise>
             </choose>,
@@ -278,7 +286,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
+               w.billing_type, w.billing_category, w.sub_item_no, w.dup_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -299,7 +307,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                w.internal_output, w.external_output,
                w.workload,
                w.price_source,
-               w.billing_type, w.billing_category, w.sub_item_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
+               w.billing_type, w.billing_category, w.sub_item_no, w.dup_no, w.sub_item_name, w.price_unit, w.min_quantity, w.unit_price, w.min_quantity_source,
                w.extra_data::text as extra_data, w.del_flag,
                w.create_by, w.create_time, w.update_by, w.update_time, w.remark,
                p.project_name,
@@ -325,7 +333,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             internal_output, external_output,
             workload,
             price_source,
-            billing_type, billing_category, sub_item_no, sub_item_name, price_unit, min_quantity, unit_price, min_quantity_source,
+            billing_type, billing_category, sub_item_no, dup_no, sub_item_name, price_unit, min_quantity, unit_price, min_quantity_source,
             extra_data, remark,
             create_by, create_time
         )values(
@@ -348,6 +356,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 <otherwise>0,</otherwise>
             </choose>
             <choose>
+                <when test="dupNo != null">#{dupNo},</when>
+                <otherwise>1,</otherwise>
+            </choose>
+            <choose>
                 <when test="subItemName != null and subItemName != ''">#{subItemName},</when>
                 <otherwise>'',</otherwise>
             </choose>
@@ -357,7 +369,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             #{remark},
             #{createBy}, now()
         )
-        on conflict (project_id, user_id, category_id, billing_type, billing_category, sub_item_no) where del_flag = '0'
+        on conflict (project_id, user_id, category_id, billing_type, billing_category, sub_item_no, dup_no) where del_flag = '0'
         do update set
             internal_workload = EXCLUDED.internal_workload,
             external_workload = EXCLUDED.external_workload,
@@ -370,6 +382,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             billing_type = EXCLUDED.billing_type,
             billing_category = EXCLUDED.billing_category,
             sub_item_no = EXCLUDED.sub_item_no,
+            dup_no = EXCLUDED.dup_no,
             sub_item_name = EXCLUDED.sub_item_name,
             price_unit = EXCLUDED.price_unit,
             min_quantity = EXCLUDED.min_quantity,
@@ -388,25 +401,34 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
            · 外部产值 = SUM(proj_workload.external_output)
            · 内部产值 = SUM(internal_output)，并对「管线新测 / 管线修测」做保底 6000
              （与 ProjSettlementController.calcInternalOutputTotal 同口径）
+             ⚠️ 保底粒度 = 「栏」= (user_id, sub_item_no)：每栏各自保底后求和（2026-10-15 起），
+                内层 GROUP BY project_id,user_id,sub_item_no 每栏保底，外层 SUM 回项目级
            · 内外产值不相加（内部=成本 / 外部=结算基准，相加无业务含义）
            · 先把工作量聚合到「项目级」再按维度分组 ⇒ groupBy=leader 时不放大产值
              （一位负责人计一次该项目产值，不会因多人重复翻倍）
          ============================================================ -->
 
     <!-- 项目级产值聚合（含内部产值「管线新测/修测」保底 6000），供上层维度分组复用 -->
+    <!-- ⚠️ 保底按「栏」(user_id, sub_item_no) 各自计算：内层分栏保底，外层 SUM 回项目级 -->
     <sql id="outputProjectAgg">
-        SELECT w.project_id AS project_id,
-               SUM(COALESCE(w.internal_output, 0))
-                 - SUM(CASE WHEN w.billing_category IN ('管线新测', '管线修测')
-                            THEN COALESCE(w.internal_output, 0) ELSE 0 END)
-                 + CASE WHEN SUM(CASE WHEN w.billing_category IN ('管线新测', '管线修测') THEN 1 ELSE 0 END) &gt; 0
-                        THEN GREATEST(SUM(CASE WHEN w.billing_category IN ('管线新测', '管线修测')
-                                               THEN COALESCE(w.internal_output, 0) ELSE 0 END), 6000)
-                        ELSE 0 END AS int_out,
-               SUM(COALESCE(w.external_output, 0)) AS ext_out
-        FROM proj_workload w
-        WHERE w.del_flag = '0'
-        GROUP BY w.project_id
+        SELECT lane.project_id AS project_id,
+               SUM(lane.int_out) AS int_out,
+               SUM(lane.ext_out) AS ext_out
+        FROM (
+            SELECT w.project_id AS project_id,
+                   SUM(COALESCE(w.internal_output, 0))
+                     - SUM(CASE WHEN w.billing_category IN ('管线新测', '管线修测')
+                                THEN COALESCE(w.internal_output, 0) ELSE 0 END)
+                     + CASE WHEN SUM(CASE WHEN w.billing_category IN ('管线新测', '管线修测') THEN 1 ELSE 0 END) &gt; 0
+                            THEN GREATEST(SUM(CASE WHEN w.billing_category IN ('管线新测', '管线修测')
+                                                   THEN COALESCE(w.internal_output, 0) ELSE 0 END), 6000)
+                            ELSE 0 END AS int_out,
+                   SUM(COALESCE(w.external_output, 0)) AS ext_out
+            FROM proj_workload w
+            WHERE w.del_flag = '0'
+            GROUP BY w.project_id, w.user_id, w.sub_item_no
+        ) lane
+        GROUP BY lane.project_id
     </sql>
 
     <!--
