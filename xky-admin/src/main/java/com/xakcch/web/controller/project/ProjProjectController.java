@@ -1,5 +1,7 @@
 package com.xakcch.web.controller.project;
 
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,10 +24,12 @@ import com.xakcch.common.core.domain.AjaxResult;
 import com.xakcch.common.core.page.TableDataInfo;
 import com.xakcch.common.enums.BusinessType;
 import com.xakcch.common.exception.ServiceException;
+import com.xakcch.common.utils.DateUtils;
 import com.xakcch.common.utils.SecurityUtils;
-import com.xakcch.common.utils.poi.ExcelUtil;
+import com.xakcch.common.utils.file.FileUtils;
 import com.xakcch.common.core.domain.entity.SysUser;
 import com.xakcch.project.domain.ProjProject;
+import com.xakcch.project.report.DynamicColumnExcelExporter;
 import com.xakcch.project.service.IProjProjectService;
 
 /**
@@ -52,16 +56,112 @@ public class ProjProjectController extends BaseController
     }
 
     /**
-     * 导出项目列表
+     * 导出项目列表（可选字段 + 可选范围）
+     *
+     * <p>form 参数：
+     * <ul>
+     *   <li>{@code fields} 列 key 逗号串，按导出顺序；为空时回退为「默认可见列」</li>
+     *   <li>{@code scope}  {@code all}（默认，全部筛选结果）/ {@code selected}（仅已勾选的行）</li>
+     *   <li>{@code ids}    {@code scope=selected} 时的项目 id 逗号串</li>
+     * </ul>
+     *
+     * <p>⚠️ 导出严格跟随当前筛选条件（含从首页驾驶舱下钻带入的、界面上看不见的隐藏条件），
+     *    弹窗上的「命中 N 条」即最终导出的条数。</p>
+     *
+     * <p>⚠️ 字段清单以 {@code getListColumns()} 为唯一出处，未知 key 一律忽略
+     *    （既防越权导出内部字段，也防参数拼错导致空列）。</p>
      */
     @PreAuthorize("@ss.hasPermi('project:project:export')")
     @Log(title = "项目信息", businessType = BusinessType.EXPORT)
     @PostMapping("/export")
-    public void export(HttpServletResponse response, ProjProject project)
+    public void export(HttpServletResponse response, ProjProject project,
+                       @RequestParam(required = false) String fields,
+                       @RequestParam(required = false) String scope,
+                       @RequestParam(required = false) String ids) throws IOException
     {
-        List<ProjProject> list = projectService.selectProjectList(project);
-        ExcelUtil<ProjProject> util = new ExcelUtil<ProjProject>(ProjProject.class);
-        util.exportExcel(response, list, "项目信息数据");
+        List<Long> idScope = null;
+        if ("selected".equals(scope))
+        {
+            idScope = toIdList(ids);
+            if (idScope.isEmpty())
+            {
+                throw new ServiceException("请先勾选要导出的项目");
+            }
+        }
+
+        List<String> fieldKeys = splitFields(fields);
+        if (fieldKeys.isEmpty())
+        {
+            // 未指定字段 → 回退为默认可见列（与首次进入页面的表格一致）
+            for (Map<String, Object> c : projectService.getListColumns())
+            {
+                if (Boolean.TRUE.equals(c.get("defaultVisible"))
+                        && !"dynamic".equals(String.valueOf(c.get("group"))))
+                {
+                    fieldKeys.add(String.valueOf(c.get("key")));
+                }
+            }
+        }
+
+        Map<String, Object> data = projectService.exportProjects(project, fieldKeys, idScope);
+
+        @SuppressWarnings("unchecked")
+        List<DynamicColumnExcelExporter.Column> headers =
+                (List<DynamicColumnExcelExporter.Column>) data.get("headers");
+        @SuppressWarnings("unchecked")
+        List<List<Object>> rows = (List<List<Object>>) data.get("rows");
+
+        String fileName = "项目列表_" + DateUtils.parseDateToStr("yyyyMMddHHmmss", new java.util.Date()) + ".xlsx";
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding("utf-8");
+        FileUtils.setAttachmentResponseHeader(response, fileName);
+        // 不输出标题行：第 1 行即表头，导出的文件可直接用于筛选 / 透视 / 二次导入
+        DynamicColumnExcelExporter.export(response.getOutputStream(), headers, rows);
+    }
+
+    /** 逗号串 → 项目 id 列表（导出「仅已勾选的行」用） */
+    private List<Long> toIdList(String ids)
+    {
+        List<Long> list = new ArrayList<>();
+        if (ids == null || ids.trim().isEmpty())
+        {
+            return list;
+        }
+        for (String s : ids.split(","))
+        {
+            if (s == null || s.trim().isEmpty())
+            {
+                continue;
+            }
+            try
+            {
+                list.add(Long.valueOf(s.trim()));
+            }
+            catch (NumberFormatException e)
+            {
+                throw new ServiceException("项目ID格式非法：" + s);
+            }
+        }
+        return list;
+    }
+
+    /** 逗号串 → 字段 key 列表（去重保序） */
+    private List<String> splitFields(String fields)
+    {
+        List<String> list = new ArrayList<>();
+        if (fields == null || fields.trim().isEmpty())
+        {
+            return list;
+        }
+        for (String s : fields.split(","))
+        {
+            String k = s.trim();
+            if (!k.isEmpty() && !list.contains(k))
+            {
+                list.add(k);
+            }
+        }
+        return list;
     }
 
     /**

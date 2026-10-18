@@ -121,6 +121,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="contractAmountMax != null">
             AND contract_amount &lt;= #{contractAmountMax}
         </if>
+        <!-- 导出「仅已勾选的行」：id 集合由 Controller 下推，避免先查全表再内存过滤 -->
+        <if test="params.exportIds != null and params.exportIds.size &gt; 0">
+            AND id in
+            <foreach collection="params.exportIds" item="eid" open="(" separator="," close=")">
+                #{eid}
+            </foreach>
+        </if>
         ) t
         order by create_time desc
     </select>

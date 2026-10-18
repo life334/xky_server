@@ -30,6 +30,15 @@ public interface ProjProjectMapper
     public List<ProjProject> selectProjectList(ProjProject project);
 
     /**
+     * 按列表筛选条件查询命中的项目 id（「选中全部筛选结果」批量操作用）。
+     * 复用 projectFilter 片段 ⇒ 口径与 selectProjectList 完全一致。
+     *
+     * @param project 查询条件（与列表查询同一套参数）
+     * @return 命中的项目 id 列表（按 id 倒序）
+     */
+    public List<Long> selectProjectIdsByFilter(ProjProject project);
+
+    /**
      * 校验工程编号是否唯一
      *
      * @param project 项目信息

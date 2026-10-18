@@ -28,6 +28,16 @@ public interface IProjContractService
     public List<ProjContract> selectContractList(ProjContract contract);
 
     /**
+     * 导出合同列表：按调用方指定的字段顺序输出「表头 + 行数据」
+     *
+     * @param contract 筛选条件（与列表页共用同一套条件，导出与分页无关）
+     * @param fields   导出字段 key 列表（有序；未知 key 一律忽略）
+     * @param idScope  「仅导出已勾选的行」时的合同 id 集合；null / 空 = 导出全部筛选结果
+     * @return headers（列定义） + rows（行数据） + total（行数）
+     */
+    public Map<String, Object> exportContracts(ProjContract contract, List<String> fields, List<Long> idScope);
+
+    /**
      * 校验合同编号是否唯一
      *
      * @param contract 合同信息

@@ -51,52 +51,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         p.create_time::date
     </sql>
 
-    <sql id="selectProjectVo">
-        select p.id, p.project_code, p.project_name, p.engineering_project,
-               p.project_category_id, p.client_unit, p.client_unit_nature, p.contact_name, p.contact_phone,
-               p.project_location, p.contract_id, p.data_source, p.status, p.project_nature,
-               p.close_time,
-               p.assign_date, p.duration_require, p.total_duration,
-               p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
-               p.related_project_code_text,
-               p.create_by, p.create_time, p.update_by, p.update_time, p.remark
-        from proj_project p
-    </sql>
-
-    <select id="selectProjectList" parameterType="ProjProject" resultMap="ProjProjectResult">
-        select p.id, p.project_code, p.project_name, p.engineering_project,
-               p.project_category_id, p.client_unit, p.client_unit_nature, p.contact_name, p.contact_phone,
-               p.project_location, p.contract_id, p.data_source, p.status, p.project_nature,
-               p.close_time,
-               p.assign_date, p.duration_require, p.total_duration,
-               p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
-               p.related_project_code_text,
-               p.create_by, p.create_time, p.update_by, p.update_time, p.remark,
-               c.name as category_name,
-               ct.contract_name,
-               ct.contract_no,
-               coalesce(rp.project_code, p.related_project_code_text) as related_project_code,
-               coalesce(ln.leader_names, '') as leader_names,
-               ct.contract_amount as contract_amount,
-               coalesce(wo.internal_output, 0) as internal_output,
-               coalesce(wo.external_output, 0) as external_output
-        from proj_project p
-        left join proj_category c on c.id = p.project_category_id
-        left join proj_contract ct on ct.id = p.contract_id
-        left join proj_project rp on rp.id = p.related_project_id
-        left join lateral (
-            select string_agg(u.nick_name, ', ' order by l.id) as leader_names
-            from proj_leader l
-            inner join sys_user u on u.user_id = l.user_id
-            where l.project_id = p.id and l.del_flag = '0'
-        ) ln on true
-        left join lateral (
-            select sum(coalesce(w.internal_output, 0)) as internal_output,
-                   sum(coalesce(w.external_output, 0)) as external_output
-            from proj_workload w
-            where w.project_id = p.id and w.del_flag = '0'
-        ) wo on true
-        where p.del_flag = '0'
+    <!-- ==================== 项目列表过滤条件（口径唯一出处） ====================
+         背景：此前全部条件内联在 selectProjectList 里，「按筛选条件批量操作」无法复用；
+         若复制一份又必然口径分叉（列表筛出 800 条、批量按另一套条件跑了 790 条）。
+         故抽出两级片段：
+           · projectFilterCommon —— 列表查询 与 结算页「录入状态」胶囊计数 共用
+           · projectFilter       —— 列表查询专用 = Common + 下钻/录入状态相关条件
+         ⚠️ 新增或修改过滤条件一律改片段，禁止在任何 <select> 里内联条件。
+         ⚠️ 片段内只用到别名 p，引用方无需额外 JOIN。 -->
+    <sql id="projectFilterCommon">
         <if test="keyword != null and keyword != ''">
             AND (p.project_code like concat('%', #{keyword}, '%')
                 OR p.project_name like concat('%', #{keyword}, '%')
@@ -162,23 +125,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="contractId != null">
             AND p.contract_id = #{contractId}
         </if>
-        <!-- 合同状态筛选（首页驾驶舱下钻） -->
-        <if test="contractStatus != null and contractStatus == 'bound'">
-            AND p.contract_id IS NOT NULL
-        </if>
-        <if test="contractStatus != null and contractStatus == 'unbound'">
-            AND p.contract_id IS NULL
-        </if>
-        <!-- 超期筛选（首页驾驶舱下钻；id 集合由 Service 按工作日口径算好后注入） -->
-        <if test="params.overdueIds != null">
-            AND p.id in
-            <foreach collection="params.overdueIds" item="oid" open="(" separator="," close=")">
-                #{oid}
-            </foreach>
-        </if>
-        <if test="params.overdueEmpty == true">
-            AND 1 = 0
-        </if>
         <!-- 办结日期范围（首页驾驶舱下钻 + 列表筛选） -->
         <if test="closeDateBegin != null and closeDateBegin != ''">
             AND p.close_time &gt;= to_date(#{closeDateBegin}, 'YYYY-MM-DD')
@@ -212,6 +158,27 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <foreach collection="params.statusList" item="s" open="(" separator="," close=")">
                 #{s}
             </foreach>
+        </if>
+    </sql>
+
+    <sql id="projectFilter">
+        <include refid="projectFilterCommon"/>
+        <!-- 合同状态筛选（首页驾驶舱下钻） -->
+        <if test="contractStatus != null and contractStatus == 'bound'">
+            AND p.contract_id IS NOT NULL
+        </if>
+        <if test="contractStatus != null and contractStatus == 'unbound'">
+            AND p.contract_id IS NULL
+        </if>
+        <!-- 超期筛选（首页驾驶舱下钻；id 集合由 Service 按工作日口径算好后注入） -->
+        <if test="params.overdueIds != null">
+            AND p.id in
+            <foreach collection="params.overdueIds" item="oid" open="(" separator="," close=")">
+                #{oid}
+            </foreach>
+        </if>
+        <if test="params.overdueEmpty == true">
+            AND 1 = 0
         </if>
         <if test="params.beginTime != null and params.beginTime != ''">
             AND p.create_time &gt;= to_timestamp(#{params.beginTime}, 'YYYY-MM-DD HH24:MI:SS')
@@ -250,6 +217,63 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                   and pm2.payment_type in ('advance', 'final')
                   and pm2.amount is not null and pm2.amount &gt; 0)
         </if>
+        <!-- 导出「仅已勾选的行」：id 集合由 Controller 下推，避免先查全表再内存过滤 -->
+        <if test="params.exportIds != null and params.exportIds.size &gt; 0">
+            AND p.id in
+            <foreach collection="params.exportIds" item="eid" open="(" separator="," close=")">
+                #{eid}
+            </foreach>
+        </if>
+    </sql>
+
+
+    <sql id="selectProjectVo">
+        select p.id, p.project_code, p.project_name, p.engineering_project,
+               p.project_category_id, p.client_unit, p.client_unit_nature, p.contact_name, p.contact_phone,
+               p.project_location, p.contract_id, p.data_source, p.status, p.project_nature,
+               p.close_time,
+               p.assign_date, p.duration_require, p.total_duration,
+               p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
+               p.related_project_code_text,
+               p.create_by, p.create_time, p.update_by, p.update_time, p.remark
+        from proj_project p
+    </sql>
+
+    <select id="selectProjectList" parameterType="ProjProject" resultMap="ProjProjectResult">
+        select p.id, p.project_code, p.project_name, p.engineering_project,
+               p.project_category_id, p.client_unit, p.client_unit_nature, p.contact_name, p.contact_phone,
+               p.project_location, p.contract_id, p.data_source, p.status, p.project_nature,
+               p.close_time,
+               p.assign_date, p.duration_require, p.total_duration,
+               p.extra_data::text as extra_data, p.del_flag, p.related_project_id,
+               p.related_project_code_text,
+               p.create_by, p.create_time, p.update_by, p.update_time, p.remark,
+               c.name as category_name,
+               ct.contract_name,
+               ct.contract_no,
+               coalesce(rp.project_code, p.related_project_code_text) as related_project_code,
+               coalesce(ln.leader_names, '') as leader_names,
+               ct.contract_amount as contract_amount,
+               coalesce(wo.internal_output, 0) as internal_output,
+               coalesce(wo.external_output, 0) as external_output
+        from proj_project p
+        left join proj_category c on c.id = p.project_category_id
+        left join proj_contract ct on ct.id = p.contract_id
+        left join proj_project rp on rp.id = p.related_project_id
+        left join lateral (
+            select string_agg(u.nick_name, ', ' order by l.id) as leader_names
+            from proj_leader l
+            inner join sys_user u on u.user_id = l.user_id
+            where l.project_id = p.id and l.del_flag = '0'
+        ) ln on true
+        left join lateral (
+            select sum(coalesce(w.internal_output, 0)) as internal_output,
+                   sum(coalesce(w.external_output, 0)) as external_output
+            from proj_workload w
+            where w.project_id = p.id and w.del_flag = '0'
+        ) wo on true
+        where p.del_flag = '0'
+        <include refid="projectFilter"/>
         <!-- 排序：下钻弹窗按指标排序（产值/合同额），默认按 id 倒序 -->
         <choose>
             <when test="outputOrder == 'contractAmount_desc'">order by ct.contract_amount desc nulls last, p.id desc</when>
@@ -260,6 +284,16 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <when test="outputOrder == 'externalOutput_asc'">order by coalesce(wo.external_output, 0) asc, p.id desc</when>
             <otherwise>order by p.id desc</otherwise>
         </choose>
+    </select>
+
+    <!-- 按当前列表筛选条件查询命中的项目 id（「选中全部筛选结果」批量操作用）。
+         复用 projectFilter ⇒ 与列表口径 100% 一致；只取 id，不带 JOIN/聚合列，轻量。 -->
+    <select id="selectProjectIdsByFilter" parameterType="ProjProject" resultType="java.lang.Long">
+        select p.id
+        from proj_project p
+        where p.del_flag = '0'
+        <include refid="projectFilter"/>
+        order by p.id desc
     </select>
 
     <select id="selectProjectById" parameterType="Long" resultMap="ProjProjectResult">
@@ -528,104 +562,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                   and pm2.amount is not null and pm2.amount &gt; 0)) as "invoiceUnpaid"
         from proj_project p
         where p.del_flag = '0'
-        <if test="keyword != null and keyword != ''">
-            AND (p.project_code like concat('%', #{keyword}, '%')
-                OR p.project_name like concat('%', #{keyword}, '%')
-                OR p.client_unit like concat('%', #{keyword}, '%')
-                OR p.engineering_project like concat('%', #{keyword}, '%')
-                OR p.contact_name like concat('%', #{keyword}, '%')
-                OR p.project_location like concat('%', #{keyword}, '%'))
-        </if>
-        <if test="contactName != null and contactName != ''">
-            AND p.contact_name like concat('%', #{contactName}, '%')
-        </if>
-        <if test="contactPhone != null and contactPhone != ''">
-            AND p.contact_phone like concat('%', #{contactPhone}, '%')
-        </if>
-        <if test="projectLocation != null and projectLocation != ''">
-            AND p.project_location like concat('%', #{projectLocation}, '%')
-        </if>
-        <if test="leaderId != null">
-            AND EXISTS (select 1 from proj_leader l
-                where l.project_id = p.id and l.user_id = #{leaderId} and l.del_flag = '0')
-        </if>
-        <if test="assignDateBegin != null and assignDateBegin != ''">
-            AND p.assign_date &gt;= to_date(#{assignDateBegin}, 'YYYY-MM-DD')
-        </if>
-        <if test="assignDateEnd != null and assignDateEnd != ''">
-            AND p.assign_date &lt;= to_date(#{assignDateEnd}, 'YYYY-MM-DD')
-        </if>
-        <if test="projectCode != null and projectCode != ''">
-            AND p.project_code like concat('%', #{projectCode}, '%')
-        </if>
-        <if test="projectName != null and projectName != ''">
-            AND p.project_name like concat('%', #{projectName}, '%')
-        </if>
-        <if test="engineeringProject != null and engineeringProject != ''">
-            AND p.engineering_project like concat('%', #{engineeringProject}, '%')
-        </if>
-        <if test="projectCategoryId != null">
-            AND p.project_category_id = #{projectCategoryId}
-        </if>
-        <!-- 项目类别多选（类别画像行 / 饼图桶下钻：「其它」桶为多个小类 id 的并集）。
-             ⚠️「其它」桶的口径含「未分类」（project_category_id 为空）项目 ⇒ 下钻须带
-             categoryIncludeNull=true 同步纳入，否则桶内数字有值、点开明细为空（NULL 不匹配任何 IN）。 -->
-        <if test="projectCategoryIds != null and projectCategoryIds.length &gt; 0">
-            <choose>
-                <when test="categoryIncludeNull != null and categoryIncludeNull == 'true'">
-                    AND (p.project_category_id is null OR p.project_category_id in
-                    <foreach collection="projectCategoryIds" item="cid" open="(" separator="," close=")">
-                        #{cid}
-                    </foreach>
-                    )
-                </when>
-                <otherwise>
-                    AND p.project_category_id in
-                    <foreach collection="projectCategoryIds" item="cid" open="(" separator="," close=")">
-                        #{cid}
-                    </foreach>
-                </otherwise>
-            </choose>
-        </if>
-        <if test="clientUnit != null and clientUnit != ''">
-            AND p.client_unit like concat('%', #{clientUnit}, '%')
-        </if>
-        <if test="contractId != null">
-            AND p.contract_id = #{contractId}
-        </if>
-        <if test="status != null and status != ''">
-            AND p.status = #{status}
-        </if>
-        <if test="projectNature != null and projectNature != ''">
-            AND p.project_nature = #{projectNature}
-        </if>
-        <!-- 委托单位性质筛选（与 selectProjectList 口径一致，保证胶囊计数与列表同步） -->
-        <if test="clientUnitNature != null and clientUnitNature != ''">
-            AND p.client_unit_nature = #{clientUnitNature}
-        </if>
-        <if test="params.statusList != null">
-            AND p.status in
-            <foreach collection="params.statusList" item="s" open="(" separator="," close=")">
-                #{s}
-            </foreach>
-        </if>
-        <!-- 项目来源 + 办结日期（与 selectProjectList 口径一致，保证结算页胶囊计数与列表同步） -->
-        <if test="dataSource != null and dataSource != ''">
-            AND p.data_source = #{dataSource}
-        </if>
-        <if test="closeDateBegin != null and closeDateBegin != ''">
-            AND p.close_time &gt;= to_date(#{closeDateBegin}, 'YYYY-MM-DD')
-        </if>
-        <if test="closeDateEnd != null and closeDateEnd != ''">
-            AND p.close_time &lt; to_date(#{closeDateEnd}, 'YYYY-MM-DD') + interval '1 day'
-        </if>
-        <!-- 录入日期（新增口）范围，与 selectProjectList 口径一致 -->
-        <if test="newDateBegin != null and newDateBegin != ''">
-            AND <include refid="newDateExpr"/> &gt;= to_date(#{newDateBegin}, 'YYYY-MM-DD')
-        </if>
-        <if test="newDateEnd != null and newDateEnd != ''">
-            AND <include refid="newDateExpr"/> &lt; to_date(#{newDateEnd}, 'YYYY-MM-DD') + interval '1 day'
-        </if>
+        <include refid="projectFilterCommon"/>
     </select>
 
     <!-- 动态读取指定表的物理列元数据（列名 + 中文注释），供列表列显隐功能复用 -->

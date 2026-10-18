@@ -29,6 +29,9 @@ public class ProjMandateServiceImpl implements IProjMandateService
     /** 关键词缓存有效期：30s（导入 2000 行只需 1 次查询，同时避免规则改了长时间不生效） */
     private static final long KEYWORD_CACHE_MS = 30_000L;
 
+    /** 单批量标记的项目数上限（filter 模式可能命中全库，兜底防误操作） */
+    private static final int MAX_BATCH_NATURE = 50000;
+
     @Autowired
     private ProjMandateRuleMapper ruleMapper;
 
@@ -140,6 +143,11 @@ public class ProjMandateServiceImpl implements IProjMandateService
         if (!NATURE_MANDATE.equals(nature) && !NATURE_NORMAL.equals(nature))
         {
             throw new ServiceException("项目性质取值非法：" + nature);
+        }
+        if (ids.size() > MAX_BATCH_NATURE)
+        {
+            throw new ServiceException("单次操作项目数过多（" + ids.size() + " 条，上限 "
+                    + MAX_BATCH_NATURE + " 条），请缩小筛选范围后重试");
         }
         return projectMapper.updateProjectNatureByIds(ids, nature, currentUser());
     }

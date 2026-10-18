@@ -2,17 +2,24 @@ package com.xakcch.project.service.impl;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import com.xakcch.common.core.domain.entity.SysDictData;
 import com.xakcch.common.exception.ServiceException;
+import com.xakcch.common.utils.DateUtils;
+import com.xakcch.common.utils.DictUtils;
 import com.xakcch.common.utils.SecurityUtils;
 import com.xakcch.project.domain.ProjContract;
 import com.xakcch.project.domain.ProjFieldDef;
@@ -22,6 +29,7 @@ import com.xakcch.project.mapper.ProjContractMapper;
 import com.xakcch.project.mapper.ProjFieldDefMapper;
 import com.xakcch.project.mapper.ProjMaterialMapper;
 import com.xakcch.project.mapper.ProjProjectMapper;
+import com.xakcch.project.report.DynamicColumnExcelExporter;
 import com.xakcch.project.service.IProjContractService;
 import com.xakcch.project.service.IProjNotifyService;
 
@@ -63,6 +71,87 @@ public class ProjContractServiceImpl implements IProjContractService
     /** 合法状态码值集合 */
     private static final List<String> VALID_STATUS = Arrays.asList("ongoing", "pending_return", "completed", "cancelled");
 
+    /** 合同导出单次行数上限（与项目列表导出保持一致） */
+    private static final int EXPORT_MAX_ROWS = 50000;
+
+    /** 动态字段取值用：extra_data 是 JSONB 文本，逐行解析（与资料管理页同一套 Jackson 用法） */
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** 导出列 key → 取值器（与 getListColumns() 的 key 一一对应） */
+    private static final Map<String, Function<ProjContract, Object>> EXPORT_ACCESSORS;
+
+    /** 导出列 key → 类型（与 getListColumns() 的 type 一致，决定格式化方式） */
+    private static final Map<String, String> EXPORT_TYPES;
+
+    /** 导出列 key → 字典类型（仅 type='dict' 的列需要；不同列用不同字典，不可统一） */
+    private static final Map<String, String> EXPORT_DICT_TYPES;
+    static
+    {
+        Map<String, Function<ProjContract, Object>> a = new HashMap<>();
+        a.put("contractNo", ProjContract::getContractNo);
+        a.put("contractName", ProjContract::getContractName);
+        a.put("clientUnit", ProjContract::getClientUnit);
+        a.put("contractType", ProjContract::getContractType);
+        a.put("contractAmount", ProjContract::getContractAmount);
+        a.put("projectCount", ProjContract::getProjectCount);
+        a.put("paidCount", ProjContract::getPaidCount);
+        a.put("paidTotal", ProjContract::getPaidTotal);
+        a.put("contactName", ProjContract::getContactName);
+        a.put("contactPhone", ProjContract::getContactPhone);
+        a.put("signDate", ProjContract::getSignDate);
+        a.put("entrustDate", ProjContract::getEntrustDate);
+        a.put("archiveDate", ProjContract::getArchiveDate);
+        a.put("archivePath", ProjContract::getArchivePath);
+        a.put("contractPeriod", ProjContract::getContractPeriod);
+        a.put("paymentTerms", ProjContract::getPaymentTerms);
+        a.put("receivedAmount", ProjContract::getReceivedAmount);
+        a.put("status", ProjContract::getStatus);
+        a.put("isSettled", ProjContract::getIsSettled);
+        a.put("remark", ProjContract::getRemark);
+        a.put("id", ProjContract::getId);
+        a.put("createBy", ProjContract::getCreateBy);
+        a.put("createTime", ProjContract::getCreateTime);
+        a.put("updateBy", ProjContract::getUpdateBy);
+        a.put("updateTime", ProjContract::getUpdateTime);
+        // ⚠️ 刻意不含 attachment（附件）与 paymentProgress（付款进度）：
+        //    两者在列表页是「预览/下载按钮」与「进度条」，导出成文本没有意义，
+        //    因此取值器留空 → 即便请求里手改 fields 也会被 buildExportData 忽略。
+        EXPORT_ACCESSORS = Collections.unmodifiableMap(a);
+
+        Map<String, String> t = new HashMap<>();
+        t.put("contractNo", "text");
+        t.put("contractName", "text");
+        t.put("clientUnit", "text");
+        t.put("contractType", "dict");
+        t.put("contractAmount", "money");
+        t.put("projectCount", "count");
+        t.put("paidCount", "count");
+        t.put("paidTotal", "money");
+        t.put("contactName", "text");
+        t.put("contactPhone", "text");
+        t.put("signDate", "date");
+        t.put("entrustDate", "date");
+        t.put("archiveDate", "date");
+        t.put("archivePath", "text");
+        t.put("contractPeriod", "text");
+        t.put("paymentTerms", "text");
+        t.put("receivedAmount", "money");
+        t.put("status", "dict");
+        t.put("isSettled", "flag");
+        t.put("remark", "text");
+        t.put("id", "number");
+        t.put("createBy", "text");
+        t.put("createTime", "date");
+        t.put("updateBy", "text");
+        t.put("updateTime", "date");
+        EXPORT_TYPES = Collections.unmodifiableMap(t);
+
+        Map<String, String> d = new HashMap<>();
+        d.put("contractType", "proj_contract_type");
+        d.put("status", "proj_contract_status");
+        EXPORT_DICT_TYPES = Collections.unmodifiableMap(d);
+    }
+
     /**
      * 查询合同详情
      */
@@ -82,6 +171,262 @@ public class ProjContractServiceImpl implements IProjContractService
         // 批量填充付款明细（避免 N+1）
         fillPaidList(list);
         return list;
+    }
+
+    /**
+     * 导出合同列表：按调用方指定的字段顺序输出「表头 + 行数据」
+     */
+    @Override
+    public Map<String, Object> exportContracts(ProjContract contract, List<String> fields, List<Long> idScope)
+    {
+        ProjContract q = (contract == null) ? new ProjContract() : contract;
+        // 导出与分页无关：清掉分页参数，避免调用方误传导致只导一页
+        q.getParams().remove("pageNum");
+        q.getParams().remove("pageSize");
+        // 「仅已勾选的行」：id 集合下推到 SQL，避免先查全表再内存过滤
+        if (idScope != null && !idScope.isEmpty())
+        {
+            q.getParams().put("exportIds", idScope);
+        }
+        // 导出不需要付款明细（fillPaidList 会额外查 N 次），直接查列表
+        List<ProjContract> list = contractMapper.selectContractList(q);
+        if (list.size() > EXPORT_MAX_ROWS)
+        {
+            throw new ServiceException("导出条数过多（" + list.size() + " 条，上限 "
+                    + EXPORT_MAX_ROWS + " 条），请缩小筛选范围后重试");
+        }
+        return buildExportData(fields, list);
+    }
+
+    /**
+     * 按 fields 顺序组装导出数据。
+     * <p>
+     * 列元数据（label / type）全部取自 {@link #getListColumns()}，不在此处另建清单，
+     * 避免与列表显隐列面板分叉；未知 key 一律忽略（防止导出任意内部字段）。
+     */
+    private Map<String, Object> buildExportData(List<String> fields, List<ProjContract> list)
+    {
+        Map<String, Map<String, Object>> metaMap = new HashMap<>();
+        for (Map<String, Object> c : getListColumns())
+        {
+            metaMap.put(String.valueOf(c.get("key")), c);
+        }
+        // 字典列整批预载：每个字典类型只取一次（详见 loadDictMaps 注释）
+        Map<String, Map<String, String>> dictMaps = loadDictMaps(fields);
+
+        List<DynamicColumnExcelExporter.Column> headers = new ArrayList<>();
+        List<String> validKeys = new ArrayList<>();
+        if (fields != null)
+        {
+            for (String key : fields)
+            {
+                if (key == null || key.trim().isEmpty())
+                {
+                    continue;
+                }
+                String k = key.trim();
+                Map<String, Object> meta = metaMap.get(k);
+                if (meta == null)
+                {
+                    continue;
+                }
+                // 动态字段（extra_data JSONB）不在静态取值器表里，走 JSON 解析；
+                // 其余列必须有取值器，否则（附件 / 付款进度这类渲染型列）跳过，避免导出空列
+                boolean dynamic = "dynamic".equals(String.valueOf(meta.get("group")));
+                if (!dynamic && !EXPORT_ACCESSORS.containsKey(k))
+                {
+                    continue;
+                }
+                String type = String.valueOf(meta.get("type"));
+                // 金额 / 计数列导出右对齐，其余左对齐
+                boolean numeric = "money".equals(type) || "count".equals(type) || "number".equals(type);
+                headers.add(new DynamicColumnExcelExporter.Column(
+                        String.valueOf(meta.get("label")), widthOf(type), numeric));
+                validKeys.add(k);
+            }
+        }
+
+        List<List<Object>> rows = new ArrayList<>();
+        for (ProjContract c : list)
+        {
+            List<Object> row = new ArrayList<>();
+            for (String key : validKeys)
+            {
+                row.add(formatValue(c, key, dictMaps));
+            }
+            rows.add(row);
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("headers", headers);
+        result.put("rows", rows);
+        result.put("total", rows.size());
+        return result;
+    }
+
+    /**
+     * 按导出字段涉及到的字典类型，一次性加载 value → label 映射。
+     * <p>
+     * ⚠️ 性能要点：{@link DictUtils#getDictLabel} 每次调用都会「Redis 读 + 全量反序列化
+     * + 重建 HashMap」（项目列表导出实测单个字典单元格 ≈8.4ms，3743 行 × 16 字段 = 67s）。
+     * 改为预先按字典类型建映射后，逐行纯内存查表。
+     */
+    private Map<String, Map<String, String>> loadDictMaps(List<String> fields)
+    {
+        Map<String, Map<String, String>> result = new HashMap<>();
+        if (fields == null)
+        {
+            return result;
+        }
+        for (String key : fields)
+        {
+            if (key == null)
+            {
+                continue;
+            }
+            String dictType = EXPORT_DICT_TYPES.get(key.trim());
+            if (dictType == null || result.containsKey(dictType))
+            {
+                continue;
+            }
+            Map<String, String> map = new HashMap<>();
+            List<SysDictData> datas = DictUtils.getDictCache(dictType);
+            if (datas != null)
+            {
+                for (SysDictData d : datas)
+                {
+                    if (d != null && d.getDictValue() != null)
+                    {
+                        map.put(d.getDictValue(), d.getDictLabel());
+                    }
+                }
+            }
+            result.put(dictType, map);
+        }
+        return result;
+    }
+
+    /** 单个单元格取值：字典转中文标签、日期统一 yyyy-MM-dd、是否结算转中文 */
+    private Object formatValue(ProjContract c, String key, Map<String, Map<String, String>> dictMaps)
+    {
+        Function<ProjContract, Object> acc = EXPORT_ACCESSORS.get(key);
+        if (acc == null)
+        {
+            // 无静态取值器 ⇒ 动态字段：值在 extra_data（JSONB）里，按 key 取
+            return extraDataValue(c, key);
+        }
+        Object raw = acc.apply(c);
+        if (raw == null || "".equals(raw))
+        {
+            return "";
+        }
+        String type = EXPORT_TYPES.get(key);
+        if ("dict".equals(type))
+        {
+            String dictType = EXPORT_DICT_TYPES.get(key);
+            if (dictType != null)
+            {
+                String val = String.valueOf(raw);
+                Map<String, String> dm = dictMaps.get(dictType);
+                String label = (dm == null) ? null : dm.get(val);
+                if (label == null)
+                {
+                    // 预载缺失（字典在导出期间被改过）才回落逐次查询，保证不丢标签
+                    label = DictUtils.getDictLabel(dictType, val);
+                }
+                return (label == null || label.isEmpty()) ? val : label;
+            }
+            return String.valueOf(raw);
+        }
+        if ("date".equals(type))
+        {
+            // 用全限定名：本文件已有 java.sql.Date 相关用法，避免额外 import 引入同名冲突
+            return (raw instanceof java.util.Date)
+                    ? DateUtils.parseDateToStr(DateUtils.YYYY_MM_DD, (java.util.Date) raw)
+                    : String.valueOf(raw);
+        }
+        if ("flag".equals(type))
+        {
+            // 「是否结算」是 0/1 标志位，与列表页 settledFlagText 保持一致
+            String v = String.valueOf(raw).trim();
+            if ("1".equals(v))
+            {
+                return "已结算";
+            }
+            if ("0".equals(v))
+            {
+                return "未结算";
+            }
+            return v;
+        }
+        // 金额 / 计数 / ID 保留数字，导出右对齐
+        if (raw instanceof Number)
+        {
+            return raw;
+        }
+        return String.valueOf(raw);
+    }
+
+    /**
+     * 动态字段取值：从 extra_data（JSONB 文本）里按 key 取，多值数组用「、」连接
+     * —— 与列表页 extraText() 的展示口径保持一致（项目类型存的就是数组）。
+     */
+    private Object extraDataValue(ProjContract c, String key)
+    {
+        String json = c.getExtraData();
+        if (json == null || json.trim().isEmpty())
+        {
+            return "";
+        }
+        try
+        {
+            JsonNode node = MAPPER.readTree(json).get(key);
+            if (node == null || node.isNull())
+            {
+                return "";
+            }
+            if (node.isArray())
+            {
+                StringBuilder sb = new StringBuilder();
+                for (JsonNode n : node)
+                {
+                    String s = n.isValueNode() ? n.asText() : n.toString();
+                    if (s != null && !s.isEmpty())
+                    {
+                        if (sb.length() > 0)
+                        {
+                            sb.append('、');
+                        }
+                        sb.append(s);
+                    }
+                }
+                return sb.toString();
+            }
+            return node.isValueNode() ? node.asText() : node.toString();
+        }
+        catch (Exception e)
+        {
+            // 单行 JSON 坏了不能拖垮整批导出
+            return "";
+        }
+    }
+
+    /** 列宽（字符数）：日期/字典窄列，文本与金额宽列；与前端列宽视觉保持一致 */
+    private int widthOf(String type)
+    {
+        if ("date".equals(type))
+        {
+            return 12;
+        }
+        if ("dict".equals(type) || "count".equals(type))
+        {
+            return 10;
+        }
+        if ("money".equals(type))
+        {
+            return 18;
+        }
+        return 16;
     }
 
     /**

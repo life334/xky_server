@@ -28,6 +28,28 @@ public interface IProjProjectService
     public List<ProjProject> selectProjectList(ProjProject project);
 
     /**
+     * 按列表筛选条件查询命中的项目 id（「选中全部筛选结果」批量操作用）。
+     * 与 selectProjectList 共用同一套过滤片段 ⇒ 口径一致。
+     *
+     * @param project 查询条件（与列表查询同一套参数）
+     * @return 命中的项目 id 列表
+     */
+    public List<Long> selectProjectIdsByFilter(ProjProject project);
+
+    /**
+     * 导出项目列表：按调用方指定的字段顺序输出「表头 + 行数据」。
+     * <p>
+     * 字段清单的口径唯一出处是 {@link #getListColumns()}，此处只按 key 取值并格式化，
+     * 保证「页面能看到什么，就能导出什么」。
+     *
+     * @param query   筛选条件（与列表查询同一套参数，分页参数会被忽略）
+     * @param fields  需要导出的列 key（按序）；未知 key 直接忽略
+     * @param idScope 仅导出这些 id（为空 = 不限，走筛选条件口径）
+     * @return Map: headers（列定义）/ rows（行数据）/ total（行数）
+     */
+    public Map<String, Object> exportProjects(ProjProject query, List<String> fields, List<Long> idScope);
+
+    /**
      * 统计费用结算页「录入状态」全局数量（工作量/到账/发票胶囊数字）
      * 忽略录入状态筛选本身，保留项目状态与高级筛选条件
      *
