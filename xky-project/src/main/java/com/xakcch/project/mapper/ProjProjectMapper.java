@@ -192,6 +192,15 @@ public interface ProjProjectMapper
      */
     public int updateProjectCloseTime(@Param("id") Long id, @Param("closeTime") Date closeTime);
 
+    /**
+     * 人工修正办结时间（覆盖写入，不受「已有值更大」限制；前置校验在 Service 层）
+     *
+     * @param id        项目ID
+     * @param closeTime 新的办结时间
+     * @return 更新行数
+     */
+    public int updateCloseTimeManually(@Param("id") Long id, @Param("closeTime") Date closeTime);
+
     // ==================== 指令性任务（项目性质） ====================
 
     /**

@@ -471,6 +471,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where id = #{id}
     </update>
 
+    <!-- 人工修正办结时间：覆盖写入（与上面导入回填的「只补空 + 取较大值」语义相反）。
+         前置校验（项目存在 / 已办结或已归档 / 不晚于今天 / 不早于安排日期与创建时间）在 Service 层。 -->
+    <update id="updateCloseTimeManually">
+        update proj_project
+        set close_time = #{closeTime}, update_time = now()
+        where id = #{id} and del_flag = '0'
+    </update>
+
     <!-- 按合同ID查询关联项目（含类别名+合同单价） -->
     <select id="selectProjectsByContractId" parameterType="Long" resultType="map">
         select

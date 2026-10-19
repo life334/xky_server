@@ -107,6 +107,22 @@ public interface IProjProjectService
     public int completeProject(Long id);
 
     /**
+     * 人工修正项目办结时间（受限操作）
+     *
+     * <p>办结时间是产值归属、回款应收账期、欠款逾期预警的分片轴，因此：
+     * <ul>
+     *   <li>仅「已办结 / 已归档」项目可改（进行中项目没有办结时间语义）</li>
+     *   <li>不能晚于今天、不能早于安排日期与项目创建时间</li>
+     *   <li>改后自动重算总时长快照（安排日期 → 新办结日期的工作日数），保证超期口径一致</li>
+     * </ul>
+     *
+     * @param id        项目ID
+     * @param closeTime 新的办结时间
+     * @return 更新行数
+     */
+    public int updateProjectCloseTime(Long id, java.util.Date closeTime);
+
+    /**
      * 变更项目状态（校验流转规则）
      *
      * @param id 项目ID

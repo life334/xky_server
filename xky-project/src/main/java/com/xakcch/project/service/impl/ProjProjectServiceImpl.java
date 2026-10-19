@@ -716,6 +716,83 @@ public class ProjProjectServiceImpl implements IProjProjectService
     }
 
     /**
+     * 人工修正项目办结时间（受限操作）
+     *
+     * <p>办结时间决定产值归属月份、回款应收账期、欠款逾期天数，改之前必须：
+     * ① 项目处于 closed / archived；② 不晚于当前时刻（精确到秒）；③ 不早于安排日期与创建时间。
+     * 改完后重算总时长快照（安排日期 → 新办结日期的工作日数），否则「超期」口径会与表里对不上。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int updateProjectCloseTime(Long id, java.util.Date closeTime)
+    {
+        if (id == null)
+        {
+            throw new ServiceException("项目ID不能为空");
+        }
+        if (closeTime == null)
+        {
+            throw new ServiceException("请选择新的办结时间");
+        }
+        ProjProject project = projectMapper.selectProjectById(id);
+        if (project == null)
+        {
+            throw new ServiceException("项目不存在或已删除");
+        }
+        String status = project.getStatus();
+        if (!"closed".equals(status) && !"archived".equals(status))
+        {
+            throw new ServiceException("仅「已办结 / 已归档」的项目可以修改办结时间");
+        }
+
+        // 精确到秒：close_time 是 TIMESTAMP，办结时刻本身带时分秒（历史值的精度不能丢）
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
+        if (closeTime.after(new java.util.Date()))
+        {
+            throw new ServiceException("办结时间不能晚于当前时间");
+        }
+        String target = sdf.format(closeTime);
+        if (project.getAssignDate() != null)
+        {
+            String assign = sdf.format(project.getAssignDate());
+            if (target.compareTo(assign) < 0)
+            {
+                throw new ServiceException("办结时间不能早于安排日期（" + assign + "）");
+            }
+        }
+        if (project.getCreateTime() != null)
+        {
+            String create = sdf.format(project.getCreateTime());
+            if (target.compareTo(create) < 0)
+            {
+                throw new ServiceException("办结时间不能早于项目创建时间（" + create + "）");
+            }
+        }
+
+        int rows = projectMapper.updateCloseTimeManually(id, closeTime);
+        // 总时长快照跟随新办结时间重算（安排日期 → 办结日期，仅工作日，含头含尾）
+        resnapshotTotalDuration(project, WorkdayUtils.toLocalDate(closeTime));
+        return rows;
+    }
+
+    /** 按给定的办结日期重算总时长快照；无安排日期则不动（保持现状语义） */
+    private void resnapshotTotalDuration(ProjProject project, LocalDate closeDay)
+    {
+        if (project.getAssignDate() == null || closeDay == null)
+        {
+            return;
+        }
+        LocalDate assign = WorkdayUtils.toLocalDate(project.getAssignDate());
+        if (closeDay.isBefore(assign))
+        {
+            return; // 防御：正常路径已在上面拦截
+        }
+        Map<LocalDate, String> calendarMap = workdayCalendarService.getCalendarMap(assign, closeDay);
+        projectMapper.updateProjectTotalDuration(project.getId(),
+                WorkdayUtils.countWorkdays(assign, closeDay, calendarMap));
+    }
+
+    /**
      * 变更项目状态（校验流转规则）
      */
     @Override

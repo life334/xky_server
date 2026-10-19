@@ -308,6 +308,33 @@ public class ProjProjectController extends BaseController
     }
 
     /**
+     * 人工修正项目办结时间（受限操作）
+     *
+     * <p>办结时间是产值归属月份、回款应收账期、欠款逾期预警的分片轴，
+     * 因此单列权限 {@code project:project:closeTime}，默认只给超级管理员与生产管理。
+     */
+    @PreAuthorize("@ss.hasPermi('project:project:closeTime')")
+    @Log(title = "项目信息", businessType = BusinessType.UPDATE)
+    @PutMapping("/closeTime/{id}")
+    public AjaxResult editCloseTime(@PathVariable Long id, @RequestBody Map<String, String> body)
+    {
+        String closeTimeStr = body == null ? null : body.get("closeTime");
+        if (closeTimeStr == null || closeTimeStr.trim().isEmpty())
+        {
+            return error("请选择新的办结时间");
+        }
+        // ⚠️ DateUtils.parseDate 解析失败时返回 null（内部吞掉 ParseException），不抛异常，
+        //    所以必须判 null 而不是 try/catch，否则会拿着 null 往下走。
+        //    支持格式见 DateUtils.parsePatterns，含 "yyyy-MM-dd HH:mm:ss"。
+        java.util.Date closeTime = DateUtils.parseDate(closeTimeStr.trim());
+        if (closeTime == null)
+        {
+            return error("办结时间格式非法，应为 yyyy-MM-dd HH:mm:ss");
+        }
+        return toAjax(projectService.updateProjectCloseTime(id, closeTime));
+    }
+
+    /**
      * 批量新增项目（区域粘贴）
      * data 返回 { count: 成功条数, ids: 新写入记录ID列表 }
      */
@@ -326,7 +353,9 @@ public class ProjProjectController extends BaseController
     }
 
     /**
-     * 校验已办结项目仅超级管理员可操作（修改 / 变更状态）
+     * 校验已办结/已归档项目仅超级管理员可操作（修改 / 变更状态）
+     *
+     * <p>⚠️ archived 必须与 closed 同等对待：归档是数据终态，漏判会让任何有编辑权限的人改到归档项目。
      */
     private void checkClosedProject(Long projectId, String action)
     {
@@ -335,9 +364,9 @@ public class ProjProjectController extends BaseController
             return;
         }
         ProjProject exist = projectService.selectProjectById(projectId);
-        if (exist != null && "closed".equals(exist.getStatus()))
+        if (exist != null && ("closed".equals(exist.getStatus()) || "archived".equals(exist.getStatus())))
         {
-            throw new ServiceException("已办结项目仅超级管理员可" + action);
+            throw new ServiceException("已办结/已归档项目仅超级管理员可" + action);
         }
     }
 
@@ -353,9 +382,9 @@ public class ProjProjectController extends BaseController
         for (Long id : ids)
         {
             ProjProject exist = projectService.selectProjectById(id);
-            if (exist != null && "closed".equals(exist.getStatus()))
+            if (exist != null && ("closed".equals(exist.getStatus()) || "archived".equals(exist.getStatus())))
             {
-                throw new ServiceException("已办结项目仅超级管理员可" + action + "：'" + exist.getProjectName() + "'");
+                throw new ServiceException("已办结/已归档项目仅超级管理员可" + action + "：'" + exist.getProjectName() + "'");
             }
         }
     }
