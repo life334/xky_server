@@ -1,6 +1,7 @@
 package com.xakcch.web.controller.project;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -31,6 +32,7 @@ public class ProjDashboardController extends BaseController
      * @param beginDate 统计起始日期（yyyy-MM-dd），必填
      * @param endDate   统计截止日期（yyyy-MM-dd），必填
      */
+    @PreAuthorize("@ss.hasPermi('project:dashboard:view')")
     @GetMapping
     public AjaxResult getDashboard(@RequestParam String beginDate, @RequestParam String endDate)
     {
@@ -40,6 +42,7 @@ public class ProjDashboardController extends BaseController
     /**
      * 获取未读预警列表（合同超时等）
      */
+    @PreAuthorize("@ss.hasPermi('project:dashboard:view')")
     @GetMapping("/alerts")
     public AjaxResult getAlerts()
     {
@@ -61,6 +64,7 @@ public class ProjDashboardController extends BaseController
      * 段1 经营快照：6 磁贴（本年/本月合同额、本期新增/办结/到账/超期，含对比基准）+ KPI + 工期维护率。
      * 唯一首屏阻塞请求。
      */
+    @PreAuthorize("@ss.hasPermi('project:dashboard:view')")
     @GetMapping("/summary")
     public AjaxResult getSummary(com.xakcch.project.domain.ProjDashboardQuery query)
     {
@@ -70,6 +74,7 @@ public class ProjDashboardController extends BaseController
     /**
      * 段2+3 业务结构：类型 5 桶统计（数量/占比/合同额/内外产值）、本期办结占比、负责人×类型矩阵。
      */
+    @PreAuthorize("@ss.hasPermi('project:dashboard:view')")
     @GetMapping("/structure")
     public AjaxResult getStructure(com.xakcch.project.domain.ProjDashboardQuery query)
     {
@@ -79,6 +84,7 @@ public class ProjDashboardController extends BaseController
     /**
      * 段4 经营走势：外部产值月增量+累计双轴、项目动态三系列（新增/办结/到账）。
      */
+    @PreAuthorize("@ss.hasPermi('project:dashboard:view')")
     @GetMapping("/trend")
     public AjaxResult getTrend(com.xakcch.project.domain.ProjDashboardQuery query)
     {
@@ -88,6 +94,7 @@ public class ProjDashboardController extends BaseController
     /**
      * 段5 风险与执行：欠款按年（办结年口径）、风险行动清单（欠款/工期超期/未关联合同 三源合并 top15）、计数。
      */
+    @PreAuthorize("@ss.hasPermi('project:dashboard:view')")
     @GetMapping("/risk")
     public AjaxResult getRisk(com.xakcch.project.domain.ProjDashboardQuery query)
     {
