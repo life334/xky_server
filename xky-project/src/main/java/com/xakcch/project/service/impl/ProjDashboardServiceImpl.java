@@ -112,7 +112,8 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
                 pendingMaterial = ((Number) m.get("value")).intValue();
             }
         }
-        kpis.put("alertCount", overdueCount + pendingMaterial);
+        // ⚠️ 已移除 kpis.alertCount：它是 overdueCount + pendingMaterial 的重复口径，
+        // 且与「待办」语义混淆；现分别暴露 overdueCount / pendingMaterialCount。
         kpis.put("overdueCount", overdueCount);
         kpis.put("pendingMaterialCount", pendingMaterial);
 
@@ -549,7 +550,7 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
         counts.put("debtCount", debtCount);
         counts.put("overdueCount", overdueCount);
         counts.put("contractMissingCount", contractMissingCount);
-        counts.put("alertCount", getAlertCount());
+        counts.put("pendingMaterialCount", countPendingMaterial());
         data.put("counts", counts);
 
         // ---- 段5 右卡：项目产值排行 TOP10（复用旧接口 SQL，零新增） ----
@@ -911,9 +912,16 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
     }
 
     /** 待办预警计数（超期任务 + 待领取资料，沿用旧接口口径） */
-    private int getAlertCount()
+    /**
+     * 待流转资料数（段5 徽标「待流转资料」）。
+     *
+     * ⚠️ 旧实现 getAlertCount() = 工期超期数 + 待流转资料数，存在两处问题：
+     *   ① 与登录用户无关却取名「待办」，用户误以为是自己的待办；
+     *   ② overdueCount 被计了两次（徽标「工期超期 5」与「待办 8」中的 5 是同一批），重复计数。
+     * 现按构成项分别暴露（overdueCount 已在 counts 中），本方法只负责资料口径。
+     */
+    private int countPendingMaterial()
     {
-        int overdueCount = dashboardMapper.countOverdueTasks();
         int pendingMaterial = 0;
         for (Map<String, Object> m : dashboardMapper.materialFlowStats())
         {
@@ -922,7 +930,7 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
                 pendingMaterial = ((Number) m.get("value")).intValue();
             }
         }
-        return overdueCount + pendingMaterial;
+        return pendingMaterial;
     }
 
     private boolean notBlank(String s)

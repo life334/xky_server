@@ -25,6 +25,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="readTime"         column="read_time"/>
         <result property="doneTime"         column="done_time"/>
         <result property="ignoreReason"     column="ignore_reason"/>
+        <result property="claimedBy"        column="claimed_by"/>
+        <result property="claimTime"        column="claim_time"/>
+        <result property="claimedByName"    column="claimed_by_name"/>
         <result property="delFlag"          column="del_flag"/>
         <result property="createBy"         column="create_by"/>
         <result property="createTime"       column="create_time"/>
@@ -32,12 +35,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="updateTime"       column="update_time"/>
     </resultMap>
 
+    <!-- 认领人姓名：左连接 sys_user 直出，前端可显示「已由 XXX 认领」而无需二次查询 -->
     <sql id="selectNotifyVo">
-        select id, notify_type, todo_kind, biz_type, biz_id, project_id, project_code, project_name,
-               title, content, receiver_id, receiver_role_id, route_path, route_query,
-               priority, status, due_time, read_time, done_time, ignore_reason,
-               del_flag, create_by, create_time, update_by, update_time
-        from proj_notify
+        select n.id, n.notify_type, n.todo_kind, n.biz_type, n.biz_id, n.project_id, n.project_code, n.project_name,
+               n.title, n.content, n.receiver_id, n.receiver_role_id, n.route_path, n.route_query,
+               n.priority, n.status, n.due_time, n.read_time, n.done_time, n.ignore_reason,
+               n.claimed_by, n.claim_time, cu.nick_name as claimed_by_name,
+               n.del_flag, n.create_by, n.create_time, n.update_by, n.update_time
+        from proj_notify n
+        left join sys_user cu on cu.user_id = n.claimed_by
     </sql>
 
     <insert id="insertNotify" parameterType="com.xakcch.project.domain.ProjNotify" useGeneratedKeys="true" keyProperty="id">
@@ -55,26 +61,52 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <select id="selectNotifyList" resultMap="ProjNotifyResult">
         <include refid="selectNotifyVo"/>
-        where del_flag = '0' and receiver_id = #{receiverId}
+        where n.del_flag = '0' and n.receiver_id = #{receiverId}
         <if test="notifyType != null and notifyType != ''">
-            and notify_type = #{notifyType}
+            and n.notify_type = #{notifyType}
         </if>
         <if test="statusList != null and statusList.size() > 0">
-            and status in
+            and n.status in
             <foreach collection="statusList" item="s" open="(" separator="," close=")">
                 #{s}
             </foreach>
         </if>
-        order by create_time desc, id desc
+        order by n.create_time desc, n.id desc
     </select>
+
+    <!-- 待办「业务事实仍未完成」判定（与 autoCompleteDocTodos / SettleTodos / ContractTodos 反向同口径）。
+         ⚠️ 为什么角标统计要用业务事实、而不是直接数 status：
+         status 是靠 sweep 写进去的，而 sweep 只在「用户打开面板」和「每 5 分钟定时任务」时跑。
+         用户登记完资料马上回到列表页时，status 还是 read ⇒ 列表里已经看不到该待办，角标却还挂着数字。
+         这里直接按业务事实判定，角标与列表同源，且不产生任何写操作（summary 是 30s 轮询的只读接口）。
+         todo_kind 为 null/未知值时保持「未完成」，避免脏数据把待办从角标里漏掉。 -->
+    <sql id="todoBizOpen">
+        not coalesce(
+            (n.todo_kind = 'doc' and exists (select 1 from proj_material m
+                where m.project_id = n.project_id and m.del_flag = '0'
+                  and COALESCE(m.result_type, '') != ''))
+            or (n.todo_kind = 'settle' and exists (select 1 from proj_workload w
+                where w.project_id = n.project_id and w.del_flag = '0'
+                  and w.billing_type = 'external' and COALESCE(w.workload, 0) > 0))
+            or (n.todo_kind = 'contract' and exists (select 1 from proj_contract c
+                where c.id = n.biz_id and c.del_flag = '0'
+                  and (c.status = 'completed'
+                       or exists (select 1 from proj_contract_attachment a
+                                  where a.contract_id = c.id and a.del_flag = '0'
+                                    and a.file_category = 'contract' and a.is_final = '1')))),
+            false)
+    </sql>
 
     <select id="selectNotifySummary" resultType="com.xakcch.project.domain.vo.NotifySummaryVo">
         select
-            coalesce(sum(case when notify_type = 'todo' and status in ('unread','read') then 1 else 0 end), 0) as "todoCount",
-            coalesce(sum(case when notify_type = 'message' and status = 'unread' then 1 else 0 end), 0) as "messageCount",
-            coalesce(sum(case when notify_type = 'todo' and status in ('unread','read') and priority = 'high' then 1 else 0 end), 0) as "highTodoCount"
-        from proj_notify
-        where del_flag = '0' and receiver_id = #{receiverId}
+            coalesce(sum(case when n.notify_type = 'todo' and n.status in ('unread','read')
+                               and <include refid="todoBizOpen"/> then 1 else 0 end), 0) as "todoCount",
+            coalesce(sum(case when n.notify_type = 'message' and n.status = 'unread' then 1 else 0 end), 0) as "messageCount",
+            coalesce(sum(case when n.notify_type = 'todo' and n.status in ('unread','read') and n.priority = 'high'
+                               and <include refid="todoBizOpen"/> then 1 else 0 end), 0) as "highTodoCount",
+            coalesce(sum(case when n.notify_type = 'alert' and n.status in ('unread','read') then 1 else 0 end), 0) as "alertCount"
+        from proj_notify n
+        where n.del_flag = '0' and n.receiver_id = #{receiverId}
     </select>
 
     <select id="selectMaxId" resultType="Long">
@@ -82,13 +114,28 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where del_flag = '0' and receiver_id = #{receiverId}
     </select>
 
+    <!-- 增量：水位线之后**新到达**的待办与预警（消息不参与自动弹出）。
+         预警此前被漏掉（只查 todo）⇒ 预警只能靠手点铃铛才看得到，等于没有提醒。 -->
     <select id="selectIncrementTodos" resultMap="ProjNotifyResult">
         <include refid="selectNotifyVo"/>
-        where del_flag = '0' and receiver_id = #{receiverId}
-          and notify_type = 'todo' and status in ('unread','read')
-          and id > #{afterId}
-        order by id desc
+        where n.del_flag = '0' and n.receiver_id = #{receiverId}
+          and n.notify_type in ('todo','alert') and n.status in ('unread','read')
+          and n.id > #{afterId}
+        order by n.id desc
         limit 20
+    </select>
+
+    <!-- 登录首屏「今日待处理摘要」数据源：当前**全部**未完成待办 + 未处理预警（不含消息）。
+         ⚠️ 与增量接口的区别：不按 id 水位线，取全量未完成项。
+         早上登录时用户需要知道的是"今天还剩什么要办"，而不是"登录之后新来了什么"——
+         后者会让昨日派发、尚未处理的待办永远弹不出来（只能手点铃铛）。
+         排序：high 优先（预警的 severity 已映射到 priority），同级按时间倒序。 -->
+    <select id="selectOpenItems" resultMap="ProjNotifyResult">
+        <include refid="selectNotifyVo"/>
+        where n.del_flag = '0' and n.receiver_id = #{receiverId}
+          and n.notify_type in ('todo','alert') and n.status in ('unread','read')
+        order by case when n.priority = 'high' then 0 else 1 end, n.create_time desc, n.id desc
+        limit #{limit}
     </select>
 
     <update id="markRead">
@@ -104,11 +151,30 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
     </update>
 
+    <!-- 忽略：待办与预警共用（notify_type in todo/alert）；消息不参与"忽略"语义 -->
     <update id="ignoreTodo">
         update proj_notify set status = 'ignored', ignore_reason = #{reason}, update_time = now()
-        where id = #{id} and receiver_id = #{receiverId} and notify_type = 'todo'
+        where id = #{id} and receiver_id = #{receiverId} and notify_type in ('todo', 'alert')
           and status in ('unread','read') and del_flag = '0'
     </update>
+
+    <!-- 撤销忽略：回到 read（不是 unread，避免角标数字无意义地反弹） -->
+    <update id="unignoreTodo">
+        update proj_notify set status = 'read', ignore_reason = null, update_time = now()
+        where id = #{id} and receiver_id = #{receiverId} and notify_type in ('todo', 'alert')
+          and status = 'ignored' and del_flag = '0'
+    </update>
+
+    <!-- 单条查询（带 receiver_id 防越权） -->
+    <select id="selectNotifyById" resultMap="ProjNotifyResult">
+        <include refid="selectNotifyVo"/>
+        where n.del_flag = '0' and n.id = #{id} and n.receiver_id = #{receiverId}
+    </select>
+
+    <!-- 注：原「待办认领」三条语句（claimTodo / closeClaimedByOthers / selectClaimInfo）
+         及配套 selectNickNameByUserId 已下线。待办完结一律由业务事实驱动（见 autoComplete*Todos），
+         不再存在「谁先认领归谁、其余人自动关闭」的写入路径。
+         proj_notify.claimed_by / claim_time 列保留，仅用于历史 closed 数据的只读展示。 -->
 
     <update id="autoCompleteDocTodos">
         update proj_notify n set status = 'done', done_time = now(), update_time = now()
@@ -134,11 +200,26 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                         and w.billing_type = 'external' and COALESCE(w.workload, 0) > 0)
     </update>
 
+    <!-- 超期升级：以 due_time 为唯一口径。
+         due_time 在派发时按 notify.todo.due.days 写入；历史行由 28 号脚本回填。
+         coalesce 兜底仅为极端情况（due_time 被外部置空），正常情况下不会走到。 -->
     <update id="escalateOverdueTodos">
         update proj_notify set priority = 'high', update_time = now()
         where del_flag = '0' and notify_type = 'todo' and status in ('unread','read')
           and priority = 'normal'
-          and create_time &lt; now() - (#{dueDays} * interval '1 day')
+          and COALESCE(due_time, create_time + (#{dueDays} * interval '1 day')) &lt; now()
+        <if test="receiverId != null">
+            and receiver_id = #{receiverId}
+        </if>
+    </update>
+
+    <!-- 降级：due_time 尚未到期（如超期天数配置调大后）→ 从 high 降回 normal。
+         解决旧实现「一旦升 high 永不降级」的问题。 -->
+    <update id="deEscalateTodos">
+        update proj_notify set priority = 'normal', update_time = now()
+        where del_flag = '0' and notify_type = 'todo' and status in ('unread','read')
+          and priority = 'high'
+          and COALESCE(due_time, create_time) &gt;= now()
         <if test="receiverId != null">
             and receiver_id = #{receiverId}
         </if>
@@ -154,8 +235,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           and exists (select 1 from proj_contract c
                       where c.id = n.biz_id and c.del_flag = '0'
                         and (c.status = 'completed'
+                             -- 「存在任意附件」过宽：历史数据导入常自带附件，会导致待办从未出现或立刻消失。
+                             -- 收紧为「已上传签署件」= 合同正本(file_category='contract') 且 签章版(is_final='1')。
                              or exists (select 1 from proj_contract_attachment a
-                                        where a.contract_id = c.id and a.del_flag = '0')))
+                                        where a.contract_id = c.id and a.del_flag = '0'
+                                          and a.file_category = 'contract' and a.is_final = '1')))
     </update>
 
     <select id="selectReceiversByRoleKeys" resultType="map">

@@ -1,0 +1,42 @@
+-- =============================================================
+-- 下线「待办认领」能力：清理残留配置项
+-- 执行库：xky_project (PostgreSQL)
+-- 幂等：可重复执行
+--
+-- 背景：
+--   待办完结已改为纯「业务事实驱动」（登记资料 / 录入结算 / 签署合同 ⇒ sweep 自动置 done），
+--   前端认领按钮删除后，claim 接口没有任何调用入口，`notify.todo.claim.enabled`
+--   无论 true/false 都不再影响任何行为 —— 属于够不着的死开关，故删除。
+--   代码侧同步移除：ProjNotifyController 的 PUT /claim/{id}、claimTodo/isClaimEnabled/
+--   claimerName 服务方法、mapper 的 claimTodo/closeClaimedByOthers/selectClaimInfo/
+--   selectNickNameByUserId，以及前端 api/project/notify.js 的 notifyClaim。
+--
+-- 保留项（只读兼容）：
+--   proj_notify.claimed_by / claim_time 列与 idx_proj_notify_claim 索引**不删**，
+--   历史 status='closed' 记录仍需展示「已被谁认领处理」，删列会让老数据渲染错乱。
+-- =============================================================
+
+-- ---------------- 1. 删除失效配置项 ----------------
+DELETE FROM sys_config WHERE config_key = 'notify.todo.claim.enabled';
+
+-- ---------------- 2. ⚠️ 必须刷新配置缓存 ----------------
+-- RuoYi 的 ISysConfigService.selectConfigByKey 走 Redis 缓存（key 前缀 sys_config:）。
+-- 仅执行上面的 DELETE 不会自动清缓存，旧值仍在内存/Redis 里。
+-- 处理方式（任选其一）：
+--   ① 后台「系统管理 → 参数设置」点「刷新缓存」；
+--   ② redis-cli DEL "sys_config:notify.todo.claim.enabled"；
+--   ③ 重启后端服务。
+-- 说明：本次已无任何代码读取该 key，缓存残留不影响运行，但清掉更干净。
+
+-- ---------------- 3. 验收查询 ----------------
+-- ① 确认配置项已删除（期望 0 行）
+-- SELECT count(*) FROM sys_config WHERE config_key = 'notify.todo.claim.enabled';
+--
+-- ② 确认历史认领数据规模（决定是否要做后续收尾；非 0 则保留列与前端只读分支）
+-- SELECT count(*) FILTER (WHERE status = 'closed')   AS closed_rows,
+--        count(*) FILTER (WHERE claimed_by IS NOT NULL) AS claimed_rows
+--   FROM proj_notify WHERE del_flag = '0';
+--
+-- ③ 确认无新的 closed 产生（上线一段时间后再跑，期望与 ② 一致）
+-- SELECT status, count(*) FROM proj_notify
+--  WHERE del_flag = '0' AND notify_type = 'todo' GROUP BY status ORDER BY 1;

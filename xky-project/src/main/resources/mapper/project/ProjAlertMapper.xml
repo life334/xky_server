@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xakcch.project.mapper.ProjAlertMapper">
+
+    <!-- ============================================================
+         规则一：欠款逾期
+         口径与首页「应收欠款」一致：欠款 = 外部产值 − 已到账（外协产值为 0 时按 0 计），
+         GREATEST(...,0) 防负值；指令性项目不计外部产值。
+         ⚠️ 全量口径：不加驾驶舱的时间/负责人/类别筛选条件。
+         ============================================================ -->
+    <select id="selectDebtCandidates" resultType="map">
+        SELECT p.id                                              AS "projectId",
+               p.project_code                                    AS "projectCode",
+               p.project_name                                    AS "projectName",
+               p.close_time                                      AS "closeTime",
+               GREATEST(CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN 0
+                             ELSE COALESCE(ws.ext_out, 0) END - COALESCE(ps.recv, 0), 0) AS "amount",
+               (CURRENT_DATE - p.close_time::date)               AS "days"
+        FROM proj_project p
+        LEFT JOIN (
+            SELECT project_id, SUM(COALESCE(external_output, 0)) AS ext_out
+            FROM proj_workload WHERE del_flag = '0'
+            GROUP BY project_id
+        ) ws ON ws.project_id = p.id
+        LEFT JOIN (
+            SELECT project_id,
+                   SUM(CASE WHEN payment_type = 'refund' THEN -COALESCE(amount, 0)
+                            ELSE COALESCE(amount, 0) END) AS recv
+            FROM proj_payment WHERE del_flag = '0' AND pay_time IS NOT NULL
+            GROUP BY project_id
+        ) ps ON ps.project_id = p.id
+        WHERE p.del_flag = '0'
+          AND p.close_time IS NOT NULL
+          AND GREATEST(CASE WHEN COALESCE(p.project_nature, 'normal') = 'mandate' THEN 0
+                            ELSE COALESCE(ws.ext_out, 0) END - COALESCE(ps.recv, 0), 0) &gt;= #{minAmount}
+          AND (CURRENT_DATE - p.close_time::date) &gt;= #{minDays}
+        ORDER BY "days" DESC
+    </select>
+
+    <!-- ============================================================
+         规则二：工期超期
+         只取「尚未办结」的项目 —— 预警的意义是催办，已办结的项目无从行动
+         （注：首页风险区口径包含"已办结但历史超期"，两者数字不同属正常）。
+         是否真超期由 Java 层按工作日历判定：deadline = assign_date + duration_require 个工作日。
+         ============================================================ -->
+    <select id="selectOverdueCandidates" resultType="map">
+        SELECT p.id                       AS "projectId",
+               p.project_code             AS "projectCode",
+               p.project_name             AS "projectName",
+               p.assign_date              AS "assignDate",
+               p.duration_require         AS "durationRequire"
+        FROM proj_project p
+        WHERE p.del_flag = '0'
+          AND p.data_source = 'manual'
+          AND p.close_time IS NULL
+          AND p.assign_date IS NOT NULL
+          AND p.duration_require IS NOT NULL
+          AND p.duration_require &gt; 0
+    </select>
+
+    <!-- ============================================================
+         规则三：未关联合同
+         仅手动录入、尚未关联合同、且创建于今天之前。
+         是否越过阈值由 Java 层判定：deadline = create_time + N 个工作日。
+         ============================================================ -->
+    <select id="selectContractMissingCandidates" resultType="map">
+        SELECT p.id                       AS "projectId",
+               p.project_code             AS "projectCode",
+               p.project_name             AS "projectName",
+               p.create_time              AS "createTime"
+        FROM proj_project p
+        WHERE p.del_flag = '0'
+          AND p.data_source = 'manual'
+          AND p.contract_id IS NULL
+          AND p.create_time IS NOT NULL
+          AND p.create_time::date &lt; CURRENT_DATE
+    </select>
+
+    <!-- ============================================================
+         写入/刷新预警（幂等 upsert）
+         唯一索引 uk_proj_notify_biz(biz_type, biz_id, receiver_id) where del_flag='0'
+         ⇒ 同一项目同一规则对同一接收人只存在一行。
+         冲突时：刷新文案/严重度/落地参数；done 行复活为 unread；ignored 行保持不动。
+         ============================================================ -->
+    <insert id="insertAlert" parameterType="com.xakcch.project.domain.ProjNotify">
+        insert into proj_notify (
+            notify_type, biz_type, biz_id, project_id, project_code, project_name,
+            title, content, receiver_id, receiver_role_id, route_path, route_query,
+            priority, status, create_by, create_time
+        ) values (
+            'alert', #{bizType}, #{bizId}, #{projectId}, #{projectCode}, #{projectName},
+            #{title}, #{content}, #{receiverId}, #{receiverRoleId}, #{routePath}, #{routeQuery},
+            #{priority}, #{status}, #{createBy}, now()
+        )
+        on conflict (biz_type, biz_id, receiver_id) where del_flag = '0' do update
+           set title        = excluded.title,
+               content      = excluded.content,
+               project_name = excluded.project_name,
+               priority     = excluded.priority,
+               route_query  = excluded.route_query,
+               update_time  = now(),
+               status       = case when proj_notify.status = 'done' then 'unread' else proj_notify.status end,
+               done_time    = case when proj_notify.status = 'done' then null else proj_notify.done_time end
+    </insert>
+
+    <!-- 自动消解：今日不再命中的未处理预警 → done（风险已解除，保留记录可追溯） -->
+    <update id="resolveAlerts">
+        update proj_notify
+           set status = 'done', done_time = now(), update_time = now()
+        where del_flag = '0' and notify_type = 'alert' and biz_type = #{bizType}
+          and status in ('unread', 'read')
+        <choose>
+            <when test="keepIds != null and keepIds.size() > 0">
+                and biz_id not in
+                <foreach collection="keepIds" item="k" open="(" separator="," close=")">
+                    #{k}
+                </foreach>
+            </when>
+            <otherwise>
+                <!-- 今日无人命中 ⇒ 现存未处理的全部消解 -->
+                and 1 = 1
+            </otherwise>
+        </choose>
+    </update>
+
+    <!-- 按角色 key 查接收人 -->
+    <select id="selectReceiversByRoleKeys" resultType="map">
+        select ur.user_id as "userId", ur.role_id as "roleId", r.role_key as "roleKey"
+        from sys_user_role ur
+        join sys_role r on r.role_id = ur.role_id
+        join sys_user u on u.user_id = ur.user_id
+        where r.del_flag = '0' and r.status = '0' and u.del_flag = '0' and u.status = '0'
+          and r.role_key in
+        <foreach collection="roleKeys" item="k" open="(" separator="," close=")">
+            #{k}
+        </foreach>
+    </select>
+
+    <!-- 按用户 id 查接收人（roleId 取其首个有效角色，用于冗余记录） -->
+    <select id="selectReceiversByUserIds" resultType="map">
+        select u.user_id as "userId",
+               (select ur.role_id from sys_user_role ur
+                  join sys_role r on r.role_id = ur.role_id
+                 where ur.user_id = u.user_id and r.del_flag = '0' and r.status = '0'
+                 order by ur.role_id limit 1) as "roleId"
+        from sys_user u
+        where u.del_flag = '0' and u.status = '0'
+          and u.user_id in
+        <foreach collection="userIds" item="k" open="(" separator="," close=")">
+            #{k}
+        </foreach>
+    </select>
+
+</mapper>

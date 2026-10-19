@@ -8,9 +8,11 @@ import com.xakcch.common.core.domain.BaseEntity;
  * 站内待办与消息对象 proj_notify（按接收人一行）
  *
  * notify_type: todo 待办（需完成，业务状态反推自动完成）| message 消息（已读即消）
- * todo_kind:   doc 档案管理登记资料 | settle 生产管理录入结算（仅 todo 有值）
- * status:      unread 未读 | read 已读 | done 已完成（自动）| ignored 已忽略
- * priority:     normal | high（待办超期升级）
+ * todo_kind:   doc 登记资料 | settle 录入结算 | contract 合同签署（仅 todo 有值）
+ * status:      unread 未读 | read 已读 | done 已完成（自动）
+ *              | ignored 已忽略（须填原因，可撤销）
+ *              | closed 历史遗留状态（认领能力已下线，仅存量数据存在，不再新增）
+ * priority:    normal | high（超过 due_time 升级；due_time 前移后可降级回 normal）
  *
  * @author liuyonghui
  */
@@ -81,6 +83,16 @@ public class ProjNotify extends BaseEntity
     /** 忽略原因 */
     private String ignoreReason;
 
+    /** 认领人用户 id（角色群发待办：谁先认领归谁，其余人自动关闭） */
+    private Long claimedBy;
+
+    /** 认领时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date claimTime;
+
+    /** 认领人姓名（冗余，列表直出；未认领为 null） */
+    private String claimedByName;
+
     /** 删除标志（0正常 2删除） */
     private String delFlag;
 
@@ -143,6 +155,15 @@ public class ProjNotify extends BaseEntity
 
     public String getIgnoreReason() { return ignoreReason; }
     public void setIgnoreReason(String ignoreReason) { this.ignoreReason = ignoreReason; }
+
+    public Long getClaimedBy() { return claimedBy; }
+    public void setClaimedBy(Long claimedBy) { this.claimedBy = claimedBy; }
+
+    public Date getClaimTime() { return claimTime; }
+    public void setClaimTime(Date claimTime) { this.claimTime = claimTime; }
+
+    public String getClaimedByName() { return claimedByName; }
+    public void setClaimedByName(String claimedByName) { this.claimedByName = claimedByName; }
 
     public String getDelFlag() { return delFlag; }
     public void setDelFlag(String delFlag) { this.delFlag = delFlag; }

@@ -4,6 +4,7 @@ import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -100,6 +101,8 @@ public class ProjNotifyServiceImpl implements IProjNotifyService
         String code = StringUtils.defaultString(project.getProjectCode(), String.valueOf(projectId));
         String name = StringUtils.defaultString(project.getProjectName(), code);
         String routeQuery = "projectCode=" + code + "&from=notify";
+        // due_time 在派发时一次性写入（超期判定的唯一口径）；循环内复用，避免逐条读配置
+        Date dueTime = buildDueTime();
         int sent = 0;
         for (Map<String, Object> rc : receivers)
         {
@@ -126,6 +129,7 @@ public class ProjNotifyServiceImpl implements IProjNotifyService
             {
                 n.setNotifyType("todo");
                 n.setTodoKind(todoKind);
+                n.setDueTime(dueTime);
                 if ("doc".equals(todoKind))
                 {
                     n.setTitle("登记项目资料");
@@ -205,6 +209,7 @@ public class ProjNotifyServiceImpl implements IProjNotifyService
         String creator = StringUtils.defaultString(operator, "系统");
         // 冗余列复用：project_code=合同编号、project_name=合同名称 ⇒ 通知卡片副标题自动显示「合同名称（编号）」
         String routeQuery = (no.isEmpty() ? ("contractId=" + contractId) : ("contractNo=" + no)) + "&from=notify";
+        Date dueTime = buildDueTime();
         int sent = 0;
         for (Map<String, Object> rc : receivers)
         {
@@ -217,6 +222,7 @@ public class ProjNotifyServiceImpl implements IProjNotifyService
             ProjNotify n = new ProjNotify();
             n.setNotifyType("todo");
             n.setTodoKind("contract");
+            n.setDueTime(dueTime);
             n.setBizType("contract_created");
             n.setBizId(contractId);
             n.setProjectCode(no.isEmpty() ? null : no);
@@ -239,10 +245,17 @@ public class ProjNotifyServiceImpl implements IProjNotifyService
         }
     }
 
+    /**
+     * 角标摘要。
+     *
+     * ⚠️ 此处<b>不做</b> sweep：前端每 30s 轮询一次，GET 里跑 4 条 UPDATE 既是语义错误
+     * （只读接口带写副作用），也会在多人在线/多标签页时放大为无谓的行锁竞争。
+     * 待办的「做完立刻消」由两处保障：① 用户主动打开面板时 list() 即时 sweep；
+     * ② NotifyScheduleConfig 的定时任务（每 5 分钟）全量 sweep。
+     */
     @Override
     public NotifySummaryVo summary(Long userId)
     {
-        sweepUser(userId);
         NotifySummaryVo vo = notifyMapper.selectNotifySummary(userId);
         if (vo == null)
         {
@@ -255,18 +268,44 @@ public class ProjNotifyServiceImpl implements IProjNotifyService
     }
 
     @Override
-    public List<ProjNotify> selectNotifyList(Long userId, String notifyType, boolean onlyOpen)
+    public List<ProjNotify> selectNotifyList(Long userId, String notifyType, List<String> statusList)
     {
+        // 保留即时 sweep：本接口仅在用户主动打开通知面板时调用（低频），
+        // 且「打开就看到最新状态」是用户可感知的体验关键。
         sweepUser(userId);
-        List<String> statusList = onlyOpen ? Arrays.asList("unread", "read") : null;
         return notifyMapper.selectNotifyList(userId, notifyType, statusList);
     }
 
+    /**
+     * 自动弹出增量。
+     *
+     * ⚠️ 不做 sweep：本接口只查「水位线之后新增的待办与预警」，新增项不存在"已完成"的可能；
+     * 且它在弹出链路中被高频调用，写操作无收益。
+     */
     @Override
     public List<ProjNotify> selectIncrement(Long userId, Long afterId)
     {
-        sweepUser(userId);
         return notifyMapper.selectIncrementTodos(userId, afterId == null ? 0L : afterId);
+    }
+
+    /**
+     * 登录首屏「今日待处理摘要」。
+     *
+     * ⚠️ 这里做一次 sweep（与打开面板同口径）：否则早上登录时，昨天已经登记完资料、
+     * 但 status 还停在 read 的待办会被当成"今天还要办"弹给用户。
+     * 只在登录首屏调用一次，写操作次数可控。
+     */
+    @Override
+    public List<ProjNotify> selectOpenItems(Long userId)
+    {
+        sweepUser(userId);
+        return notifyMapper.selectOpenItems(userId, 20);
+    }
+
+    @Override
+    public int unignoreTodo(Long id, Long userId)
+    {
+        return notifyMapper.unignoreTodo(id, userId);
     }
 
     @Override
@@ -294,22 +333,36 @@ public class ProjNotifyServiceImpl implements IProjNotifyService
     @Override
     public int sweepAll()
     {
+        int dueDays = getIntConfig(CONFIG_TODO_DUE, 3);
         int docDone = notifyMapper.autoCompleteDocTodos(null);
         int settleDone = notifyMapper.autoCompleteSettleTodos(null);
         int contractDone = notifyMapper.autoCompleteContractTodos(null);
-        int escalated = notifyMapper.escalateOverdueTodos(null, getIntConfig(CONFIG_TODO_DUE, 3));
-        log.info("[notify] 每日sweep：资料待办完成 {}，结算待办完成 {}，合同待办完成 {}，超期升级 {}",
-                docDone, settleDone, contractDone, escalated);
-        return docDone + settleDone + contractDone + escalated;
+        int escalated = notifyMapper.escalateOverdueTodos(null, dueDays);
+        int deEscalated = notifyMapper.deEscalateTodos(null);
+        log.info("[notify] 全量sweep：资料完成 {}，结算完成 {}，合同完成 {}，超期升级 {}，到期降级 {}",
+                docDone, settleDone, contractDone, escalated, deEscalated);
+        return docDone + settleDone + contractDone + escalated + deEscalated;
     }
 
-    /** 当前用户即时 sweep（角标/列表查询前执行，保证"做完立刻消"） */
+    /**
+     * 当前用户即时 sweep（仅 selectNotifyList 调用，保证"打开面板就看到最新状态"）。
+     * 顺序固定：先自动完成 → 再升级 → 最后降级（避免同一行被升级后又被降级来回抖动）。
+     */
     private void sweepUser(Long userId)
     {
+        int dueDays = getIntConfig(CONFIG_TODO_DUE, 3);
         notifyMapper.autoCompleteDocTodos(userId);
         notifyMapper.autoCompleteSettleTodos(userId);
         notifyMapper.autoCompleteContractTodos(userId);
-        notifyMapper.escalateOverdueTodos(userId, getIntConfig(CONFIG_TODO_DUE, 3));
+        notifyMapper.escalateOverdueTodos(userId, dueDays);
+        notifyMapper.deEscalateTodos(userId);
+    }
+
+    /** 生成待办到期时间：now + notify.todo.due.days 天 */
+    private Date buildDueTime()
+    {
+        int dueDays = getIntConfig(CONFIG_TODO_DUE, 3);
+        return new Date(System.currentTimeMillis() + (long) Math.max(1, dueDays) * 24 * 60 * 60 * 1000L);
     }
 
     /** 填充自动弹出策略（服务端判定免打扰，前端无需重复实现） */

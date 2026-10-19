@@ -5,8 +5,8 @@ package com.xakcch.project.domain.vo;
  *
  * todoCount     未完成待办数（红点数字）
  * messageCount  未读消息数
- * highTodoCount 其中超期升级为 high 的待办数（琥珀点）
- * alertCount    预警数（P0 无预警规则，恒 0）
+ * highTodoCount 其中已超期（priority=high）的待办数
+ * alertCount    未处理预警数（notify_type=alert，由每日 08:30 定时扫描产生）
  * popup*        自动弹出策略（服务端判定，前端无需重复实现）
  *
  * @author liuyonghui
@@ -19,10 +19,10 @@ public class NotifySummaryVo
     /** 未读消息数 */
     private Integer messageCount = 0;
 
-    /** 高优先级待办数（priority=high） */
+    /** 高优先级待办数（priority=high，即已超期） */
     private Integer highTodoCount = 0;
 
-    /** 预警数（P0 恒 0） */
+    /** 未处理预警数（notify_type=alert 且未完成） */
     private Integer alertCount = 0;
 
     /** 当前用户最新通知 id（前端水位线） */

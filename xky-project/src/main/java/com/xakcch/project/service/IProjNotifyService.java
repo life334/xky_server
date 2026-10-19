@@ -34,22 +34,33 @@ public interface IProjNotifyService
     public void onContractCreated(Long contractId, String operator, Long operatorUserId);
 
     /**
-     * 角标摘要（含自动弹出策略；查询前先做即时 sweep：自动完成 + 超期升级）
+     * 角标摘要（含自动弹出策略）。
+     *
+     * ⚠️ 只读：不做 sweep。本接口被前端 30s 轮询，GET 里跑 UPDATE 既语义错误又放大锁竞争。
      */
     public NotifySummaryVo summary(Long userId);
 
     /**
-     * 通知列表（查询前先做即时 sweep）
+     * 通知列表（查询前做即时 sweep，保证"打开面板就看到最新状态"）。
      *
      * @param notifyType todo | message（null=全部）
-     * @param onlyOpen   true=仅未完成（unread/read）；false=全部状态
+     * @param statusList 状态集合（null=全部）：unread/read=未完成；done=已完成；
+     *                   ignored=已忽略；closed=历史遗留（认领能力已下线，仅历史数据存在）
      */
-    public List<ProjNotify> selectNotifyList(Long userId, String notifyType, boolean onlyOpen);
+    public List<ProjNotify> selectNotifyList(Long userId, String notifyType, List<String> statusList);
 
     /**
-     * 自动弹出增量：水位线之后的未完成待办
+     * 自动弹出增量：水位线之后新到达的未完成待办与预警（只读，不做 sweep）
      */
     public List<ProjNotify> selectIncrement(Long userId, Long afterId);
+
+    /**
+     * 登录首屏「今日待处理摘要」：当前全部未完成待办 + 未处理预警（不含消息）。
+     *
+     * ⚠️ 会先对该用户跑一次 sweep：业务上已完成的待办不应出现在"今天还要办"的清单里。
+     * 只在登录首屏触发一次，写操作次数可控。
+     */
+    public List<ProjNotify> selectOpenItems(Long userId);
 
     /**
      * 单条已读（防越权：仅接收人本人）
@@ -67,7 +78,12 @@ public interface IProjNotifyService
     public int ignoreTodo(Long id, Long userId, String reason);
 
     /**
-     * 全量 sweep（定时任务每日执行）：自动完成两类待办 + 超期升级
+     * 撤销忽略（status 回退为 read）。解决"忽略后不可恢复"的问题。
+     */
+    public int unignoreTodo(Long id, Long userId);
+
+    /**
+     * 全量 sweep（定时任务）：自动完成三类待办 + 超期升级 + 到期降级
      */
     public int sweepAll();
 }

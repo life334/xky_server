@@ -23,7 +23,8 @@ public interface ProjNotifyMapper
      *
      * @param receiverId 接收用户 id（必填）
      * @param notifyType todo | message（可选）
-     * @param status     unread | read | done | ignored（可选；查"未完成待办"传 unread,read 由 XML in 处理）
+     * @param statusList 状态集合（可选）：unread/read=未完成；done=已完成；ignored=已忽略；
+     *                   closed=历史遗留（认领能力已下线）；null=全部
      */
     public List<ProjNotify> selectNotifyList(@Param("receiverId") Long receiverId,
                                               @Param("notifyType") String notifyType,
@@ -40,10 +41,17 @@ public interface ProjNotifyMapper
     public Long selectMaxId(@Param("receiverId") Long receiverId);
 
     /**
-     * 水位线之后的未完成待办（自动弹出的增量数据）
+     * 水位线之后新到达的未完成待办与预警（自动弹出的增量数据）
      */
     public List<ProjNotify> selectIncrementTodos(@Param("receiverId") Long receiverId,
                                                  @Param("afterId") Long afterId);
+
+    /**
+     * 当前全部未完成待办 + 未处理预警（登录首屏「今日待处理摘要」用，不含消息）
+     *
+     * @param limit 上限（防止一天积压上百条时把弹出卡撑爆）
+     */
+    public List<ProjNotify> selectOpenItems(@Param("receiverId") Long receiverId, @Param("limit") int limit);
 
     /**
      * 单条已读（校验接收人，防越权）
@@ -63,6 +71,16 @@ public interface ProjNotifyMapper
                           @Param("reason") String reason);
 
     /**
+     * 撤销忽略：status 回退为 read，清空 ignore_reason
+     */
+    public int unignoreTodo(@Param("id") Long id, @Param("receiverId") Long receiverId);
+
+    /**
+     * 单条查询（带 receiver_id 校验，防越权）
+     */
+    public ProjNotify selectNotifyById(@Param("id") Long id, @Param("receiverId") Long receiverId);
+
+    /**
      * 自动完成「档案管理登记资料」待办：
      * 项目存在 proj_material 且 COALESCE(result_type,'') <> ''（⚠️ 空串坑：全库为 '' 非 NULL）
      *
@@ -79,15 +97,26 @@ public interface ProjNotifyMapper
 
     /**
      * 自动完成「合同待签署」待办：
-     * 对应合同 proj_contract.status='completed'，或已存在签署附件（proj_contract_attachment）
+     * 对应合同 proj_contract.status='completed'，或已上传<b>签署件</b>
+     * （proj_contract_attachment 中 file_category='contract' 且 is_final='1'）。
+     *
+     * ⚠️ 不可放宽为"存在任意附件"：历史数据导入常自带附件，会导致待办从未出现或立刻消失。
      */
     public int autoCompleteContractTodos(@Param("receiverId") Long receiverId);
 
     /**
-     * 待办超期升级为 high
+     * 待办超期升级为 high（以 due_time 为唯一口径）
+     *
+     * @param dueDays 仅用于 due_time 为空时的兜底计算（正常情况下 due_time 必有值）
      */
     public int escalateOverdueTodos(@Param("receiverId") Long receiverId,
                                     @Param("dueDays") int dueDays);
+
+    /**
+     * 待办降级：due_time 尚未到期 → 从 high 降回 normal。
+     * 解决「一旦升 high 永不降级」（如超期天数配置调大后旧行仍显示超期）。
+     */
+    public int deEscalateTodos(@Param("receiverId") Long receiverId);
 
     /**
      * 按角色 key 解析接收用户（sys_user_role × sys_role）
