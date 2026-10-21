@@ -18,6 +18,10 @@ set CONFIG_YML=%APP_DIR%config\application.yml
 set CONFIG_DRUID=%APP_DIR%config\application-druid.yml
 set CONFIG_PROD=%APP_DIR%config\application-prod.yml
 
+rem 切到脚本所在目录：保证 ./xky-pgtools、./uploadPath、./logs 等相对路径都能找到
+rem （以服务/计划任务方式启动时，工作目录可能是 C:\Windows\System32）
+cd /d "%APP_DIR%"
+
 if "%1"=="" (
     echo [错误] 未输入操作名，用法: run.bat {start^|stop^|restart^|status}
     exit /b 1

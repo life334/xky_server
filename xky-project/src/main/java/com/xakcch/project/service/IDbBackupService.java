@@ -64,4 +64,22 @@ public interface IDbBackupService
      * 用于核对 pg_dump 主版本是否 >= 服务端主版本（旧版 pg_dump 无法备份新版服务端）
      */
     String serverVersion();
+
+    /**
+     * pg_restore 可执行文件路径（恢复用，与 pg_dump 同目录）；不可用时返回 null。
+     * 仅用于在页面上展示"恢复工具是否就绪"并生成恢复命令，系统本身不执行恢复。
+     */
+    String resolvePgRestore();
+
+    /**
+     * pg_restore 版本描述（如 "pg_restore (PostgreSQL) 16.2"）；不可用时返回空串
+     */
+    String pgRestoreVersion();
+
+    /**
+     * 当前主数据源的连接信息 { host, port, dbName, user }；解析失败返回空 Map。
+     * 供页面生成恢复命令时填入真实地址，避免把库地址硬编码在提示里。
+     * ⚠️ 不含密码：密码永远不返回前端。
+     */
+    Map<String, String> connectionInfo();
 }

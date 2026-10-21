@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.xakcch.common.annotation.Log;
@@ -64,6 +65,17 @@ public class DbBackupController extends BaseController
         data.put("pgDump", pgDump == null ? "" : pgDump);
         data.put("pgDumpReady", pgDump != null);
         data.put("pgDumpVersion", dbBackupService.pgDumpVersion());
+        // 恢复工具（只用于页面展示"能否恢复"并生成恢复命令，系统本身不执行恢复）
+        String pgRestore = dbBackupService.resolvePgRestore();
+        data.put("pgRestore", pgRestore == null ? "" : pgRestore);
+        data.put("pgRestoreReady", pgRestore != null);
+        data.put("pgRestoreVersion", dbBackupService.pgRestoreVersion());
+        // 连接信息（不含密码）—— 让页面生成的恢复命令带真实地址，而不是硬编码
+        Map<String, String> conn = dbBackupService.connectionInfo();
+        data.put("host", conn.getOrDefault("host", ""));
+        data.put("port", conn.getOrDefault("port", ""));
+        data.put("dbName", conn.getOrDefault("dbName", ""));
+        data.put("user", conn.getOrDefault("user", ""));
         data.put("serverVersion", dbBackupService.serverVersion());
         return success(data);
     }
@@ -92,8 +104,12 @@ public class DbBackupController extends BaseController
 
     /**
      * 下载备份文件
+     *
+     * <p>⚠️ 必须同时支持 GET 与 POST：前端统一走 {@code proxy.download()}（RuoYi 全局方法固定用
+     * POST + form-urlencoded 传参），只写 {@code @GetMapping} 会直接 405。保留 GET 是为了
+     * 浏览器直接开链接下载也能用。</p>
      */
-    @GetMapping("/download")
+    @RequestMapping(value = "/download", method = { RequestMethod.GET, RequestMethod.POST })
     public void download(String name, HttpServletResponse response)
     {
         if (!SecurityUtils.isAdmin())

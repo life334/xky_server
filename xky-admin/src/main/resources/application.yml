@@ -25,11 +25,13 @@ xky-project:
     # 备份文件保留天数（超过的旧文件自动删除；0 表示不清理）
     keepDays: 7
     # pg_dump 可执行文件路径；留空则自动探测，顺序为：
-    #   ① 应用目录下 pgtools/（免安装绿色版，推荐：只需 pg_dump.exe + libpq.dll + zlib.dll
-    #      + libssl-3-x64.dll + libcrypto-3-x64.dll 五个文件，约 7MB，不必安装 PostgreSQL）
+    #   ① 应用目录（jar 同级、其上级、当前工作目录）下的 xky-pgtools/ 或 pgtools/
+    #      （免安装绿色版，推荐：只需 pg_dump.exe + libpq.dll + zlib.dll
+    #      + libssl-3-x64.dll + libcrypto-3-x64.dll 五个文件，约 7MB，不必安装 PostgreSQL；
+    #      恢复用的 pg_restore.exe 放同一目录即可被自动识别）
     #   ② PATH  ③ PostgreSQL 常见安装目录
     # 注意：pg_dump 主版本号需 >= 数据库主版本号（如 14.x 的库需 14 或更高版本的 pg_dump）
-    pgDumpPath:
+    pgDumpPath: ./xky-pgtools/pg_dump.exe
     # 单次备份超时时间（分钟）
     timeoutMinutes: 30
 

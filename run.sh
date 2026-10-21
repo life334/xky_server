@@ -5,6 +5,8 @@ APP_DIR=$(cd "$(dirname "$0")" && pwd)
 JAR_FILE="$APP_DIR/$AppName"
 LOG_DIR="$APP_DIR/logs"
 PID_FILE="$LOG_DIR/$APP_NAME.pid"
+# 切到脚本所在目录：保证 ./xky-pgtools、./uploadPath、./logs 等相对路径都能找到
+cd "$APP_DIR" || exit 1
 JAVA_HOME="/usr/local/java/jdk-17.0.10+7"
 export JAVA_HOME
 export PATH="$JAVA_HOME/bin:$PATH"

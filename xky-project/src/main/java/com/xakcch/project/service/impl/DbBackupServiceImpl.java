@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.system.ApplicationHome;
 import org.springframework.stereotype.Service;
 
 import com.alibaba.druid.pool.DruidDataSource;
@@ -69,6 +70,12 @@ public class DbBackupServiceImpl implements IDbBackupService
     private volatile boolean pgDumpResolved;
     /** pg_dump 版本缓存 */
     private volatile String pgDumpVersionCache;
+    /** pg_restore 探测结果缓存（恢复用；系统本身不执行恢复，仅页面展示与生成命令） */
+    private volatile String pgRestoreCache;
+    /** pg_restore 已探测标记 */
+    private volatile boolean pgRestoreResolved;
+    /** pg_restore 版本缓存 */
+    private volatile String pgRestoreVersionCache;
 
     @Value("${xky-project.backup.enabled:true}")
     private boolean enabled;
@@ -387,43 +394,118 @@ public class DbBackupServiceImpl implements IDbBackupService
     @Override
     public String pgDumpVersion()
     {
-        if (pgDumpVersionCache != null)
+        if (pgDumpVersionCache == null)
         {
-            return pgDumpVersionCache;
+            synchronized (this)
+            {
+                if (pgDumpVersionCache == null)
+                {
+                    pgDumpVersionCache = runVersion(resolvePgDump());
+                }
+            }
+        }
+        return pgDumpVersionCache;
+    }
+
+    @Override
+    public String pgRestoreVersion()
+    {
+        if (pgRestoreVersionCache == null)
+        {
+            synchronized (this)
+            {
+                if (pgRestoreVersionCache == null)
+                {
+                    pgRestoreVersionCache = runVersion(resolvePgRestore());
+                }
+            }
+        }
+        return pgRestoreVersionCache;
+    }
+
+    /** 执行 `<可执行文件> --version` 并返回输出；不可用/失败返回空串 */
+    private String runVersion(String exePath)
+    {
+        if (StringUtils.isEmpty(exePath))
+        {
+            return "";
+        }
+        try
+        {
+            Process process = new ProcessBuilder(exePath, "--version").redirectErrorStream(true).start();
+            if (process.waitFor(20, TimeUnit.SECONDS) && process.exitValue() == 0)
+            {
+                try (InputStream in = process.getInputStream())
+                {
+                    byte[] buf = new byte[512];
+                    int n = in.read(buf);
+                    if (n > 0)
+                    {
+                        return new String(buf, 0, n, StandardCharsets.UTF_8).trim();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            log.warn("[dbBackup] 读取版本失败：{}（{}）", exePath, ex.getMessage());
+        }
+        return "";
+    }
+
+    @Override
+    public String resolvePgRestore()
+    {
+        if (pgRestoreResolved)
+        {
+            return pgRestoreCache;
         }
         synchronized (this)
         {
-            if (pgDumpVersionCache != null)
+            if (pgRestoreResolved)
             {
-                return pgDumpVersionCache;
+                return pgRestoreCache;
             }
-            String version = "";
+            String found = null;
+            // ① 与 pg_dump 同目录（xky-pgtools 内两者是配套放的）
             String pgDump = resolvePgDump();
             if (StringUtils.isNotEmpty(pgDump))
             {
-                try
+                File sibling = new File(new File(pgDump).getParentFile(), isWindows() ? "pg_restore.exe" : "pg_restore");
+                if (sibling.isFile())
                 {
-                    Process process = new ProcessBuilder(pgDump, "--version").redirectErrorStream(true).start();
-                    if (process.waitFor(20, TimeUnit.SECONDS) && process.exitValue() == 0)
-                    {
-                        InputStream in = process.getInputStream();
-                        byte[] buf = new byte[512];
-                        int n = in.read(buf);
-                        if (n > 0)
-                        {
-                            version = new String(buf, 0, n, StandardCharsets.UTF_8).trim();
-                        }
-                        in.close();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    log.warn("[dbBackup] 读取 pg_dump 版本失败：{}", ex.getMessage());
+                    found = sibling.getAbsolutePath();
                 }
             }
-            pgDumpVersionCache = version;
-            return version;
+            // ② PATH
+            if (found == null)
+            {
+                found = findInPath(isWindows() ? "pg_restore.exe" : "pg_restore");
+            }
+            pgRestoreCache = found;
+            pgRestoreResolved = true;
+            return found;
         }
+    }
+
+    @Override
+    public Map<String, String> connectionInfo()
+    {
+        Map<String, String> info = new HashMap<String, String>();
+        try
+        {
+            String[] conn = resolveConnection();
+            info.put("host", conn[0]);
+            info.put("port", conn[1]);
+            info.put("dbName", conn[2]);
+            info.put("user", conn[3]);
+        }
+        catch (Exception ex)
+        {
+            // 非 Druid 数据源 / 非 PostgreSQL 时拿不到 —— 页面会退化为占位符展示命令
+            log.warn("[dbBackup] 解析数据库连接信息失败：{}", ex.getMessage());
+        }
+        return info;
     }
 
     @Override
@@ -443,16 +525,18 @@ public class DbBackupServiceImpl implements IDbBackupService
     }
 
     /**
-     * 免安装（绿色）pg_dump：随应用一起放置的 pgtools 目录。
+     * 免安装（绿色）pg_dump：随应用一起放置的工具目录（与 jar 同级）。
+     * 仓库里的目录名为 xky-pgtools，同时兼容 pgtools / tools/pgtools / bin/pgtools 三种习惯命名。
      * 只需 pg_dump.exe + libpq.dll + zlib.dll + libssl-3-x64.dll + libcrypto-3-x64.dll 五个文件（约 7MB），
-     * 无需安装 PostgreSQL 客户端。
+     * 无需安装 PostgreSQL 客户端。（pg_restore.exe 放在同目录即可被 resolvePgRestore 自动识别）
      */
     private String findBundled()
     {
         String exe = isWindows() ? "pg_dump.exe" : "pg_dump";
-        for (File base : appBaseDirs())
+        List<File> bases = appBaseDirs();
+        for (File base : bases)
         {
-            for (String sub : new String[] { "pgtools", "tools/pgtools", "bin/pgtools" })
+            for (String sub : new String[] { "xky-pgtools", "pgtools", "tools/xky-pgtools", "tools/pgtools", "bin/xky-pgtools", "bin/pgtools" })
             {
                 File f = new File(new File(base, sub), exe);
                 if (f.isFile())
@@ -462,53 +546,138 @@ public class DbBackupServiceImpl implements IDbBackupService
                 }
             }
         }
+        // 未命中时把找过的位置打出来，省得现场猜（只打一次，不影响正常流程）
+        StringBuilder tried = new StringBuilder();
+        for (File base : bases)
+        {
+            if (tried.length() > 0)
+            {
+                tried.append(" 或 ");
+            }
+            tried.append(base.getAbsolutePath()).append("/xky-pgtools");
+        }
+        log.info("[dbBackup] 应用目录下未找到 pg_dump，已尝试：{}", tried);
         return null;
     }
 
     /**
      * 应用基准目录候选（按优先级）：
-     * ① 代码来源目录：jar 运行时 = <b>jar 所在目录</b>，开发期 = classes 目录
-     * ② 代码来源目录的上级（开发期 classes → target）
-     * ③ 进程工作目录 user.dir —— ⚠️ 以 Windows 服务/计划任务启动时它常是 C:/Windows/System32，
+     * ① Spring Boot 的 ApplicationHome —— jar 部署时准确给出 <b>jar 所在目录</b>
+     *    （fat jar 下本类是经 BOOT-INF/lib/xky-project-x.jar 加载的，CodeSource 是嵌套 jar 的 URI，
+     *     new File(URI) 会直接抛异常，所以不能只靠 ②）
+     * ② 代码来源目录：普通 jar / 开发期 classes 目录，以及它们的上级
+     * ③ sun.java.command 里的 jar 路径（不依赖 Spring 的兜底）
+     * ④ 进程工作目录 user.dir —— ⚠️ 以 Windows 服务/计划任务启动时它常是 C:/Windows/System32，
      *    所以不能只靠它，故排在最后
      */
     private List<File> appBaseDirs()
     {
         List<File> bases = new ArrayList<File>();
+        // ① Spring Boot 运行时（jar 部署最主要的一条）
         try
         {
-            File code = new File(DbBackupServiceImpl.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-            File dir = code.isFile() ? code.getParentFile() : code;
-            if (dir != null)
+            File home = new ApplicationHome(DbBackupServiceImpl.class).getDir();
+            if (home != null)
             {
-                bases.add(dir);
-                if (dir.getParentFile() != null)
+                bases.add(home);
+                if (home.getParentFile() != null)
                 {
-                    bases.add(dir.getParentFile());
+                    bases.add(home.getParentFile());
                 }
             }
         }
-        catch (Exception ignore)
+        catch (Throwable ignore)
         {
-            // 解析不到代码位置时退化为仅用工作目录
+            // 非 Spring 环境或版本差异时忽略
+        }
+        // ② 代码来源目录（开发期 classes、普通 jar）
+        try
+        {
+            File code = new File(DbBackupServiceImpl.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+            if (code.exists())
+            {
+                File dir = code.isFile() ? code.getParentFile() : code;
+                if (dir != null)
+                {
+                    bases.add(dir);
+                    if (dir.getParentFile() != null)
+                    {
+                        bases.add(dir.getParentFile());
+                    }
+                }
+            }
+        }
+        catch (Throwable ignore)
+        {
+            // fat jar 下 URI 形如 jar:nested:/path/app.jar/!BOOT-INF/lib/x.jar!/，转 File 必然失败，正常现象
         }
         String userDir = System.getProperty("user.dir");
+        // ③ java -jar 的启动参数兜底
+        try
+        {
+            String cmd = System.getProperty("sun.java.command");
+            if (StringUtils.isNotEmpty(cmd))
+            {
+                String first = cmd.trim().split("\\s+")[0];
+                if (first.toLowerCase().endsWith(".jar"))
+                {
+                    File jf = new File(first);
+                    if (!jf.isAbsolute() && StringUtils.isNotEmpty(userDir))
+                    {
+                        jf = new File(userDir, first);
+                    }
+                    File parent = jf.getAbsoluteFile().getParentFile();
+                    if (parent != null)
+                    {
+                        bases.add(parent);
+                    }
+                }
+            }
+        }
+        catch (Throwable ignore)
+        {
+            // 取不到就跳过
+        }
+        // ④ 当前工作目录
         if (StringUtils.isNotEmpty(userDir))
         {
             bases.add(new File(userDir));
         }
-        return bases;
+        // 去重（保持顺序）
+        List<File> uniq = new ArrayList<File>();
+        for (File b : bases)
+        {
+            boolean dup = false;
+            for (File u : uniq)
+            {
+                if (u.equals(b))
+                {
+                    dup = true;
+                    break;
+                }
+            }
+            if (!dup)
+            {
+                uniq.add(b);
+            }
+        }
+        return uniq;
     }
 
     /** 从 PATH 环境变量中查找 pg_dump */
     private String findInPath()
+    {
+        return findInPath(isWindows() ? "pg_dump.exe" : "pg_dump");
+    }
+
+    /** 从 PATH 环境变量中查找指定可执行文件 */
+    private String findInPath(String exe)
     {
         String pathEnv = System.getenv("PATH");
         if (StringUtils.isEmpty(pathEnv))
         {
             return null;
         }
-        String exe = isWindows() ? "pg_dump.exe" : "pg_dump";
         for (String p : pathEnv.split(Pattern.quote(File.pathSeparator)))
         {
             if (StringUtils.isEmpty(p))
