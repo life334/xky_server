@@ -92,4 +92,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by b.category_id, b.sort_order, b.id
     </select>
 
+    <!-- 导出列展开顺序用：按计费类别名归并，取最小 sort_order。
+         同一类别可属于多个项目小类且各小类 sort_order 可能不同，取最小值保证列顺序稳定。
+         配置表行数量级很小，全量查询不过滤；未配置的历史类别由调用方用 9999 兜底排到最末。 -->
+    <select id="selectBillingCategoryOrders" resultType="map">
+        select b.billing_category as "name", min(coalesce(b.sort_order, 9999)) as "sortOrder"
+        from proj_category_billing b
+        where b.del_flag = '0' and b.status = '0'
+        group by b.billing_category
+    </select>
+
 </mapper>

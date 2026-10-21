@@ -1,10 +1,13 @@
 package com.xakcch.web.controller.project;
 
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,15 +21,20 @@ import com.xakcch.common.core.controller.BaseController;
 import com.xakcch.common.core.domain.AjaxResult;
 import com.xakcch.common.core.page.TableDataInfo;
 import com.xakcch.common.enums.BusinessType;
+import com.xakcch.common.exception.ServiceException;
+import com.xakcch.common.utils.DateUtils;
 import com.xakcch.common.utils.StringUtils;
+import com.xakcch.common.utils.file.FileUtils;
 import com.xakcch.project.domain.ProjContractPrice;
 import com.xakcch.project.domain.ProjPayment;
 import com.xakcch.project.domain.ProjProject;
 import com.xakcch.project.domain.ProjWorkload;
+import com.xakcch.project.mapper.ProjCategoryBillingMapper;
 import com.xakcch.project.mapper.ProjContractPriceMapper;
 import com.xakcch.project.mapper.ProjLeaderMapper;
 import com.xakcch.project.mapper.ProjPaymentMapper;
 import com.xakcch.project.mapper.ProjWorkloadMapper;
+import com.xakcch.project.report.DynamicColumnExcelExporter;
 import com.xakcch.project.service.IProjProjectService;
 
 /**
@@ -53,10 +61,68 @@ public class ProjSettlementController extends BaseController
     @Autowired
     private ProjLeaderMapper leaderMapper;
 
+    @Autowired
+    private ProjCategoryBillingMapper categoryBillingMapper;
+
     private static final SimpleDateFormat DATE_FMT = new SimpleDateFormat("yyyy-MM-dd");
+
+    /** 无计费类别的工作量归入此类别，保证明细不丢行 */
+    private static final String UNCATEGORIZED = "未分类";
+
+    /** 内部产值保底涉及的两个计费类别（与 calcInternalOutputTotal 同口径） */
+    private static final String CAT_REVISE_NEW = "管线新测";
+
+    private static final String CAT_REVISE_FIX = "管线修测";
+
+    /**
+     * 导出时不单独成列的字段。
+     * <ul>
+     *   <li>{@code workload} 内外工作量单位不同，相加无业务含义，且信息已被工作量明细文本承载</li>
+     *   <li>{@code internalPrice} / {@code externalPrice} 按用户要求，单价不导出</li>
+     * </ul>
+     */
+    private static final Set<String> EXPORT_AGG_KEYS = new HashSet<>(Arrays.asList(
+            "workload", "internalPrice", "externalPrice"));
+
+    /** 导出为「单元格内多行文本」的工作量列（不再是数字） */
+    private static final Set<String> WORKLOAD_TEXT_KEYS = new HashSet<>(Arrays.asList(
+            "internalWorkload", "externalWorkload"));
+
+    /** 负责人（工作量登记人）列 key：按登记人拆行后每行的区分依据，由用户勾选决定是否出列 */
+    private static final String KEY_USER_NAME = "userName";
+
+    /** 工作量明细文本列的列宽（字符数）：要能容下「管线探测（含数据）：12.5千米」 */
+    private static final int WORKLOAD_TEXT_WIDTH = 30;
+
+    /** 单个单元格最多列出的明细行数（超出截断并追加「…等 N 项」，防止个别项目把行高撑爆） */
+    private static final int MAX_DETAIL_LINES = 30;
+
+    /** user_id 为空的工作量的分组键 */
+    private static final String NULL_USER_KEY = "#NULL#";
+
+    /** user_id 为空的工作量在「负责人」列显示的名字 */
+    private static final String UNKNOWN_USER_NAME = "未指定";
 
     /** 「全部」量级阈值：pageSize 达到该值时不分页（与前端 Pagination 组件 ALL_SIZE 一致） */
     private static final int ALL_SIZE = 100000;
+
+    /** 单次导出条数上限（与项目列表导出保持一致） */
+    private static final int EXPORT_MAX_ROWS = 50000;
+
+    /** 开票状态码 → 中文：与前端 utils/projStatus.js 的 INVOICE_STATUS_MAP 保持一致 */
+    private static final Map<String, String> INVOICE_STATUS_TEXT = buildInvoiceStatusText();
+
+    private static Map<String, String> buildInvoiceStatusText()
+    {
+        Map<String, String> m = new HashMap<>();
+        m.put("invoiced", "已开");
+        m.put("pending", "未开");
+        m.put("voided", "已作废");
+        m.put("cancelled", "已作废");
+        m.put("canceled", "已作废");
+        m.put("invalid", "已作废");
+        return Collections.unmodifiableMap(m);
+    }
 
     /**
      * 查询费用结算列表可显隐列的元数据（显隐列面板 + 表格动态渲染用）
@@ -65,6 +131,14 @@ public class ProjSettlementController extends BaseController
     @GetMapping("/columns")
     public AjaxResult columns()
     {
+        return success(buildColumnMeta());
+    }
+
+    /**
+     * 列元数据唯一出处：显隐列面板、表格动态渲染、导出表头三者共用，避免分叉。
+     */
+    private List<Map<String, Object>> buildColumnMeta()
+    {
         List<Map<String, Object>> columns = new ArrayList<>();
         // 项目级 + 人员级 + 叶子级通用字段（默认可见性 = 当前页面展示列）
         addColumn(columns, "projectCode", "工程编号", "text", true, "projectCode");
@@ -72,16 +146,19 @@ public class ProjSettlementController extends BaseController
         addColumn(columns, "projectName", "项目名称", "text", false, "projectName");
         addColumn(columns, "clientUnit", "委托单位", "text", true, "clientUnit");
         addColumn(columns, "projectLocation", "工程地点", "text", true, "projectLocation");
-        addColumn(columns, "leaderNames", "负责人", "text", false, "leaderNames");
-        addColumn(columns, "userName", "人员", "text", false, "userName");
-        addColumn(columns, "categoryName", "项目类别", "text", false, "categoryName");
+        // 「负责人」= 工作量登记人（导出按它拆行，页面展开行里的「负责人」也是它）。
+        // 项目级 leaderNames 已从清单中移除：与它同名易混淆，且拆行后每行都一样、没有信息量。
+        addColumn(columns, "userName", "负责人", "text", false, "userName");
+        // 项目类别：2026-10-20 起默认可见（需求：费用结算页要能直接看到项目类别）
+        addColumn(columns, "categoryName", "项目类别", "text", true, "categoryName");
+        // 工作量与其产值成对排列（内部工作量→内部产值→外部工作量→外部产值），便于左右对照
         addColumn(columns, "internalWorkload", "内部工作量", "number", true, "internalWorkload");
+        addColumn(columns, "internalOutput", "内部产值", "money", true, "internalOutput");
         addColumn(columns, "externalWorkload", "外部工作量", "number", true, "externalWorkload");
+        addColumn(columns, "externalOutput", "外部产值", "money", true, "externalOutput");
         addColumn(columns, "workload", "工作量", "number", false, "workload");
         addColumn(columns, "internalPrice", "内部单价", "money", false, "internalPrice");
         addColumn(columns, "externalPrice", "外部单价", "money", false, "externalPrice");
-        addColumn(columns, "internalOutput", "内部产值", "money", true, "internalOutput");
-        addColumn(columns, "externalOutput", "外部产值", "money", true, "externalOutput");
         addColumn(columns, "prepayAmount", "预付款", "money", true, "prepayAmount");
         addColumn(columns, "prepayDate", "预付款时间", "date", true, "prepayDate");
         addColumn(columns, "payUnit", "付款单位", "text", true, "payUnit");
@@ -94,7 +171,7 @@ public class ProjSettlementController extends BaseController
         addColumn(columns, "invoiceUnit", "开票单位", "text", true, "invoiceUnit");
         addColumn(columns, "invoiceAmount", "开票金额", "money", true, "invoiceAmount");
         addColumn(columns, "payRemark", "备注", "text", true, "payRemark");
-        return success(columns);
+        return columns;
     }
 
     /** 组装单列元数据 */
@@ -173,6 +250,556 @@ public class ProjSettlementController extends BaseController
         rspData.setRows(rows);
         rspData.setTotal(total);
         return rspData;
+    }
+
+    /**
+     * 导出费用结算列表（可选范围 + 可选字段；一个项目 × 一个内部栏 = 一行）
+     *
+     * <p>form 参数：
+     * <ul>
+     *   <li>{@code fields}   列 key 逗号串，按导出顺序；为空时回退为「默认可见列」</li>
+     *   <li>{@code scope}    {@code filter}（默认，全部筛选结果）/ {@code selected}（仅已勾选的行）</li>
+     *   <li>{@code ids}      {@code scope=selected} 时的项目 id 逗号串</li>
+     *   <li>{@code projectStatus} 项目状态过滤（逗号分隔 / all），默认与列表一致「已办结,已归档」</li>
+     * </ul>
+     *
+     * <p><b>行粒度</b>：只看<b>内部</b>——按「栏」= 负责人 + 子项（{@code user_id} + {@code sub_item_no}）
+     * 拆行，一栏一行（保底本来就是按栏算的，不拆开对不上账）。<b>外部不参与拆行</b>：整个项目的外部
+     * 工作量合成一份，放在该项目的<b>第一行</b>（其余行留空，避免同一笔外部产值被多行重复求和）。
+     * 只有外部没内部的项目 → 一项目一行，负责人取外部工作量的登记人；一条工作量都没有的项目
+     * 仍保留一行（明细留空），不丢项目。项目级字段每行重复写满，便于在 Excel 里筛选 / 透视。</p>
+     *
+     * <p><b>工作量列</b>（internalWorkload / externalWorkload）不是数字，而是一个单元格内
+     * 按工作量行逐条换行的文本，形如 {@code 管线探测（含数据）：6.64千米}；同一计费类别多条就重复列多行，
+     * 不做合并（重复行看起来完全一样是正常的，它们的产值已分别计入）。不写子项名后缀，也不标起步量。</p>
+     *
+     * <p><b>产值列</b>：外部产值是项目外部合计（只写在第一行）；内部产值是该栏的产值，
+     * 按「栏」套用保底 6000 —— 与页面合计完全同源：触发保底的栏直接是 6000（未触发就是实际值），
+     * 不再另起「保底补差」行；因此同一项目各行求和 == 页面上的项目产值合计。</p>
+     *
+     * <p>⚠️ 字段清单以 {@link #buildColumnMeta()} 为唯一出处，未知 key 一律忽略
+     *    （既防越权导出内部字段，也防参数拼错导致空列）。</p>
+     */
+    @PreAuthorize("@ss.hasPermi('project:settlement:export')")
+    @Log(title = "费用结算", businessType = BusinessType.EXPORT)
+    @PostMapping("/export")
+    public void export(HttpServletResponse response, ProjProject project,
+                       @RequestParam(required = false) String projectStatus,
+                       @RequestParam(required = false) String fields,
+                       @RequestParam(required = false) String scope,
+                       @RequestParam(required = false) String ids) throws IOException
+    {
+        List<ProjProject> projects = resolveExportProjects(project, projectStatus, scope, ids);
+
+        List<String> fieldKeys = splitFields(fields);
+        if (fieldKeys.isEmpty())
+        {
+            // 未指定字段 → 回退为默认可见列（与首次进入页面的表格一致）
+            for (Map<String, Object> c : buildColumnMeta())
+            {
+                if (Boolean.TRUE.equals(c.get("defaultVisible")))
+                {
+                    fieldKeys.add(String.valueOf(c.get("key")));
+                }
+            }
+        }
+        // 注意：不再自动补「负责人」列 —— 列集合与顺序完全按弹窗里勾选的字段来，
+        // 勾了就在、没勾就不出，位置也严格跟随拖拽结果（此前会在第 1 列凭空多出一列）。
+        // 没勾「负责人」时，拆出的多行靠工作量明细与产值区分。
+
+        // 与 treeList 同口径：一次性批量查询工作量与付款，避免逐项目 N+1
+        Map<Long, List<ProjWorkload>> workloadMap = loadWorkloadMap(projects);
+        Map<Long, List<ProjPayment>> paymentMap = loadPaymentMap(projects);
+
+        // 计费类别排序字典：控制明细文本的逐行顺序（查不到退化为按类别名排序）
+        Map<String, Integer> catOrder = loadCategoryOrder();
+
+        // 表头：项目字段列（单价 / 总工作量列自动剔除）+ 工作量文本列 + 该登记人产值列
+        Map<String, Map<String, Object>> metaMap = new LinkedHashMap<>();
+        for (Map<String, Object> c : buildColumnMeta())
+        {
+            metaMap.put(String.valueOf(c.get("key")), c);
+        }
+        List<DynamicColumnExcelExporter.WrapColumn> columns = new ArrayList<>();
+        List<String> validKeys = new ArrayList<>();
+        for (String key : fieldKeys)
+        {
+            Map<String, Object> meta = metaMap.get(key);
+            if (meta == null || EXPORT_AGG_KEYS.contains(key))
+            {
+                continue;
+            }
+            String type = String.valueOf(meta.get("type"));
+            String label = String.valueOf(meta.get("label"));
+            if (WORKLOAD_TEXT_KEYS.contains(key))
+            {
+                columns.add(DynamicColumnExcelExporter.WrapColumn.wrap(label, WORKLOAD_TEXT_WIDTH));
+            }
+            else if ("number".equals(type) || "money".equals(type))
+            {
+                columns.add(DynamicColumnExcelExporter.WrapColumn.number(label, widthOf(type)));
+            }
+            else
+            {
+                columns.add(DynamicColumnExcelExporter.WrapColumn.text(label, widthOf(type)));
+            }
+            validKeys.add(key);
+        }
+
+        List<List<Object>> rows = new ArrayList<>();
+        for (ProjProject p : projects)
+        {
+            Map<String, Object> node = buildSettlementNode(p, workloadMap, paymentMap);
+            List<ProjWorkload> workloads = workloadMap.getOrDefault(p.getId(), Collections.emptyList());
+
+            // ① 外部：整个项目汇总成一份，不按人 / 不按栏拆行（重复的计费类别就在单元格里重复列）
+            String extText = buildWorkloadText(workloads, "external", catOrder);
+            BigDecimal extOutput = sumOutput(workloads, true);
+
+            // ② 内部：按「栏」= 负责人 + 子项 分组，一栏一行（保底是按栏算的，拆开才能对上账）
+            Map<String, List<ProjWorkload>> byLane = new LinkedHashMap<>();
+            Map<String, String> laneOwner = new LinkedHashMap<>();
+            for (ProjWorkload w : workloads)
+            {
+                if (!"internal".equals(w.getBillingType()))
+                {
+                    continue;
+                }
+                String uk = w.getUserId() == null ? NULL_USER_KEY : String.valueOf(w.getUserId());
+                String lane = uk + "#" + (w.getSubItemNo() == null ? "" : w.getSubItemNo());
+                byLane.computeIfAbsent(lane, k -> new ArrayList<>()).add(w);
+                String nm = w.getUserName();
+                if (nm != null && !nm.trim().isEmpty())
+                {
+                    laneOwner.putIfAbsent(lane, nm.trim());
+                }
+            }
+
+            if (workloads.isEmpty())
+            {
+                // 没登记过工作量的项目：仍导出一行（项目信息 + 空明细），避免整条项目被吞掉
+                rows.add(buildRow(validKeys, metaMap, node, "", null, null, null, null));
+                continue;
+            }
+            if (byLane.isEmpty())
+            {
+                // 只有外部工作量的项目：一行，外部汇总；负责人取外部工作量的登记人（可能多人）
+                rows.add(buildRow(validKeys, metaMap, node, ownerNamesOf(workloads),
+                        extText, extOutput, null, null));
+                continue;
+            }
+
+            boolean firstLaneRow = true;
+            for (Map.Entry<String, List<ProjWorkload>> e : byLane.entrySet())
+            {
+                List<ProjWorkload> lane = e.getValue();
+                String owner = laneOwner.getOrDefault(e.getKey(), UNKNOWN_USER_NAME);
+                // 外部只在第一行出现（否则同一笔外部工作量会在多行里重复求和）
+                rows.add(buildRow(validKeys, metaMap, node, owner,
+                        firstLaneRow ? extText : null,
+                        firstLaneRow ? extOutput : null,
+                        buildWorkloadText(lane, "internal", catOrder),
+                        laneInternalOutput(lane)));
+                firstLaneRow = false;
+            }
+            // 注：不再补「保底补差」行 —— 每行内部产值已按「栏」各自套用保底（触发就是 6000），
+            // 各行求和天然等于项目内部产值合计，多一行反而让人以为算错
+        }
+
+        String fileName = "费用结算_" + DateUtils.parseDateToStr("yyyyMMddHHmmss", new java.util.Date()) + ".xlsx";
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding("utf-8");
+        FileUtils.setAttachmentResponseHeader(response, fileName);
+        // 单级表头 + 单元格内换行的工作量明细；冻结前 2 列，横拉时工程编号 / 关联定线常驻
+        DynamicColumnExcelExporter.exportWithWrap(response.getOutputStream(), "费用结算", columns, 2, rows);
+    }
+
+    // ===== 拆行导出辅助 =====
+
+    /**
+     * 组装一行数据（一个项目 × 一个内部栏；纯外部项目则一项目一行）
+     *
+     * <p>值由调用方算好后传入，本方法只负责按列顺序铺开 —— 外部与内部的取值口径不同
+     * （外部整项目汇总、内部按栏），放在这里算容易写串。</p>
+     *
+     * @param node       项目级结算信息（付款 / 发票 / 结算状态等，每行重复写）
+     * @param ownerName  该行「负责人」列取值
+     * @param extText    外部工作量明细文本（非首行传 null）
+     * @param extOutput  外部产值（非首行传 null）
+     * @param innerText  内部工作量明细文本
+     * @param innerOutput 内部产值
+     */
+    private List<Object> buildRow(List<String> validKeys, Map<String, Map<String, Object>> metaMap,
+                                  Map<String, Object> node, String ownerName,
+                                  String extText, BigDecimal extOutput,
+                                  String innerText, BigDecimal innerOutput)
+    {
+        List<Object> row = new ArrayList<>();
+        for (String key : validKeys)
+        {
+            Map<String, Object> meta = metaMap.get(key);
+            String type = meta == null ? "text" : String.valueOf(meta.get("type"));
+            if (KEY_USER_NAME.equals(key))
+            {
+                row.add(ownerName);
+            }
+            else if ("externalWorkload".equals(key))
+            {
+                row.add(extText);
+            }
+            else if ("internalWorkload".equals(key))
+            {
+                row.add(innerText);
+            }
+            else if ("externalOutput".equals(key))
+            {
+                row.add(extOutput);
+            }
+            else if ("internalOutput".equals(key))
+            {
+                row.add(innerOutput);
+            }
+            else
+            {
+                row.add(formatCell(node.get(key), type, key));
+            }
+        }
+        return row;
+    }
+
+    /**
+     * 一栏的内部产值（套用保底 6000 后）
+     *
+     * <p>与页面项目合计同源（{@link #calcInternalOutputTotal}）：本栏「管线新测 + 管线修测」不足 6000 按 6000 计。
+     * 该栏没有任何内部产值时返回 null（单元格留空，不填 0）。</p>
+     */
+    private BigDecimal laneInternalOutput(List<ProjWorkload> lane)
+    {
+        if (lane == null || lane.isEmpty())
+        {
+            return null;
+        }
+        boolean any = false;
+        for (ProjWorkload w : lane)
+        {
+            if (w.getInternalOutput() != null)
+            {
+                any = true;
+                break;
+            }
+        }
+        return any ? calcInternalOutputTotal(lane) : null;
+    }
+
+    /** 项目里所有工作量登记人的姓名（去重、保持顺序）；一个都解析不出来时返回「未指定」 */
+    private String ownerNamesOf(List<ProjWorkload> workloads)
+    {
+        List<String> names = new ArrayList<>();
+        for (ProjWorkload w : workloads)
+        {
+            String nm = w.getUserName();
+            if (nm != null && !nm.trim().isEmpty() && !names.contains(nm.trim()))
+            {
+                names.add(nm.trim());
+            }
+        }
+        return names.isEmpty() ? UNKNOWN_USER_NAME : String.join("、", names);
+    }
+
+    /**
+     * 工作量明细文本：一个单元格内按工作量行逐条换行。
+     *
+     * <p>格式 {@code 类别名：2.1千米}（不带子项名后缀，也不标起步量）。同一计费类别有多条
+     * 就重复列多行（不合并）；无该类型的工作量返回 null（单元格留空，不填 0）。</p>
+     */
+    private String buildWorkloadText(List<ProjWorkload> workloads, String billingType,
+                                     Map<String, Integer> catOrder)
+    {
+        if (workloads == null || workloads.isEmpty())
+        {
+            return null;
+        }
+        List<ProjWorkload> list = new ArrayList<>();
+        for (ProjWorkload w : workloads)
+        {
+            if (billingType.equals(w.getBillingType()))
+            {
+                list.add(w);
+            }
+        }
+        if (list.isEmpty())
+        {
+            return null;
+        }
+        // 按计费类别排序（sort_order）；List.sort 稳定排序，同类别保持原始录入顺序
+        list.sort((a, b) -> {
+            int oa = catOrder.getOrDefault(catName(a.getBillingCategory()), 9999);
+            int ob = catOrder.getOrDefault(catName(b.getBillingCategory()), 9999);
+            return oa != ob ? Integer.compare(oa, ob) : 0;
+        });
+
+        StringBuilder sb = new StringBuilder();
+        int n = 0;
+        for (ProjWorkload w : list)
+        {
+            if (n == MAX_DETAIL_LINES)
+            {
+                sb.append("\n…等 ").append(list.size() - n).append(" 项");
+                break;
+            }
+            if (n > 0)
+            {
+                sb.append('\n');
+            }
+            // 起步量（min_quantity）不再写进明细：对账看的是实际工作量，标出来反而碍眼
+            sb.append(catName(w.getBillingCategory())).append("：");
+            BigDecimal wl = w.getWorkload();
+            if (wl != null)
+            {
+                sb.append(fmtNum(wl));
+                String unit = w.getPriceUnit();
+                if (unit != null && !unit.trim().isEmpty())
+                {
+                    sb.append(' ').append(unit.trim());
+                }
+            }
+            // 子项名不写进明细行：与计费类别混在一起会让人误以为是另一类工作量
+            n++;
+        }
+        return sb.toString();
+    }
+
+    /** 该登记人某类型的产值合计；一条都没有时返回 null（单元格留空） */
+    private BigDecimal sumOutput(List<ProjWorkload> workloads, boolean external)
+    {
+        if (workloads == null || workloads.isEmpty())
+        {
+            return null;
+        }
+        BigDecimal sum = BigDecimal.ZERO;
+        boolean any = false;
+        for (ProjWorkload w : workloads)
+        {
+            if (external != "external".equals(w.getBillingType()))
+            {
+                continue;
+            }
+            any = true;
+            BigDecimal v = external ? w.getExternalOutput() : w.getInternalOutput();
+            if (v != null)
+            {
+                sum = sum.add(v);
+            }
+        }
+        return any ? sum : null;
+    }
+
+    /**
+     * 计费类别排序字典：来自 proj_category_billing.sort_order。
+     *
+     * <p>只是锦上添花：查不到就退化成按类别名排序，不影响导出内容。</p>
+     */
+    private Map<String, Integer> loadCategoryOrder()
+    {
+        Map<String, Integer> orderMap = new HashMap<>();
+        try
+        {
+            for (Map<String, Object> row : categoryBillingMapper.selectBillingCategoryOrders())
+            {
+                Object nameObj = row.get("name") != null ? row.get("name") : row.get("NAME");
+                if (nameObj == null)
+                {
+                    continue;
+                }
+                Object ordObj = row.get("sortOrder") != null ? row.get("sortOrder") : row.get("sortorder");
+                int ord = (ordObj instanceof Number) ? ((Number) ordObj).intValue() : 9999;
+                String name = catName(String.valueOf(nameObj));
+                Integer old = orderMap.get(name);
+                if (old == null || ord < old)
+                {
+                    orderMap.put(name, ord);
+                }
+            }
+        }
+        catch (Exception ignored)
+        {
+            // 排序字典查不到不影响导出
+        }
+        return orderMap;
+    }
+
+    /** 数值文本化：去掉多余的零，最多保留 2 位小数（2.10 → 2.1） */
+    private String fmtNum(BigDecimal v)
+    {
+        if (v == null)
+        {
+            return "";
+        }
+        BigDecimal s = v.stripTrailingZeros();
+        if (s.scale() > 2)
+        {
+            s = s.setScale(2, RoundingMode.HALF_UP);
+        }
+        return s.toPlainString();
+    }
+
+    /**
+     * 导出 / 类别清单共用的筛选解析。
+     *
+     * <p>⚠️ 两处必须完全同口径，否则用户在弹窗里勾的类别与最终导出的类别会对不上。</p>
+     */
+    private List<ProjProject> resolveExportProjects(ProjProject project, String projectStatus,
+                                                    String scope, String ids)
+    {
+        String status = (projectStatus == null || projectStatus.isEmpty()) ? "closed,archived" : projectStatus;
+        if (!"all".equals(status))
+        {
+            project.getParams().put("statusList", Arrays.asList(status.split(",")));
+        }
+        // 导出与分页无关：清掉分页参数，避免调用方误传导致只导一页
+        project.getParams().remove("pageNum");
+        project.getParams().remove("pageSize");
+        if ("selected".equals(scope))
+        {
+            List<Long> idScope = toIdList(ids);
+            if (idScope.isEmpty())
+            {
+                throw new ServiceException("请先勾选要导出的项目");
+            }
+            project.getParams().put("exportIds", idScope);
+        }
+        List<ProjProject> projects = projectService.selectProjectList(project);
+        if (projects.size() > EXPORT_MAX_ROWS)
+        {
+            throw new ServiceException("导出条数过多（" + projects.size() + " 条，上限 "
+                    + EXPORT_MAX_ROWS + " 条），请缩小筛选范围后重试");
+        }
+        return projects;
+    }
+
+    /** 批量加载项目的工作量明细（避免逐项目 N+1） */
+    private Map<Long, List<ProjWorkload>> loadWorkloadMap(List<ProjProject> projects)
+    {
+        if (projects == null || projects.isEmpty())
+        {
+            return Collections.emptyMap();
+        }
+        Long[] ids = projects.stream().map(ProjProject::getId).toArray(Long[]::new);
+        return workloadMapper.selectWorkloadsByProjectIds(ids).stream()
+                .collect(Collectors.groupingBy(ProjWorkload::getProjectId));
+    }
+
+    /** 批量加载项目的付款记录 */
+    private Map<Long, List<ProjPayment>> loadPaymentMap(List<ProjProject> projects)
+    {
+        if (projects == null || projects.isEmpty())
+        {
+            return Collections.emptyMap();
+        }
+        Long[] ids = projects.stream().map(ProjProject::getId).toArray(Long[]::new);
+        return paymentMapper.selectPaymentsByProjectIds(ids).stream()
+                .collect(Collectors.groupingBy(ProjPayment::getProjectId));
+    }
+
+    /** 计费类别名归一化：空值统一归入「未分类」，保证明细不丢行 */
+    private String catName(String cat)
+    {
+        return (cat == null || cat.trim().isEmpty()) ? UNCATEGORIZED : cat.trim();
+    }
+
+    /** 列宽（字符数）：日期窄列、金额/数值中列、文本宽列；与前端 colWidth 视觉保持一致 */
+    private int widthOf(String type)
+    {
+        if ("date".equals(type))
+        {
+            return 12;
+        }
+        if ("money".equals(type) || "number".equals(type))
+        {
+            return 14;
+        }
+        return 16;
+    }
+
+    /** 单个单元格取值：金额/数值保留数字（导出右对齐），日期统一 yyyy-MM-dd，开票状态转中文 */
+    private Object formatCell(Object raw, String type, String key)
+    {
+        if (raw == null || "".equals(raw))
+        {
+            return "";
+        }
+        if ("invoiceStatus".equals(key))
+        {
+            String v = String.valueOf(raw);
+            return INVOICE_STATUS_TEXT.getOrDefault(v, INVOICE_STATUS_TEXT.getOrDefault(v.toLowerCase(), v));
+        }
+        if ("date".equals(type))
+        {
+            return (raw instanceof java.util.Date)
+                    ? DateUtils.parseDateToStr(DateUtils.YYYY_MM_DD, (java.util.Date) raw)
+                    : String.valueOf(raw);
+        }
+        if ("money".equals(type) || "number".equals(type))
+        {
+            if (raw instanceof Number)
+            {
+                return raw;
+            }
+            try
+            {
+                return new BigDecimal(String.valueOf(raw));
+            }
+            catch (NumberFormatException e)
+            {
+                return String.valueOf(raw);
+            }
+        }
+        return String.valueOf(raw);
+    }
+
+    /** 逗号串 id → Long 列表（「仅导出已勾选的行」用） */
+    private List<Long> toIdList(String ids)
+    {
+        List<Long> list = new ArrayList<>();
+        if (ids == null || ids.trim().isEmpty())
+        {
+            return list;
+        }
+        for (String s : ids.split(","))
+        {
+            if (s == null || s.trim().isEmpty())
+            {
+                continue;
+            }
+            try
+            {
+                list.add(Long.valueOf(s.trim()));
+            }
+            catch (NumberFormatException e)
+            {
+                throw new ServiceException("项目ID格式非法：" + s);
+            }
+        }
+        return list;
+    }
+
+    /** 逗号串 → 字段 key 列表 */
+    private List<String> splitFields(String fields)
+    {
+        List<String> list = new ArrayList<>();
+        if (fields == null || fields.trim().isEmpty())
+        {
+            return list;
+        }
+        for (String s : fields.split(","))
+        {
+            if (s == null || s.trim().isEmpty())
+            {
+                continue;
+            }
+            list.add(s.trim());
+        }
+        return list;
     }
 
     /** 录入状态胶囊的全局计数（工作量/到账/发票），忽略录入状态筛选本身 */

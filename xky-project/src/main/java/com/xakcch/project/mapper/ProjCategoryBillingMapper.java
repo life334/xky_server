@@ -1,6 +1,7 @@
 package com.xakcch.project.mapper;
 
 import java.util.List;
+import java.util.Map;
 import org.apache.ibatis.annotations.Param;
 import com.xakcch.project.domain.ProjCategoryBilling;
 
@@ -50,4 +51,14 @@ public interface ProjCategoryBillingMapper
      * @return 计费方式列表
      */
     public List<ProjCategoryBilling> selectBillingByCategoryIds(@Param("categoryIds") List<Long> categoryIds);
+
+    /**
+     * 计费类别排序字典（费用结算导出：工作量明细展开成列时的列顺序）
+     *
+     * <p>返回 [{name=计费类别, sortOrder=最小排序号}]。配置表行数很小，全量加载后在内存里查，
+     * 不为每次导出拼 in 子句。</p>
+     *
+     * @return 排序字典；未出现在配置表中的历史类别由调用方按 9999 兜底排到最末
+     */
+    public List<Map<String, Object>> selectBillingCategoryOrders();
 }
