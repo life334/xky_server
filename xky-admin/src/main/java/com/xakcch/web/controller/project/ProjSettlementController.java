@@ -263,18 +263,19 @@ public class ProjSettlementController extends BaseController
      *   <li>{@code projectStatus} 项目状态过滤（逗号分隔 / all），默认与列表一致「已办结,已归档」</li>
      * </ul>
      *
-     * <p><b>行粒度</b>：只看<b>内部</b>——按「栏」= 负责人 + 子项（{@code user_id} + {@code sub_item_no}）
-     * 拆行，一栏一行（保底本来就是按栏算的，不拆开对不上账）。<b>外部不参与拆行</b>：整个项目的外部
-     * 工作量合成一份，放在该项目的<b>第一行</b>（其余行留空，避免同一笔外部产值被多行重复求和）。
-     * 只有外部没内部的项目 → 一项目一行，负责人取外部工作量的登记人；一条工作量都没有的项目
-     * 仍保留一行（明细留空），不丢项目。项目级字段每行重复写满，便于在 Excel 里筛选 / 透视。</p>
+     * <p><b>行粒度</b>：<b>一位负责人 = 一行</b>（外部工作量 2026-10 起也按人录入，内外同属一个人）。
+     * 该人的外部、内部工作量各自合并成一份写在同一个单元格里，不因内部有多个「栏」（{@code sub_item_no}）
+     * 而拆成多行 —— 否则同一个人在 Excel 里会出现多条记录，看着像重复数据。
+     * {@code user_id} 为空 / 0 的行归入「未指定」行；一条工作量都没有的项目仍保留一行（明细留空），不丢项目。
+     * 项目级字段每行重复写满，便于筛选 / 透视。</p>
      *
      * <p><b>工作量列</b>（internalWorkload / externalWorkload）不是数字，而是一个单元格内
      * 按工作量行逐条换行的文本，形如 {@code 管线探测（含数据）：6.64千米}；同一计费类别多条就重复列多行，
-     * 不做合并（重复行看起来完全一样是正常的，它们的产值已分别计入）。不写子项名后缀，也不标起步量。</p>
+     * 不做合并（重复行看起来完全一样是正常的，它们的产值已分别计入）。不写子项名后缀，也不标起步量，
+     * 内部多栏时同样逐条平铺（不标「第N栏」—— 栏只是存储分组，对账看的是明细本身）。</p>
      *
-     * <p><b>产值列</b>：外部产值是项目外部合计（只写在第一行）；内部产值是该栏的产值，
-     * 按「栏」套用保底 6000 —— 与页面合计完全同源：触发保底的栏直接是 6000（未触发就是实际值），
+     * <p><b>产值列</b>：外部产值是该负责人的外部合计；内部产值是该人<b>各栏产值之和</b>，
+     * 每栏「管线新测 + 管线修测」不足 6000 仍按 6000 计（{@link #calcInternalOutputTotal}，与页面合计同源）。
      * 不再另起「保底补差」行；因此同一项目各行求和 == 页面上的项目产值合计。</p>
      *
      * <p>⚠️ 字段清单以 {@link #buildColumnMeta()} 为唯一出处，未知 key 一律忽略
@@ -352,58 +353,75 @@ public class ProjSettlementController extends BaseController
             Map<String, Object> node = buildSettlementNode(p, workloadMap, paymentMap);
             List<ProjWorkload> workloads = workloadMap.getOrDefault(p.getId(), Collections.emptyList());
 
-            // ① 外部：整个项目汇总成一份，不按人 / 不按栏拆行（重复的计费类别就在单元格里重复列）
-            String extText = buildWorkloadText(workloads, "external", catOrder);
-            BigDecimal extOutput = sumOutput(workloads, true);
-
-            // ② 内部：按「栏」= 负责人 + 子项 分组，一栏一行（保底是按栏算的，拆开才能对上账）
-            Map<String, List<ProjWorkload>> byLane = new LinkedHashMap<>();
-            Map<String, String> laneOwner = new LinkedHashMap<>();
-            for (ProjWorkload w : workloads)
-            {
-                if (!"internal".equals(w.getBillingType()))
-                {
-                    continue;
-                }
-                String uk = w.getUserId() == null ? NULL_USER_KEY : String.valueOf(w.getUserId());
-                String lane = uk + "#" + (w.getSubItemNo() == null ? "" : w.getSubItemNo());
-                byLane.computeIfAbsent(lane, k -> new ArrayList<>()).add(w);
-                String nm = w.getUserName();
-                if (nm != null && !nm.trim().isEmpty())
-                {
-                    laneOwner.putIfAbsent(lane, nm.trim());
-                }
-            }
-
             if (workloads.isEmpty())
             {
                 // 没登记过工作量的项目：仍导出一行（项目信息 + 空明细），避免整条项目被吞掉
                 rows.add(buildRow(validKeys, metaMap, node, "", null, null, null, null));
                 continue;
             }
-            if (byLane.isEmpty())
+
+            // 拆不拆行只看勾了什么：没勾内部列时按人一行就够（否则会带出一串只有项目信息的空行），
+            // 内外都没勾则一项目一行
+            boolean needInternalLanes = validKeys.contains("internalWorkload") || validKeys.contains("internalOutput");
+            boolean needExternal = validKeys.contains("externalWorkload") || validKeys.contains("externalOutput");
+            if (!needInternalLanes && !needExternal)
             {
-                // 只有外部工作量的项目：一行，外部汇总；负责人取外部工作量的登记人（可能多人）
-                rows.add(buildRow(validKeys, metaMap, node, ownerNamesOf(workloads),
-                        extText, extOutput, null, null));
+                rows.add(buildRow(validKeys, metaMap, node, "", null, null, null, null));
                 continue;
             }
 
-            boolean firstLaneRow = true;
-            for (Map.Entry<String, List<ProjWorkload>> e : byLane.entrySet())
+            // ① 按「负责人」分组：内外工作量都属于登记人（外部 2026-10 起也按人录入）。
+            //    user_id 为空 / 0 的行归入「未指定」组，单独成行，不丢数据也不冒充某个人。
+            Map<String, List<ProjWorkload>> byUser = new LinkedHashMap<>();
+            Map<String, String> userNames = new LinkedHashMap<>();
+            for (ProjWorkload w : workloads)
             {
-                List<ProjWorkload> lane = e.getValue();
-                String owner = laneOwner.getOrDefault(e.getKey(), UNKNOWN_USER_NAME);
-                // 外部只在第一行出现（否则同一笔外部工作量会在多行里重复求和）
-                rows.add(buildRow(validKeys, metaMap, node, owner,
-                        firstLaneRow ? extText : null,
-                        firstLaneRow ? extOutput : null,
-                        buildWorkloadText(lane, "internal", catOrder),
-                        laneInternalOutput(lane)));
-                firstLaneRow = false;
+                boolean noUser = w.getUserId() == null || w.getUserId() == 0L;
+                String uk = noUser ? NULL_USER_KEY : String.valueOf(w.getUserId());
+                byUser.computeIfAbsent(uk, k -> new ArrayList<>()).add(w);
+                String nm = w.getUserName();
+                if (nm != null && !nm.trim().isEmpty())
+                {
+                    userNames.putIfAbsent(uk, nm.trim());
+                }
             }
-            // 注：不再补「保底补差」行 —— 每行内部产值已按「栏」各自套用保底（触发就是 6000），
-            // 各行求和天然等于项目内部产值合计，多一行反而让人以为算错
+
+            // ② 每位负责人 = 一行：外部合并一份、内部合并一份（明细逐条换行，不标栏号）
+            for (Map.Entry<String, List<ProjWorkload>> e : byUser.entrySet())
+            {
+                List<ProjWorkload> mine = e.getValue();
+                String owner = userNames.getOrDefault(e.getKey(), UNKNOWN_USER_NAME);
+                String extText = buildWorkloadText(mine, "external", catOrder);
+                BigDecimal extOutput = sumOutput(mine, true);
+
+                if (!needInternalLanes)
+                {
+                    // 没勾内部列：只填外部，一人一行
+                    rows.add(buildRow(validKeys, metaMap, node, owner, extText, extOutput, null, null));
+                    continue;
+                }
+
+                List<ProjWorkload> allInternal = new ArrayList<>();
+                for (ProjWorkload w : mine)
+                {
+                    if ("internal".equals(w.getBillingType()))
+                    {
+                        allInternal.add(w);
+                    }
+                }
+                if (allInternal.isEmpty())
+                {
+                    // 只有外部工作量的负责人：一行，只填外部列
+                    rows.add(buildRow(validKeys, metaMap, node, owner, extText, extOutput, null, null));
+                    continue;
+                }
+
+                rows.add(buildRow(validKeys, metaMap, node, owner, extText, extOutput,
+                        buildWorkloadText(allInternal, "internal", catOrder),
+                        laneInternalOutput(allInternal)));
+            }
+            // 注：内部明细不标「第N栏」—— 栏是系统内部的存储分组，对账看的是明细本身；
+            // 产值列仍按栏各套保底后再相加（laneInternalOutput 内部按 人+栏 分池），数字与页面一致
         }
 
         String fileName = "费用结算_" + DateUtils.parseDateToStr("yyyyMMddHHmmss", new java.util.Date()) + ".xlsx";
@@ -417,15 +435,15 @@ public class ProjSettlementController extends BaseController
     // ===== 拆行导出辅助 =====
 
     /**
-     * 组装一行数据（一个项目 × 一个内部栏；纯外部项目则一项目一行）
+     * 组装一行数据（一个项目 × 一位负责人 × 一个内部栏；该人只有外部工作量时则一人一行）
      *
      * <p>值由调用方算好后传入，本方法只负责按列顺序铺开 —— 外部与内部的取值口径不同
-     * （外部整项目汇总、内部按栏），放在这里算容易写串。</p>
+     * （外部按人合并成一份、内部按「栏」），放在这里算容易写串。</p>
      *
      * @param node       项目级结算信息（付款 / 发票 / 结算状态等，每行重复写）
      * @param ownerName  该行「负责人」列取值
-     * @param extText    外部工作量明细文本（非首行传 null）
-     * @param extOutput  外部产值（非首行传 null）
+     * @param extText    外部工作量明细文本（该人非首行传 null）
+     * @param extOutput  外部产值（该人非首行传 null）
      * @param innerText  内部工作量明细文本
      * @param innerOutput 内部产值
      */
@@ -489,21 +507,6 @@ public class ProjSettlementController extends BaseController
             }
         }
         return any ? calcInternalOutputTotal(lane) : null;
-    }
-
-    /** 项目里所有工作量登记人的姓名（去重、保持顺序）；一个都解析不出来时返回「未指定」 */
-    private String ownerNamesOf(List<ProjWorkload> workloads)
-    {
-        List<String> names = new ArrayList<>();
-        for (ProjWorkload w : workloads)
-        {
-            String nm = w.getUserName();
-            if (nm != null && !nm.trim().isEmpty() && !names.contains(nm.trim()))
-            {
-                names.add(nm.trim());
-            }
-        }
-        return names.isEmpty() ? UNKNOWN_USER_NAME : String.join("、", names);
     }
 
     /**
