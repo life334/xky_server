@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Map;
 
 import com.xakcch.project.domain.vo.DbBackupFile;
+import com.xakcch.project.domain.vo.DbDatabaseInfo;
+import com.xakcch.project.domain.vo.DbRestoreStatus;
 
 /**
  * 数据库备份服务
@@ -24,12 +26,17 @@ public interface IDbBackupService
     Map<String, Object> runBackup();
 
     /**
-     * 备份文件列表（按时间倒序）
+     * 备份文件列表（按时间倒序）。
+     *
+     * ⚠️ 同时扫描<b>本机备份目录与异地（灾备）目录</b>并按文件名合并：整机挂掉换新机后
+     * 本机目录是空的，备份文件只留在灾备共享目录里，只扫本机的话一键恢复将无文件可选。
+     * 每条记录用 location 标出文件实际所在位置（local / secondary / both），异地独有的文件同样可恢复。
      */
     List<DbBackupFile> listBackups();
 
     /**
-     * 校验并解析备份文件（防路径穿越；文件名非法或文件不存在时返回 null）
+     * 校验并解析备份文件（防路径穿越；文件名非法或文件不存在时返回 null）。
+     * 本机备份目录优先；本机没有时到异地（灾备）目录找。
      */
     File resolveBackupFile(String name);
 
@@ -42,6 +49,17 @@ public interface IDbBackupService
      * 备份文件存放目录
      */
     String getBackupDir();
+
+    /**
+     * 异地（灾备）目录；未启用时返回空串
+     */
+    String getSecondaryDir();
+
+    /**
+     * 异地（灾备）目录当前是否可达（由最近一次 {@link #listBackups()} 刷新）。
+     * 不可达 = 灾备机宕机 / 网络中断 / 共享权限不足，页面据此告警。
+     */
+    boolean isSecondaryReachable();
 
     /**
      * 备份开关（配置 xky-project.backup.enabled）
@@ -67,7 +85,7 @@ public interface IDbBackupService
 
     /**
      * pg_restore 可执行文件路径（恢复用，与 pg_dump 同目录）；不可用时返回 null。
-     * 仅用于在页面上展示"恢复工具是否就绪"并生成恢复命令，系统本身不执行恢复。
+     * 「一键恢复」与页面生成恢复命令都依赖它。
      */
     String resolvePgRestore();
 
@@ -82,4 +100,49 @@ public interface IDbBackupService
      * ⚠️ 不含密码：密码永远不返回前端。
      */
     Map<String, String> connectionInfo();
+
+    /* ------------------------------------------------------------------ */
+    /*                        一键恢复（pg_restore）                        */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * 数据库服务器上的库列表（排除模板库），供选择恢复目标与管理历史恢复库
+     */
+    List<DbDatabaseInfo> listDatabases();
+
+    /**
+     * 检查目标库是否可恢复
+     *
+     * @return { exists, tableCount, sizeText, restorable, reason }
+     *         restorable=false 时 reason 说明原因（如"库里已有 N 张表，拒绝覆盖"）
+     */
+    Map<String, Object> inspectDatabase(String dbName);
+
+    /**
+     * 启动一次恢复（异步执行，立即返回）。
+     *
+     * ⚠️ 安全闸门（缺一不可）：
+     * 1. 目标库不存在 → 自动创建（CREATE DATABASE ... TEMPLATE template0）后恢复；
+     * 2. 目标库存在但 public 下已有业务表 → 拒绝，绝不做覆盖式恢复
+     *    （覆盖现库必须走命令行人工执行，避免应用在线时被清空）；
+     * 3. 同一时刻只允许一个恢复任务。
+     *
+     * @param backupName 备份文件名（必须在备份目录内）
+     * @param targetDb   目标库名（小写字母/数字/下划线）
+     * @return { started, file, targetDb, createdDb }
+     */
+    Map<String, Object> startRestore(String backupName, String targetDb);
+
+    /**
+     * 当前（或最近一次）恢复任务的状态；页面据此轮询进度
+     */
+    DbRestoreStatus restoreStatus();
+
+    /**
+     * 删除历史恢复库。
+     *
+     * ⚠️ 只允许删除 xky_project_r_ 前缀的库（即本功能恢复出来的库），
+     * 且不允许删除应用当前连接的库 —— 防止一键清掉生产库。
+     */
+    boolean dropDatabase(String dbName);
 }

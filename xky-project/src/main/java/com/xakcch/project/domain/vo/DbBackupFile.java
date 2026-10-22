@@ -24,6 +24,21 @@ public class DbBackupFile implements Serializable
     /** 文件最后修改时间 */
     private Date lastModified;
 
+    /**
+     * 异地（灾备）副本状态：
+     * disabled=未配置异地目录；synced=异地已有同名文件且大小一致；missing=异地缺失
+     */
+    private String secondary;
+
+    /**
+     * 文件当前实际所在位置（决定"能不能拿它来恢复"）：
+     * local=只在本机备份目录；secondary=只在异地目录；both=两处都有
+     *
+     * <p>为什么需要这个字段：整机挂掉换新机后，本机备份目录是空的，备份文件只在灾备机的共享目录里。
+     * 列表必须把这类文件也列出来，否则一键恢复没有文件可选。</p>
+     */
+    private String location;
+
     public DbBackupFile()
     {
     }
@@ -74,5 +89,25 @@ public class DbBackupFile implements Serializable
     public void setLastModified(Date lastModified)
     {
         this.lastModified = lastModified;
+    }
+
+    public String getSecondary()
+    {
+        return secondary;
+    }
+
+    public void setSecondary(String secondary)
+    {
+        this.secondary = secondary;
+    }
+
+    public String getLocation()
+    {
+        return location;
+    }
+
+    public void setLocation(String location)
+    {
+        this.location = location;
     }
 }

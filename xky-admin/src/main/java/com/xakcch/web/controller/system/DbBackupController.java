@@ -14,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
@@ -61,6 +62,13 @@ public class DbBackupController extends BaseController
         data.put("total", rows.size());
         data.put("dir", dbBackupService.getBackupDir());
         data.put("enabled", dbBackupService.isEnabled());
+        // 异地（灾备）目录：留空表示未启用，页面据此决定是否展示"异地"列与告警
+        String secondaryDir = dbBackupService.getSecondaryDir();
+        boolean secondaryEnabled = secondaryDir != null && !secondaryDir.trim().isEmpty();
+        data.put("secondaryDir", secondaryEnabled ? secondaryDir : "");
+        data.put("secondaryEnabled", secondaryEnabled);
+        // 异地目录当前能不能访问（不可达=灾备机宕机/网络断/共享权限不足）—— 页面据此告警
+        data.put("secondaryReachable", secondaryEnabled && dbBackupService.isSecondaryReachable());
         String pgDump = dbBackupService.resolvePgDump();
         data.put("pgDump", pgDump == null ? "" : pgDump);
         data.put("pgDumpReady", pgDump != null);
@@ -147,5 +155,112 @@ public class DbBackupController extends BaseController
             return error("仅超级管理员可删除数据库备份");
         }
         return toAjax(dbBackupService.deleteBackup(name) ? 1 : 0);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*                        一键恢复（pg_restore）                        */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * 数据库服务器上的库列表（选择恢复目标 / 管理历史恢复库）
+     */
+    @GetMapping("/databases")
+    public AjaxResult databases()
+    {
+        if (!SecurityUtils.isAdmin())
+        {
+            return error("仅超级管理员可执行数据库恢复");
+        }
+        try
+        {
+            Map<String, Object> data = new HashMap<String, Object>();
+            data.put("rows", dbBackupService.listDatabases());
+            data.put("currentDb", dbBackupService.connectionInfo().getOrDefault("dbName", ""));
+            return success(data);
+        }
+        catch (Exception ex)
+        {
+            log.error("[dbRestore] 读取数据库列表失败", ex);
+            return error(ex.getMessage());
+        }
+    }
+
+    /**
+     * 检查目标库能否作为恢复目标（不存在 / 空库 可以；已有业务表一律拒绝）
+     */
+    @GetMapping("/inspectDb")
+    public AjaxResult inspectDb(String db)
+    {
+        if (!SecurityUtils.isAdmin())
+        {
+            return error("仅超级管理员可执行数据库恢复");
+        }
+        try
+        {
+            return success(dbBackupService.inspectDatabase(db));
+        }
+        catch (Exception ex)
+        {
+            return error(ex.getMessage());
+        }
+    }
+
+    /**
+     * 启动恢复（异步执行，立即返回；前端轮询 /restoreStatus 看进度）
+     */
+    @Log(title = "数据库恢复", businessType = BusinessType.UPDATE)
+    @PostMapping("/restore")
+    public AjaxResult restore(@RequestBody Map<String, String> body)
+    {
+        if (!SecurityUtils.isAdmin())
+        {
+            return error("仅超级管理员可执行数据库恢复");
+        }
+        try
+        {
+            String name = body == null ? null : body.get("name");
+            String targetDb = body == null ? null : body.get("targetDb");
+            return success(dbBackupService.startRestore(name, targetDb));
+        }
+        catch (Exception ex)
+        {
+            log.error("[dbRestore] 启动恢复失败", ex);
+            return error(ex.getMessage());
+        }
+    }
+
+    /**
+     * 恢复任务状态（轮询）
+     */
+    @GetMapping("/restoreStatus")
+    public AjaxResult restoreStatus()
+    {
+        if (!SecurityUtils.isAdmin())
+        {
+            return error("仅超级管理员可查看数据库恢复状态");
+        }
+        return success(dbBackupService.restoreStatus());
+    }
+
+    /**
+     * 删除历史恢复库（仅 xky_project_r_ 前缀，现库永不可删）
+     */
+    @Log(title = "数据库恢复", businessType = BusinessType.DELETE)
+    @DeleteMapping("/dropDb")
+    public AjaxResult dropDb(String name)
+    {
+        if (!SecurityUtils.isAdmin())
+        {
+            return error("仅超级管理员可删除恢复库");
+        }
+        try
+        {
+            return toAjax(dbBackupService.dropDatabase(name) ? 1 : 0);
+        }
+        catch (Exception ex)
+        {
+            log.error("[dbRestore] 删除恢复库失败：" + name, ex);
+            return error(ex.getMessage());
+        }
     }
 }

@@ -30,9 +30,9 @@ public class DbBackupScheduleConfig
     private IDbBackupService dbBackupService;
 
     /**
-     * 每日 23:00 数据库备份（可通过 xky-project.backup.cron 调整）
+     * 数据库定时备份，默认每 4 小时一次（可通过 xky-project.backup.cron 调整）
      */
-    @Scheduled(cron = "${xky-project.backup.cron:0 0 23 * * ?}")
+    @Scheduled(cron = "${xky-project.backup.cron:0 0 0,4,8,12,16,20 * * ?}")
     public void dailyDbBackup()
     {
         if (!dbBackupService.isEnabled())
@@ -43,7 +43,8 @@ public class DbBackupScheduleConfig
         try
         {
             Map<String, Object> r = dbBackupService.runBackup();
-            log.info("[dbBackup] 定时备份完成：{}（{}）", r.get("file"), r.get("sizeText"));
+            log.info("[dbBackup] 定时备份完成：{}（{}），异地副本：{}", r.get("file"), r.get("sizeText"),
+                    Boolean.TRUE.equals(r.get("secondaryOk")) ? "已写入" : String.valueOf(r.get("secondaryError")));
         }
         catch (Exception ex)
         {
