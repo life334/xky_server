@@ -263,7 +263,8 @@ public class ProjProjectController extends BaseController
     @PutMapping
     public AjaxResult edit(@Validated @RequestBody ProjProject project)
     {
-        checkClosedProject(project.getId(), "修改");
+        // 已办结/已归档项目允许修改项目信息（2026-10-22 用户需求）；
+        // 「变更状态」「删除」仍走 checkClosedProject 闸门，避免绕过业务关键动作。
         if (!projectService.checkProjectCodeUnique(project))
         {
             return error("修改项目'" + project.getProjectName() + "'失败，工程编号已存在");
@@ -308,12 +309,13 @@ public class ProjProjectController extends BaseController
     }
 
     /**
-     * 人工修正项目办结时间（受限操作）
+     * 人工修正项目办结时间
      *
-     * <p>办结时间是产值归属月份、回款应收账期、欠款逾期预警的分片轴，
-     * 因此单列权限 {@code project:project:closeTime}，默认只给超级管理员与生产管理。
+     * <p>办结时间是产值归属月份、回款应收账期、欠款逾期预警的分片轴。
+     * 2026-10-22 起入口并入「项目修改」弹窗，权限随普通编辑 {@code project:project:edit}；
+     * 原 {@code project:project:closeTime} 权限位仍保留在 sys_menu，需要收紧时把下面注解改回即可还原。
      */
-    @PreAuthorize("@ss.hasPermi('project:project:closeTime')")
+    @PreAuthorize("@ss.hasPermi('project:project:edit')")
     @Log(title = "项目信息", businessType = BusinessType.UPDATE)
     @PutMapping("/closeTime/{id}")
     public AjaxResult editCloseTime(@PathVariable Long id, @RequestBody Map<String, String> body)

@@ -594,6 +594,15 @@ public class ProjProjectServiceImpl implements IProjProjectService
         boolean contractChanged = (oldContractId == null && newContractId != null)
             || (oldContractId != null && !oldContractId.equals(newContractId));
 
+        // 总时长兜底：已办结/已归档项目的总时长是冻结快照，
+        // 前端不传（或传 null）时回填原值，避免被下面的无条件覆盖写冲成空。
+        // （mapper 的 updateProject 里 total_duration 是无条件赋值，没有 <if> 判空）
+        if (before != null && project.getTotalDuration() == null && before.getTotalDuration() != null
+                && ("closed".equals(before.getStatus()) || "archived".equals(before.getStatus())))
+        {
+            project.setTotalDuration(before.getTotalDuration());
+        }
+
         // 项目类别：名称↔ID 互转（编辑改「项目类别」文本时同步刷新 project_category_id）
         resolveCategoryAndLeaders(project);
         // 总时长自动计算（安排日期 → 今天，仅工作日；已办结/已归档保持冻结值）

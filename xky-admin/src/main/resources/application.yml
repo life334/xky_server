@@ -119,9 +119,9 @@ mybatis:
 
 # PageHelper分页插件
 pagehelper:
-  helperDialect: postgresql
   supportMethodsArguments: true
   params: count=countSql
+  helperDialect: postgresql
 
 # Springdoc配置
 springdoc:
