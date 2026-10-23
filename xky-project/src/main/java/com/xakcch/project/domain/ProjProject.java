@@ -106,6 +106,11 @@ public class ProjProject extends BaseEntity
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private java.util.Date closeTime;
 
+    /** 拟上报时间（项目级，用户在费用结算「到账信息」编辑弹窗里选择；到账统计/报表按此归集） */
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    @Excel(name = "拟上报时间", width = 30, dateFormat = "yyyy-MM-dd")
+    private java.util.Date planReportTime;
+
     // ===== 以下为非持久化字段，列表/详情展示用 =====
 
     /** 项目类别名称（JOIN proj_category，仅列表展示用，不再参与Excel导入导出） */
@@ -210,6 +215,12 @@ public class ProjProject extends BaseEntity
 
     /** 办结日期范围结束（查询用，非持久化） */
     private String closeDateEnd;
+
+    /** 拟上报时间范围起始（查询用，非持久化） */
+    private String planReportTimeBegin;
+
+    /** 拟上报时间范围结束（查询用，非持久化） */
+    private String planReportTimeEnd;
 
     /** 录入日期（新增口）范围起始（查询用，非持久化）——全量按「项目创建日期」create_time */
     private String newDateBegin;
@@ -512,6 +523,16 @@ public class ProjProject extends BaseEntity
         this.closeTime = closeTime;
     }
 
+    public java.util.Date getPlanReportTime()
+    {
+        return planReportTime;
+    }
+
+    public void setPlanReportTime(java.util.Date planReportTime)
+    {
+        this.planReportTime = planReportTime;
+    }
+
     public String getImportRemark()
     {
         return importRemark;
@@ -671,6 +692,26 @@ public class ProjProject extends BaseEntity
         this.closeDateEnd = closeDateEnd;
     }
 
+    public String getPlanReportTimeBegin()
+    {
+        return planReportTimeBegin;
+    }
+
+    public void setPlanReportTimeBegin(String planReportTimeBegin)
+    {
+        this.planReportTimeBegin = planReportTimeBegin;
+    }
+
+    public String getPlanReportTimeEnd()
+    {
+        return planReportTimeEnd;
+    }
+
+    public void setPlanReportTimeEnd(String planReportTimeEnd)
+    {
+        this.planReportTimeEnd = planReportTimeEnd;
+    }
+
     public BigDecimal getContractAmount()
     {
         return contractAmount;
@@ -791,6 +832,7 @@ public class ProjProject extends BaseEntity
             .append("durationRequire", getDurationRequire())
             .append("totalDuration", getTotalDuration())
             .append("closeTime", getCloseTime())
+            .append("planReportTime", getPlanReportTime())
             .append("importTaskAssignDate", getImportTaskAssignDate())
             .append("importTaskFinishDate", getImportTaskFinishDate())
             .append("importTaskDuration", getImportTaskDuration())

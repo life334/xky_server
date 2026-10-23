@@ -66,6 +66,10 @@ public class ReportFieldPool
         addField("createTime", "创建时间", "subject", "项目信息", "date", true, null);
         // 办结时间：状态流转 closed 时写入；支持筛选（指定时间段内办结的项目）
         addField("closeTime", "办结时间", "subject", "项目信息", "date", true, null);
+        // 拟上报时间（项目级 proj_project.plan_report_time）：由用户在费用结算「到账信息」编辑弹窗里选择，
+        // 报表筛选/输出与回款管理「到账统计」口径共用。未填的项目在筛选时不命中（与其它日期筛选一致）。
+        // 取值走 resolveValue 末尾的「直接取行值」分支，ReportDataMapper 已 select p.plan_report_time as "planReportTime"。
+        addField("planReportTime", "拟上报时间", "subject", "项目信息", "date", true, null);
         addField("remark", "备注", "subject", "项目信息", "string", true, null);
         addField("deptName", "所属部门", "agg", "项目信息", "string", false, null);
 

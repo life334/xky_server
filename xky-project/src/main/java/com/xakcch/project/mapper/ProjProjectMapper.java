@@ -64,6 +64,15 @@ public interface ProjProjectMapper
                                    @Param("updateBy") String updateBy);
 
     /**
+     * 更新项目「拟上报时间」（传 null 表示清空）
+     *
+     * @return 影响行数
+     */
+    public int updatePlanReportTime(@Param("projectId") Long projectId,
+                                    @Param("planReportTime") java.util.Date planReportTime,
+                                    @Param("updateBy") String updateBy);
+
+    /**
      * 新增项目
      *
      * @param project 项目

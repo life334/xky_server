@@ -33,6 +33,7 @@ import com.xakcch.project.mapper.ProjCategoryBillingMapper;
 import com.xakcch.project.mapper.ProjContractPriceMapper;
 import com.xakcch.project.mapper.ProjLeaderMapper;
 import com.xakcch.project.mapper.ProjPaymentMapper;
+import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.mapper.ProjWorkloadMapper;
 import com.xakcch.project.report.DynamicColumnExcelExporter;
 import com.xakcch.project.service.IProjProjectService;
@@ -54,6 +55,9 @@ public class ProjSettlementController extends BaseController
 
     @Autowired
     private ProjPaymentMapper paymentMapper;
+
+    @Autowired
+    private ProjProjectMapper projectMapper;
 
     @Autowired
     private ProjContractPriceMapper contractPriceMapper;
@@ -146,6 +150,8 @@ public class ProjSettlementController extends BaseController
         addColumn(columns, "projectName", "项目名称", "text", false, "projectName");
         addColumn(columns, "clientUnit", "委托单位", "text", true, "clientUnit");
         addColumn(columns, "projectLocation", "工程地点", "text", true, "projectLocation");
+        // 拟上报时间（项目级；费用结算高级筛选、到账统计口径、报表筛选都用它）
+        addColumn(columns, "planReportTime", "拟上报时间", "date", true, "planReportTime");
         // 「负责人」= 工作量登记人（导出按它拆行，页面展开行里的「负责人」也是它）。
         // 项目级 leaderNames 已从清单中移除：与它同名易混淆，且拆行后每行都一样、没有信息量。
         addColumn(columns, "userName", "负责人", "text", false, "userName");
@@ -1169,6 +1175,13 @@ public class ProjSettlementController extends BaseController
         // Save refunds（退款多笔，整组替换）
         saveRefunds(params.get("refunds"), projectId, username);
 
+        // 拟上报时间（项目级，挂在 proj_project 上；传 null/空 = 清空）。
+        // 只要请求里带了 planReportTime 这个 key 就写（允许清空），不带则不动，避免误伤其它调用方。
+        if (params.containsKey("planReportTime"))
+        {
+            projectMapper.updatePlanReportTime(projectId, toDate(params.get("planReportTime")), username);
+        }
+
         return success();
     }
 
@@ -1283,6 +1296,8 @@ public class ProjSettlementController extends BaseController
         // 项目类别名称：列表「项目类别」列（列元数据 key/prop = categoryName）数据源
         node.put("categoryName", p.getCategoryName());
         node.put("leaderNames", p.getLeaderNames());
+        // 拟上报时间（项目级，由「到账信息」编辑弹窗填写；列表列/导出/筛选共用）
+        node.put("planReportTime", p.getPlanReportTime() != null ? DATE_FMT.format(p.getPlanReportTime()) : "");
         return node;
     }
 

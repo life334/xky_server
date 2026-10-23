@@ -115,249 +115,610 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </sql>
 
     <!--
-      项目台账筛选条件片段（唯一真相源）：
-        列表 / 计数 / 单位到账汇总 三处共用，保证「命中 N 条」与明细、汇总口径完全一致。
-        筛选 key 来自前端 filter_config.values，与 ReportFieldPool 字段 key 对应（参数前缀 f.）
-    -->
-    <sql id="reportWhere">
+      ══════════════════════════════════════════════════════════════════════════
+      项目台账筛选「条件片段」（rwc_* = report where condition）
+
+      每个 rwc_* 片段 = 一个筛选字段的完整条件，约定：
+        ① 字段无值 ⇒ 输出空（连括号都不输出）
+        ② 字段有值 ⇒ 输出 "(条件)"，自带一层括号，内部多条件用 and 连接
+           （自带括号是为了放进 OR 段时不破坏优先级；AND 段多一层括号同样等价）
+
+      reportWhere 只做「组装」：未标记「或」的字段走 AND 段，标记的走 OR 段，
+      最终语义 = (所有 AND 条件) AND (OR 组内任一条件)。
+      ⚠️ 新增筛选字段时：加一个 rwc_* 片段 + AND 段 / OR 段各加一行引用（条件体仅此一份）。
+    ══════════════════════════════════════════════════════════════════════════ -->
+
+    <sql id="rwc_projectCode">
         <if test="f.projectCode != null and f.projectCode != ''">
-            and p.project_code like concat('%', #{f.projectCode}, '%')
+            (p.project_code like concat('%', #{f.projectCode}, '%'))
         </if>
+    </sql>
+    <sql id="rwc_projectName">
         <if test="f.projectName != null and f.projectName != ''">
-            and p.project_name like concat('%', #{f.projectName}, '%')
+            (p.project_name like concat('%', #{f.projectName}, '%'))
         </if>
+    </sql>
+    <sql id="rwc_clientUnit">
         <if test="f.clientUnit != null and f.clientUnit != ''">
-            and p.client_unit like concat('%', #{f.clientUnit}, '%')
+            (p.client_unit like concat('%', #{f.clientUnit}, '%'))
         </if>
+    </sql>
+    <sql id="rwc_engineeringProject">
         <if test="f.engineeringProject != null and f.engineeringProject != ''">
-            and p.engineering_project = #{f.engineeringProject}
+            (p.engineering_project = #{f.engineeringProject})
         </if>
+    </sql>
+    <sql id="rwc_projectLocation">
         <if test="f.projectLocation != null and f.projectLocation != ''">
-            and p.project_location like concat('%', #{f.projectLocation}, '%')
+            (p.project_location like concat('%', #{f.projectLocation}, '%'))
         </if>
+    </sql>
+    <sql id="rwc_contactName">
         <if test="f.contactName != null and f.contactName != ''">
-            and p.contact_name like concat('%', #{f.contactName}, '%')
+            (p.contact_name like concat('%', #{f.contactName}, '%'))
         </if>
-        <!-- 项目类别（小类）：支持多选，前端以逗号拼接传递 ⇒ in (...)（单值同样走此分支） -->
+    </sql>
+    <sql id="rwc_contactPhone">
+        <if test="f.contactPhone != null and f.contactPhone != ''">
+            (p.contact_phone like concat('%', #{f.contactPhone}, '%'))
+        </if>
+    </sql>
+    <!-- 项目类别（小类）：支持多选，前端以逗号拼接传递 ⇒ in (...)（单值同样走此分支） -->
+    <sql id="rwc_categoryId">
         <if test="f.categoryId != null and f.categoryId != ''">
-            and p.project_category_id in
+            (p.project_category_id in
             <foreach item="c" collection="f.categoryId.split(',')" open="(" separator="," close=")">
                 cast(#{c} as bigint)
             </foreach>
+            )
         </if>
+    </sql>
+    <sql id="rwc_contractId">
         <if test="f.contractId != null and f.contractId != ''">
-            and p.contract_id = cast(#{f.contractId} as bigint)
+            (p.contract_id = cast(#{f.contractId} as bigint))
         </if>
+    </sql>
+    <sql id="rwc_projectStatus">
         <if test="f.projectStatus != null and f.projectStatus != ''">
-            and p.status in
+            (p.status in
             <foreach item="s" collection="f.projectStatus.split(',')" open="(" separator="," close=")">
                 #{s}
             </foreach>
+            )
         </if>
-        <if test="f.assignDateBegin != null and f.assignDateBegin != ''">
-            and p.assign_date &gt;= cast(#{f.assignDateBegin} as date)
+    </sql>
+    <sql id="rwc_assignDate">
+        <if test="(f.assignDateBegin != null and f.assignDateBegin != '') or (f.assignDateEnd != null and f.assignDateEnd != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.assignDateBegin != null and f.assignDateBegin != ''">
+                    and p.assign_date &gt;= cast(#{f.assignDateBegin} as date)
+                </if>
+                <if test="f.assignDateEnd != null and f.assignDateEnd != ''">
+                    and p.assign_date &lt;= cast(#{f.assignDateEnd} as date)
+                </if>
+            </trim>)
         </if>
-        <if test="f.assignDateEnd != null and f.assignDateEnd != ''">
-            and p.assign_date &lt;= cast(#{f.assignDateEnd} as date)
+    </sql>
+    <sql id="rwc_createTime">
+        <if test="(f.createTimeBegin != null and f.createTimeBegin != '') or (f.createTimeEnd != null and f.createTimeEnd != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.createTimeBegin != null and f.createTimeBegin != ''">
+                    and p.create_time &gt;= cast(#{f.createTimeBegin} as timestamp)
+                </if>
+                <if test="f.createTimeEnd != null and f.createTimeEnd != ''">
+                    and p.create_time &lt;= cast(#{f.createTimeEnd} as timestamp)
+                </if>
+            </trim>)
         </if>
-        <if test="f.createTimeBegin != null and f.createTimeBegin != ''">
-            and p.create_time &gt;= cast(#{f.createTimeBegin} as timestamp)
+    </sql>
+    <!-- 结束日取整天（close_time 含时分秒，cast 为 timestamp 只到 00:00 会漏当天记录） -->
+    <sql id="rwc_closeTime">
+        <if test="(f.closeTimeBegin != null and f.closeTimeBegin != '') or (f.closeTimeEnd != null and f.closeTimeEnd != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.closeTimeBegin != null and f.closeTimeBegin != ''">
+                    and p.close_time &gt;= cast(#{f.closeTimeBegin} as timestamp)
+                </if>
+                <if test="f.closeTimeEnd != null and f.closeTimeEnd != ''">
+                    and p.close_time &lt; cast(#{f.closeTimeEnd} as date) + interval '1 day'
+                </if>
+            </trim>)
         </if>
-        <if test="f.createTimeEnd != null and f.createTimeEnd != ''">
-            and p.create_time &lt;= cast(#{f.createTimeEnd} as timestamp)
+    </sql>
+    <!-- 拟上报时间（项目级 proj_project.plan_report_time，date 类型；未填的项目天然被排除） -->
+    <sql id="rwc_planReportTime">
+        <if test="(f.planReportTimeBegin != null and f.planReportTimeBegin != '') or (f.planReportTimeEnd != null and f.planReportTimeEnd != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.planReportTimeBegin != null and f.planReportTimeBegin != ''">
+                    and p.plan_report_time &gt;= cast(#{f.planReportTimeBegin} as date)
+                </if>
+                <if test="f.planReportTimeEnd != null and f.planReportTimeEnd != ''">
+                    and p.plan_report_time &lt; cast(#{f.planReportTimeEnd} as date) + interval '1 day'
+                </if>
+            </trim>)
         </if>
-        <if test="f.closeTimeBegin != null and f.closeTimeBegin != ''">
-            and p.close_time &gt;= cast(#{f.closeTimeBegin} as timestamp)
-        </if>
-        <!-- 结束日取整天（close_time 含时分秒，cast 为 timestamp 只到 00:00 会漏当天记录） -->
-        <if test="f.closeTimeEnd != null and f.closeTimeEnd != ''">
-            and p.close_time &lt; cast(#{f.closeTimeEnd} as date) + interval '1 day'
-        </if>
-        <!--
-          关联定线项目「时间段」筛选（模板5「验线上报产值统计表」/ 模板6「管线定验线报表（补验线）」）：
-            判定日期来源见 relatedProjStartExpr / relatedProjEndExpr；
-            手工输入的编号按其编号里的年份参与比较，读不出年份则整行排除。
-        -->
+    </sql>
+    <!--
+      关联定线项目「时间段」筛选（模板5「验线上报产值统计表」/ 模板6「管线定验线报表（补验线）」）：
+        判定日期来源见 relatedProjStartExpr / relatedProjEndExpr；
+        手工输入的编号按其编号里的年份参与比较，读不出年份则整行排除。
+    -->
+    <sql id="rwc_relatedProjectCreate">
         <if test="(f.relatedProjectCreateBegin != null and f.relatedProjectCreateBegin != '') or (f.relatedProjectCreateEnd != null and f.relatedProjectCreateEnd != '')">
-            and <include refid="relatedProjStartExpr"/> is not null
-            <if test="f.relatedProjectCreateBegin != null and f.relatedProjectCreateBegin != ''">
-                and <include refid="relatedProjEndExpr"/> &gt;= cast(#{f.relatedProjectCreateBegin} as date)
-            </if>
-            <if test="f.relatedProjectCreateEnd != null and f.relatedProjectCreateEnd != ''">
-                and <include refid="relatedProjStartExpr"/> &lt;= cast(#{f.relatedProjectCreateEnd} as date)
-            </if>
+            (<trim prefixOverrides="and">
+                and <include refid="relatedProjStartExpr"/> is not null
+                <if test="f.relatedProjectCreateBegin != null and f.relatedProjectCreateBegin != ''">
+                    and <include refid="relatedProjEndExpr"/> &gt;= cast(#{f.relatedProjectCreateBegin} as date)
+                </if>
+                <if test="f.relatedProjectCreateEnd != null and f.relatedProjectCreateEnd != ''">
+                    and <include refid="relatedProjStartExpr"/> &lt;= cast(#{f.relatedProjectCreateEnd} as date)
+                </if>
+            </trim>)
         </if>
-        <if test="f.signDateBegin != null and f.signDateBegin != ''">
-            and c.sign_date &gt;= cast(#{f.signDateBegin} as date)
+    </sql>
+    <sql id="rwc_signDate">
+        <if test="(f.signDateBegin != null and f.signDateBegin != '') or (f.signDateEnd != null and f.signDateEnd != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.signDateBegin != null and f.signDateBegin != ''">
+                    and c.sign_date &gt;= cast(#{f.signDateBegin} as date)
+                </if>
+                <if test="f.signDateEnd != null and f.signDateEnd != ''">
+                    and c.sign_date &lt;= cast(#{f.signDateEnd} as date)
+                </if>
+            </trim>)
         </if>
-        <if test="f.signDateEnd != null and f.signDateEnd != ''">
-            and c.sign_date &lt;= cast(#{f.signDateEnd} as date)
+    </sql>
+    <sql id="rwc_entrustDate">
+        <if test="(f.entrustDateBegin != null and f.entrustDateBegin != '') or (f.entrustDateEnd != null and f.entrustDateEnd != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.entrustDateBegin != null and f.entrustDateBegin != ''">
+                    and c.entrust_date &gt;= cast(#{f.entrustDateBegin} as date)
+                </if>
+                <if test="f.entrustDateEnd != null and f.entrustDateEnd != ''">
+                    and c.entrust_date &lt;= cast(#{f.entrustDateEnd} as date)
+                </if>
+            </trim>)
         </if>
-        <if test="f.entrustDateBegin != null and f.entrustDateBegin != ''">
-            and c.entrust_date &gt;= cast(#{f.entrustDateBegin} as date)
+    </sql>
+    <sql id="rwc_lastPayTime">
+        <if test="(f.lastPayTimeBegin != null and f.lastPayTimeBegin != '') or (f.lastPayTimeEnd != null and f.lastPayTimeEnd != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.lastPayTimeBegin != null and f.lastPayTimeBegin != ''">
+                    and pay_sum.max_pay_time &gt;= cast(#{f.lastPayTimeBegin} as timestamp)
+                </if>
+                <if test="f.lastPayTimeEnd != null and f.lastPayTimeEnd != ''">
+                    and pay_sum.max_pay_time &lt;= cast(#{f.lastPayTimeEnd} as timestamp)
+                </if>
+            </trim>)
         </if>
-        <if test="f.entrustDateEnd != null and f.entrustDateEnd != ''">
-            and c.entrust_date &lt;= cast(#{f.entrustDateEnd} as date)
+    </sql>
+    <sql id="rwc_contractAmount">
+        <if test="(f.contractAmountMin != null and f.contractAmountMin != '') or (f.contractAmountMax != null and f.contractAmountMax != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.contractAmountMin != null and f.contractAmountMin != ''">
+                    and c.contract_amount &gt;= cast(#{f.contractAmountMin} as numeric)
+                </if>
+                <if test="f.contractAmountMax != null and f.contractAmountMax != ''">
+                    and c.contract_amount &lt;= cast(#{f.contractAmountMax} as numeric)
+                </if>
+            </trim>)
         </if>
-        <if test="f.lastPayTimeBegin != null and f.lastPayTimeBegin != ''">
-            and pay_sum.max_pay_time &gt;= cast(#{f.lastPayTimeBegin} as timestamp)
+    </sql>
+    <sql id="rwc_receivedAmount">
+        <if test="(f.receivedAmountMin != null and f.receivedAmountMin != '') or (f.receivedAmountMax != null and f.receivedAmountMax != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.receivedAmountMin != null and f.receivedAmountMin != ''">
+                    and pay_sum.total_received &gt;= cast(#{f.receivedAmountMin} as numeric)
+                </if>
+                <if test="f.receivedAmountMax != null and f.receivedAmountMax != ''">
+                    and pay_sum.total_received &lt;= cast(#{f.receivedAmountMax} as numeric)
+                </if>
+            </trim>)
         </if>
-        <if test="f.lastPayTimeEnd != null and f.lastPayTimeEnd != ''">
-            and pay_sum.max_pay_time &lt;= cast(#{f.lastPayTimeEnd} as timestamp)
+    </sql>
+    <sql id="rwc_refundAmount">
+        <if test="(f.refundAmountMin != null and f.refundAmountMin != '') or (f.refundAmountMax != null and f.refundAmountMax != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.refundAmountMin != null and f.refundAmountMin != ''">
+                    and coalesce(pay_sum.refund_amount, 0) &gt;= cast(#{f.refundAmountMin} as numeric)
+                </if>
+                <if test="f.refundAmountMax != null and f.refundAmountMax != ''">
+                    and coalesce(pay_sum.refund_amount, 0) &lt;= cast(#{f.refundAmountMax} as numeric)
+                </if>
+            </trim>)
         </if>
-        <if test="f.contractAmountMin != null and f.contractAmountMin != ''">
-            and c.contract_amount &gt;= cast(#{f.contractAmountMin} as numeric)
+    </sql>
+    <sql id="rwc_pendingAmount">
+        <if test="(f.pendingAmountMin != null and f.pendingAmountMin != '') or (f.pendingAmountMax != null and f.pendingAmountMax != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.pendingAmountMin != null and f.pendingAmountMin != ''">
+                    and (c.contract_amount - coalesce(pay_sum.total_received, 0)) &gt;= cast(#{f.pendingAmountMin} as numeric)
+                </if>
+                <if test="f.pendingAmountMax != null and f.pendingAmountMax != ''">
+                    and (c.contract_amount - coalesce(pay_sum.total_received, 0)) &lt;= cast(#{f.pendingAmountMax} as numeric)
+                </if>
+            </trim>)
         </if>
-        <if test="f.contractAmountMax != null and f.contractAmountMax != ''">
-            and c.contract_amount &lt;= cast(#{f.contractAmountMax} as numeric)
+    </sql>
+    <!-- 项目未收金额 = 项目结算金额（外部产值合计） - 已收金额 -->
+    <sql id="rwc_projectSettleAmount">
+        <if test="(f.projectSettleAmountMin != null and f.projectSettleAmountMin != '') or (f.projectSettleAmountMax != null and f.projectSettleAmountMax != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.projectSettleAmountMin != null and f.projectSettleAmountMin != ''">
+                    and coalesce(w_sum.external_output, 0) &gt;= cast(#{f.projectSettleAmountMin} as numeric)
+                </if>
+                <if test="f.projectSettleAmountMax != null and f.projectSettleAmountMax != ''">
+                    and coalesce(w_sum.external_output, 0) &lt;= cast(#{f.projectSettleAmountMax} as numeric)
+                </if>
+            </trim>)
         </if>
-        <if test="f.receivedAmountMin != null and f.receivedAmountMin != ''">
-            and pay_sum.total_received &gt;= cast(#{f.receivedAmountMin} as numeric)
+    </sql>
+    <sql id="rwc_projectPendingAmount">
+        <if test="(f.projectPendingAmountMin != null and f.projectPendingAmountMin != '') or (f.projectPendingAmountMax != null and f.projectPendingAmountMax != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.projectPendingAmountMin != null and f.projectPendingAmountMin != ''">
+                    and (coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0)) &gt;= cast(#{f.projectPendingAmountMin} as numeric)
+                </if>
+                <if test="f.projectPendingAmountMax != null and f.projectPendingAmountMax != ''">
+                    and (coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0)) &lt;= cast(#{f.projectPendingAmountMax} as numeric)
+                </if>
+            </trim>)
         </if>
-        <if test="f.receivedAmountMax != null and f.receivedAmountMax != ''">
-            and pay_sum.total_received &lt;= cast(#{f.receivedAmountMax} as numeric)
+    </sql>
+    <!-- 项目欠款金额 = max(项目结算金额 - 已收, 0)；=0 即无欠款（含挂账项目，理解1） -->
+    <sql id="rwc_projectArrearsAmount">
+        <if test="(f.projectArrearsAmountMin != null and f.projectArrearsAmountMin != '') or (f.projectArrearsAmountMax != null and f.projectArrearsAmountMax != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.projectArrearsAmountMin != null and f.projectArrearsAmountMin != ''">
+                    and greatest(coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0), 0) &gt;= cast(#{f.projectArrearsAmountMin} as numeric)
+                </if>
+                <if test="f.projectArrearsAmountMax != null and f.projectArrearsAmountMax != ''">
+                    and greatest(coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0), 0) &lt;= cast(#{f.projectArrearsAmountMax} as numeric)
+                </if>
+            </trim>)
         </if>
-        <if test="f.refundAmountMin != null and f.refundAmountMin != ''">
-            and coalesce(pay_sum.refund_amount, 0) &gt;= cast(#{f.refundAmountMin} as numeric)
+    </sql>
+    <!-- 项目挂账金额：仅已结算（外部产值 > 0）才计算 max(已收 - 结算, 0)；无产值项目不算挂账 -->
+    <sql id="rwc_projectOverpaidAmount">
+        <if test="(f.projectOverpaidAmountMin != null and f.projectOverpaidAmountMin != '') or (f.projectOverpaidAmountMax != null and f.projectOverpaidAmountMax != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.projectOverpaidAmountMin != null and f.projectOverpaidAmountMin != ''">
+                    and case when coalesce(w_sum.external_output, 0) &gt; 0
+                             then greatest(coalesce(pay_sum.total_received, 0) - coalesce(w_sum.external_output, 0), 0)
+                             else 0 end &gt;= cast(#{f.projectOverpaidAmountMin} as numeric)
+                </if>
+                <if test="f.projectOverpaidAmountMax != null and f.projectOverpaidAmountMax != ''">
+                    and case when coalesce(w_sum.external_output, 0) &gt; 0
+                             then greatest(coalesce(pay_sum.total_received, 0) - coalesce(w_sum.external_output, 0), 0)
+                             else 0 end &lt;= cast(#{f.projectOverpaidAmountMax} as numeric)
+                </if>
+            </trim>)
         </if>
-        <if test="f.refundAmountMax != null and f.refundAmountMax != ''">
-            and coalesce(pay_sum.refund_amount, 0) &lt;= cast(#{f.refundAmountMax} as numeric)
-        </if>
-        <if test="f.pendingAmountMin != null and f.pendingAmountMin != ''">
-            and (c.contract_amount - coalesce(pay_sum.total_received, 0)) &gt;= cast(#{f.pendingAmountMin} as numeric)
-        </if>
-        <if test="f.pendingAmountMax != null and f.pendingAmountMax != ''">
-            and (c.contract_amount - coalesce(pay_sum.total_received, 0)) &lt;= cast(#{f.pendingAmountMax} as numeric)
-        </if>
-        <!-- 项目未收金额 = 项目结算金额（外部产值合计） - 已收金额 -->
-        <if test="f.projectSettleAmountMin != null and f.projectSettleAmountMin != ''">
-            and coalesce(w_sum.external_output, 0) &gt;= cast(#{f.projectSettleAmountMin} as numeric)
-        </if>
-        <if test="f.projectSettleAmountMax != null and f.projectSettleAmountMax != ''">
-            and coalesce(w_sum.external_output, 0) &lt;= cast(#{f.projectSettleAmountMax} as numeric)
-        </if>
-        <if test="f.projectPendingAmountMin != null and f.projectPendingAmountMin != ''">
-            and (coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0)) &gt;= cast(#{f.projectPendingAmountMin} as numeric)
-        </if>
-        <if test="f.projectPendingAmountMax != null and f.projectPendingAmountMax != ''">
-            and (coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0)) &lt;= cast(#{f.projectPendingAmountMax} as numeric)
-        </if>
-        <!-- 项目欠款金额 = max(项目结算金额 - 已收, 0)；=0 即无欠款（含挂账项目，理解1） -->
-        <if test="f.projectArrearsAmountMin != null and f.projectArrearsAmountMin != ''">
-            and greatest(coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0), 0) &gt;= cast(#{f.projectArrearsAmountMin} as numeric)
-        </if>
-        <if test="f.projectArrearsAmountMax != null and f.projectArrearsAmountMax != ''">
-            and greatest(coalesce(w_sum.external_output, 0) - coalesce(pay_sum.total_received, 0), 0) &lt;= cast(#{f.projectArrearsAmountMax} as numeric)
-        </if>
-        <!-- 项目挂账金额：仅已结算（外部产值 > 0）才计算 max(已收 - 结算, 0)；无产值项目不算挂账 -->
-        <if test="f.projectOverpaidAmountMin != null and f.projectOverpaidAmountMin != ''">
-            and case when coalesce(w_sum.external_output, 0) &gt; 0
-                     then greatest(coalesce(pay_sum.total_received, 0) - coalesce(w_sum.external_output, 0), 0)
-                     else 0 end &gt;= cast(#{f.projectOverpaidAmountMin} as numeric)
-        </if>
-        <if test="f.projectOverpaidAmountMax != null and f.projectOverpaidAmountMax != ''">
-            and case when coalesce(w_sum.external_output, 0) &gt; 0
-                     then greatest(coalesce(pay_sum.total_received, 0) - coalesce(w_sum.external_output, 0), 0)
-                     else 0 end &lt;= cast(#{f.projectOverpaidAmountMax} as numeric)
-        </if>
-        <!-- 项目结算状态（基于项目结算金额 = 外部产值合计）：pending 未结清 / settled 已结清 / overdue 超额 -->
+    </sql>
+    <!-- 项目结算状态（基于项目结算金额 = 外部产值合计）：pending 未结清 / settled 已结清 / overdue 超额 -->
+    <sql id="rwc_projectSettleStatus">
         <if test="f.projectSettleStatus != null and f.projectSettleStatus != ''">
-            <choose>
-                <when test="f.projectSettleStatus == 'settled'.toString()">
-                    and coalesce(w_sum.external_output, 0) &gt; 0
-                    and coalesce(pay_sum.total_received, 0) &gt;= coalesce(w_sum.external_output, 0)
-                </when>
-                <when test="f.projectSettleStatus == 'overdue'.toString()">
-                    and coalesce(w_sum.external_output, 0) &gt; 0
-                    and coalesce(pay_sum.total_received, 0) &gt; coalesce(w_sum.external_output, 0)
-                </when>
-                <otherwise>
-                    and (coalesce(w_sum.external_output, 0) = 0
-                         or coalesce(pay_sum.total_received, 0) &lt; coalesce(w_sum.external_output, 0))
-                </otherwise>
-            </choose>
+            (<trim prefixOverrides="and">
+                <choose>
+                    <when test="f.projectSettleStatus == 'settled'.toString()">
+                        and coalesce(w_sum.external_output, 0) &gt; 0
+                        and coalesce(pay_sum.total_received, 0) &gt;= coalesce(w_sum.external_output, 0)
+                    </when>
+                    <when test="f.projectSettleStatus == 'overdue'.toString()">
+                        and coalesce(w_sum.external_output, 0) &gt; 0
+                        and coalesce(pay_sum.total_received, 0) &gt; coalesce(w_sum.external_output, 0)
+                    </when>
+                    <otherwise>
+                        and (coalesce(w_sum.external_output, 0) = 0
+                             or coalesce(pay_sum.total_received, 0) &lt; coalesce(w_sum.external_output, 0))
+                    </otherwise>
+                </choose>
+            </trim>)
         </if>
-        <if test="f.totalInvoiceAmountMin != null and f.totalInvoiceAmountMin != ''">
-            and coalesce(pay_sum.total_invoice, 0) &gt;= cast(#{f.totalInvoiceAmountMin} as numeric)
+    </sql>
+    <sql id="rwc_totalInvoiceAmount">
+        <if test="(f.totalInvoiceAmountMin != null and f.totalInvoiceAmountMin != '') or (f.totalInvoiceAmountMax != null and f.totalInvoiceAmountMax != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.totalInvoiceAmountMin != null and f.totalInvoiceAmountMin != ''">
+                    and coalesce(pay_sum.total_invoice, 0) &gt;= cast(#{f.totalInvoiceAmountMin} as numeric)
+                </if>
+                <if test="f.totalInvoiceAmountMax != null and f.totalInvoiceAmountMax != ''">
+                    and coalesce(pay_sum.total_invoice, 0) &lt;= cast(#{f.totalInvoiceAmountMax} as numeric)
+                </if>
+            </trim>)
         </if>
-        <if test="f.totalInvoiceAmountMax != null and f.totalInvoiceAmountMax != ''">
-            and coalesce(pay_sum.total_invoice, 0) &lt;= cast(#{f.totalInvoiceAmountMax} as numeric)
+    </sql>
+    <sql id="rwc_archiveDate">
+        <if test="(f.archiveDateBegin != null and f.archiveDateBegin != '') or (f.archiveDateEnd != null and f.archiveDateEnd != '')">
+            (<trim prefixOverrides="and">
+                <if test="f.archiveDateBegin != null and f.archiveDateBegin != ''">
+                    and c.archive_date &gt;= cast(#{f.archiveDateBegin} as date)
+                </if>
+                <if test="f.archiveDateEnd != null and f.archiveDateEnd != ''">
+                    and c.archive_date &lt;= cast(#{f.archiveDateEnd} as date)
+                </if>
+            </trim>)
         </if>
-        <if test="f.archiveDateBegin != null and f.archiveDateBegin != ''">
-            and c.archive_date &gt;= cast(#{f.archiveDateBegin} as date)
-        </if>
-        <if test="f.archiveDateEnd != null and f.archiveDateEnd != ''">
-            and c.archive_date &lt;= cast(#{f.archiveDateEnd} as date)
-        </if>
+    </sql>
+    <sql id="rwc_invoiceFlag">
         <if test="f.invoiceFlag != null and f.invoiceFlag != ''">
-            <choose>
-                <when test="f.invoiceFlag == 'Y'.toString()">
-                    and coalesce(pay_sum.total_invoice, 0) &gt; 0
-                </when>
-                <otherwise>
-                    and coalesce(pay_sum.total_invoice, 0) = 0
-                </otherwise>
-            </choose>
+            (<trim prefixOverrides="and">
+                <choose>
+                    <when test="f.invoiceFlag == 'Y'.toString()">
+                        and coalesce(pay_sum.total_invoice, 0) &gt; 0
+                    </when>
+                    <otherwise>
+                        and coalesce(pay_sum.total_invoice, 0) = 0
+                    </otherwise>
+                </choose>
+            </trim>)
         </if>
-        <!-- 结算状态：pending 未结清 / settled 已结清 / overdue 超额 -->
+    </sql>
+    <!-- 结算状态：pending 未结清 / settled 已结清 / overdue 超额 -->
+    <sql id="rwc_settlementStatus">
         <if test="f.settlementStatus != null and f.settlementStatus != ''">
-            <choose>
-                <when test="f.settlementStatus == 'settled'.toString()">
-                    and c.contract_amount is not null
-                    and coalesce(pay_sum.total_received, 0) &gt;= c.contract_amount
-                </when>
-                <when test="f.settlementStatus == 'overdue'.toString()">
-                    and c.contract_amount is not null
-                    and coalesce(pay_sum.total_received, 0) &gt; c.contract_amount
-                </when>
-                <otherwise>
-                    and (c.contract_amount is null
-                         or coalesce(pay_sum.total_received, 0) &lt; c.contract_amount)
-                </otherwise>
-            </choose>
+            (<trim prefixOverrides="and">
+                <choose>
+                    <when test="f.settlementStatus == 'settled'.toString()">
+                        and c.contract_amount is not null
+                        and coalesce(pay_sum.total_received, 0) &gt;= c.contract_amount
+                    </when>
+                    <when test="f.settlementStatus == 'overdue'.toString()">
+                        and c.contract_amount is not null
+                        and coalesce(pay_sum.total_received, 0) &gt; c.contract_amount
+                    </when>
+                    <otherwise>
+                        and (c.contract_amount is null
+                             or coalesce(pay_sum.total_received, 0) &lt; c.contract_amount)
+                    </otherwise>
+                </choose>
+            </trim>)
         </if>
-        <!-- 欠款时长（月）：办结至今月数 -->
+    </sql>
+    <!-- 欠款时长（月）：办结至今月数 -->
+    <sql id="rwc_debtMonths">
         <if test="f.debtMonths != null and f.debtMonths != ''">
-            and p.close_time is not null
-            and extract(epoch from (now() - p.close_time)) / 86400 / 30.44 &gt;= cast(#{f.debtMonths} as numeric)
+            (<trim prefixOverrides="and">
+                and p.close_time is not null
+                and extract(epoch from (now() - p.close_time)) / 86400 / 30.44 &gt;= cast(#{f.debtMonths} as numeric)
+            </trim>)
         </if>
-        <if test="f.contactPhone != null and f.contactPhone != ''">
-            and p.contact_phone like concat('%', #{f.contactPhone}, '%')
-        </if>
+    </sql>
+    <sql id="rwc_contractNo">
         <if test="f.contractNo != null and f.contractNo != ''">
-            and c.contract_no like concat('%', #{f.contractNo}, '%')
+            (c.contract_no like concat('%', #{f.contractNo}, '%'))
         </if>
+    </sql>
+    <sql id="rwc_contractName">
         <if test="f.contractName != null and f.contractName != ''">
-            and c.contract_name like concat('%', #{f.contractName}, '%')
+            (c.contract_name like concat('%', #{f.contractName}, '%'))
         </if>
+    </sql>
+    <sql id="rwc_contractPeriod">
         <if test="f.contractPeriod != null and f.contractPeriod != ''">
-            and c.contract_period like concat('%', #{f.contractPeriod}, '%')
+            (c.contract_period like concat('%', #{f.contractPeriod}, '%'))
         </if>
+    </sql>
+    <sql id="rwc_paymentTerms">
         <if test="f.paymentTerms != null and f.paymentTerms != ''">
-            and c.payment_terms like concat('%', #{f.paymentTerms}, '%')
+            (c.payment_terms like concat('%', #{f.paymentTerms}, '%'))
         </if>
+    </sql>
+    <sql id="rwc_leaderName">
         <if test="f.leaderName != null and f.leaderName != ''">
-            and leader.nick_name like concat('%', #{f.leaderName}, '%')
+            (leader.nick_name like concat('%', #{f.leaderName}, '%'))
         </if>
+    </sql>
+    <sql id="rwc_isSettled">
         <if test="f.isSettled != null and f.isSettled != ''">
-            and c.is_settled = #{f.isSettled}
+            (c.is_settled = #{f.isSettled})
         </if>
-        <!-- 上报状态筛选（前端「筛选设置」勾选「上报状态」后传入；预览/导出/上报三处同口径） -->
-        <if test="f.submitStatus != null and f.submitStatus != ''">
-            <choose>
-                <when test="f.submitStatus == 'submitted'.toString()">
-                    and <include refid="reportSubmitExpr"/>
-                </when>
-                <when test="f.submitStatus == 'unsubmitted'.toString()">
-                    and not <include refid="reportSubmitExpr"/>
-                </when>
-            </choose>
-        </if>
+    </sql>
+    <!-- 上报状态筛选（前端「筛选设置」勾选「上报状态」后传入；预览/导出/上报三处同口径） -->
+    <!--
+      括号由 trim 提供：submitStatus 只有 submitted / unsubmitted 两个分支（无 otherwise），
+      传其它值时内容为空 ⇒ trim 不加 prefix/suffix ⇒ 整段不输出（避免 "and ()" 语法错误）
+    -->
+    <sql id="rwc_submitStatus">
+        <trim prefix="(" prefixOverrides="and" suffix=")">
+            <if test="f.submitStatus == 'submitted'.toString()">
+                and <include refid="reportSubmitExpr"/>
+            </if>
+            <if test="f.submitStatus == 'unsubmitted'.toString()">
+                and not <include refid="reportSubmitExpr"/>
+            </if>
+        </trim>
+    </sql>
+    <sql id="rwc_keyword">
         <if test="f.keyword != null and f.keyword != ''">
-            and (p.project_code like concat('%', #{f.keyword}, '%')
-                 or p.project_name like concat('%', #{f.keyword}, '%')
-                 or p.client_unit like concat('%', #{f.keyword}, '%'))
+            (p.project_code like concat('%', #{f.keyword}, '%')
+             or p.project_name like concat('%', #{f.keyword}, '%')
+             or p.client_unit like concat('%', #{f.keyword}, '%'))
         </if>
+    </sql>
+
+    <!--
+      项目台账筛选条件片段（唯一真相源）：
+        列表 / 计数 / 单位到账汇总 三处共用，保证「命中 N 条」与明细、汇总口径完全一致。
+        筛选 key 来自前端 filter_config.values，与 ReportFieldPool 字段 key 对应（参数前缀 f.）
+
+      组合语义：
+        ① 默认（f.orFields 为空）⇒ 所有条件 AND，与历史行为逐字等价
+        ② 前端把若干字段标记为「或」（f.orFields = 这些字段对应的后端键数组）⇒
+           最终 SQL = (未标记的条件 AND ...) AND (标记的条件 OR ...)
+           例：委托单位含「市政」 AND (拟上报时间在10月 OR 办结时间在10月)
+        ⚠️ OR 段用 trim 包成 "and ( ... )"：组内所有字段都无值时 trim 内容为空，
+           prefix/suffix 不会添加（MyBatis trim 语义），不会出现空括号。
+    -->
+    <sql id="reportWhere">
+        <!-- 「或」标记归一化：orFields = 前端展开后的后端键数组（同一字段的 Begin/End 必定同组） -->
+        <bind name="o_projectCode" value="f.orFields != null and f.orFields.contains('projectCode')"/>
+        <bind name="o_projectName" value="f.orFields != null and f.orFields.contains('projectName')"/>
+        <bind name="o_clientUnit" value="f.orFields != null and f.orFields.contains('clientUnit')"/>
+        <bind name="o_engineeringProject" value="f.orFields != null and f.orFields.contains('engineeringProject')"/>
+        <bind name="o_projectLocation" value="f.orFields != null and f.orFields.contains('projectLocation')"/>
+        <bind name="o_contactName" value="f.orFields != null and f.orFields.contains('contactName')"/>
+        <bind name="o_contactPhone" value="f.orFields != null and f.orFields.contains('contactPhone')"/>
+        <bind name="o_categoryId" value="f.orFields != null and f.orFields.contains('categoryId')"/>
+        <bind name="o_contractId" value="f.orFields != null and f.orFields.contains('contractId')"/>
+        <bind name="o_projectStatus" value="f.orFields != null and f.orFields.contains('projectStatus')"/>
+        <bind name="o_assignDate" value="f.orFields != null and (f.orFields.contains('assignDateBegin') or f.orFields.contains('assignDateEnd'))"/>
+        <bind name="o_createTime" value="f.orFields != null and (f.orFields.contains('createTimeBegin') or f.orFields.contains('createTimeEnd'))"/>
+        <bind name="o_closeTime" value="f.orFields != null and (f.orFields.contains('closeTimeBegin') or f.orFields.contains('closeTimeEnd'))"/>
+        <bind name="o_planReportTime" value="f.orFields != null and (f.orFields.contains('planReportTimeBegin') or f.orFields.contains('planReportTimeEnd'))"/>
+        <bind name="o_relatedProjectCreate" value="f.orFields != null and (f.orFields.contains('relatedProjectCreateBegin') or f.orFields.contains('relatedProjectCreateEnd'))"/>
+        <bind name="o_signDate" value="f.orFields != null and (f.orFields.contains('signDateBegin') or f.orFields.contains('signDateEnd'))"/>
+        <bind name="o_entrustDate" value="f.orFields != null and (f.orFields.contains('entrustDateBegin') or f.orFields.contains('entrustDateEnd'))"/>
+        <bind name="o_lastPayTime" value="f.orFields != null and (f.orFields.contains('lastPayTimeBegin') or f.orFields.contains('lastPayTimeEnd'))"/>
+        <bind name="o_contractAmount" value="f.orFields != null and (f.orFields.contains('contractAmountMin') or f.orFields.contains('contractAmountMax'))"/>
+        <bind name="o_receivedAmount" value="f.orFields != null and (f.orFields.contains('receivedAmountMin') or f.orFields.contains('receivedAmountMax'))"/>
+        <bind name="o_refundAmount" value="f.orFields != null and (f.orFields.contains('refundAmountMin') or f.orFields.contains('refundAmountMax'))"/>
+        <bind name="o_pendingAmount" value="f.orFields != null and (f.orFields.contains('pendingAmountMin') or f.orFields.contains('pendingAmountMax'))"/>
+        <bind name="o_projectSettleAmount" value="f.orFields != null and (f.orFields.contains('projectSettleAmountMin') or f.orFields.contains('projectSettleAmountMax'))"/>
+        <bind name="o_projectPendingAmount" value="f.orFields != null and (f.orFields.contains('projectPendingAmountMin') or f.orFields.contains('projectPendingAmountMax'))"/>
+        <bind name="o_projectArrearsAmount" value="f.orFields != null and (f.orFields.contains('projectArrearsAmountMin') or f.orFields.contains('projectArrearsAmountMax'))"/>
+        <bind name="o_projectOverpaidAmount" value="f.orFields != null and (f.orFields.contains('projectOverpaidAmountMin') or f.orFields.contains('projectOverpaidAmountMax'))"/>
+        <bind name="o_projectSettleStatus" value="f.orFields != null and f.orFields.contains('projectSettleStatus')"/>
+        <bind name="o_totalInvoiceAmount" value="f.orFields != null and (f.orFields.contains('totalInvoiceAmountMin') or f.orFields.contains('totalInvoiceAmountMax'))"/>
+        <bind name="o_archiveDate" value="f.orFields != null and (f.orFields.contains('archiveDateBegin') or f.orFields.contains('archiveDateEnd'))"/>
+        <bind name="o_invoiceFlag" value="f.orFields != null and f.orFields.contains('invoiceFlag')"/>
+        <bind name="o_settlementStatus" value="f.orFields != null and f.orFields.contains('settlementStatus')"/>
+        <bind name="o_debtMonths" value="f.orFields != null and f.orFields.contains('debtMonths')"/>
+        <bind name="o_contractNo" value="f.orFields != null and f.orFields.contains('contractNo')"/>
+        <bind name="o_contractName" value="f.orFields != null and f.orFields.contains('contractName')"/>
+        <bind name="o_contractPeriod" value="f.orFields != null and f.orFields.contains('contractPeriod')"/>
+        <bind name="o_paymentTerms" value="f.orFields != null and f.orFields.contains('paymentTerms')"/>
+        <bind name="o_leaderName" value="f.orFields != null and f.orFields.contains('leaderName')"/>
+        <bind name="o_isSettled" value="f.orFields != null and f.orFields.contains('isSettled')"/>
+        <bind name="o_submitStatus" value="f.orFields != null and f.orFields.contains('submitStatus')"/>
+        <bind name="o_keyword" value="f.orFields != null and f.orFields.contains('keyword')"/>
+
+        <bind name="v_projectCode" value="f.projectCode != null and f.projectCode != ''"/>
+        <bind name="v_projectName" value="f.projectName != null and f.projectName != ''"/>
+        <bind name="v_clientUnit" value="f.clientUnit != null and f.clientUnit != ''"/>
+        <bind name="v_engineeringProject" value="f.engineeringProject != null and f.engineeringProject != ''"/>
+        <bind name="v_projectLocation" value="f.projectLocation != null and f.projectLocation != ''"/>
+        <bind name="v_contactName" value="f.contactName != null and f.contactName != ''"/>
+        <bind name="v_contactPhone" value="f.contactPhone != null and f.contactPhone != ''"/>
+        <bind name="v_categoryId" value="f.categoryId != null and f.categoryId != ''"/>
+        <bind name="v_contractId" value="f.contractId != null and f.contractId != ''"/>
+        <bind name="v_projectStatus" value="f.projectStatus != null and f.projectStatus != ''"/>
+        <bind name="v_assignDate" value="(f.assignDateBegin != null and f.assignDateBegin != '') or (f.assignDateEnd != null and f.assignDateEnd != '')"/>
+        <bind name="v_createTime" value="(f.createTimeBegin != null and f.createTimeBegin != '') or (f.createTimeEnd != null and f.createTimeEnd != '')"/>
+        <bind name="v_closeTime" value="(f.closeTimeBegin != null and f.closeTimeBegin != '') or (f.closeTimeEnd != null and f.closeTimeEnd != '')"/>
+        <bind name="v_planReportTime" value="(f.planReportTimeBegin != null and f.planReportTimeBegin != '') or (f.planReportTimeEnd != null and f.planReportTimeEnd != '')"/>
+        <bind name="v_relatedProjectCreate" value="(f.relatedProjectCreateBegin != null and f.relatedProjectCreateBegin != '') or (f.relatedProjectCreateEnd != null and f.relatedProjectCreateEnd != '')"/>
+        <bind name="v_signDate" value="(f.signDateBegin != null and f.signDateBegin != '') or (f.signDateEnd != null and f.signDateEnd != '')"/>
+        <bind name="v_entrustDate" value="(f.entrustDateBegin != null and f.entrustDateBegin != '') or (f.entrustDateEnd != null and f.entrustDateEnd != '')"/>
+        <bind name="v_lastPayTime" value="(f.lastPayTimeBegin != null and f.lastPayTimeBegin != '') or (f.lastPayTimeEnd != null and f.lastPayTimeEnd != '')"/>
+        <bind name="v_contractAmount" value="(f.contractAmountMin != null and f.contractAmountMin != '') or (f.contractAmountMax != null and f.contractAmountMax != '')"/>
+        <bind name="v_receivedAmount" value="(f.receivedAmountMin != null and f.receivedAmountMin != '') or (f.receivedAmountMax != null and f.receivedAmountMax != '')"/>
+        <bind name="v_refundAmount" value="(f.refundAmountMin != null and f.refundAmountMin != '') or (f.refundAmountMax != null and f.refundAmountMax != '')"/>
+        <bind name="v_pendingAmount" value="(f.pendingAmountMin != null and f.pendingAmountMin != '') or (f.pendingAmountMax != null and f.pendingAmountMax != '')"/>
+        <bind name="v_projectSettleAmount" value="(f.projectSettleAmountMin != null and f.projectSettleAmountMin != '') or (f.projectSettleAmountMax != null and f.projectSettleAmountMax != '')"/>
+        <bind name="v_projectPendingAmount" value="(f.projectPendingAmountMin != null and f.projectPendingAmountMin != '') or (f.projectPendingAmountMax != null and f.projectPendingAmountMax != '')"/>
+        <bind name="v_projectArrearsAmount" value="(f.projectArrearsAmountMin != null and f.projectArrearsAmountMin != '') or (f.projectArrearsAmountMax != null and f.projectArrearsAmountMax != '')"/>
+        <bind name="v_projectOverpaidAmount" value="(f.projectOverpaidAmountMin != null and f.projectOverpaidAmountMin != '') or (f.projectOverpaidAmountMax != null and f.projectOverpaidAmountMax != '')"/>
+        <bind name="v_projectSettleStatus" value="f.projectSettleStatus != null and f.projectSettleStatus != ''"/>
+        <bind name="v_totalInvoiceAmount" value="(f.totalInvoiceAmountMin != null and f.totalInvoiceAmountMin != '') or (f.totalInvoiceAmountMax != null and f.totalInvoiceAmountMax != '')"/>
+        <bind name="v_archiveDate" value="(f.archiveDateBegin != null and f.archiveDateBegin != '') or (f.archiveDateEnd != null and f.archiveDateEnd != '')"/>
+        <bind name="v_invoiceFlag" value="f.invoiceFlag != null and f.invoiceFlag != ''"/>
+        <bind name="v_settlementStatus" value="f.settlementStatus != null and f.settlementStatus != ''"/>
+        <bind name="v_debtMonths" value="f.debtMonths != null and f.debtMonths != ''"/>
+        <bind name="v_contractNo" value="f.contractNo != null and f.contractNo != ''"/>
+        <bind name="v_contractName" value="f.contractName != null and f.contractName != ''"/>
+        <bind name="v_contractPeriod" value="f.contractPeriod != null and f.contractPeriod != ''"/>
+        <bind name="v_paymentTerms" value="f.paymentTerms != null and f.paymentTerms != ''"/>
+        <bind name="v_leaderName" value="f.leaderName != null and f.leaderName != ''"/>
+        <bind name="v_isSettled" value="f.isSettled != null and f.isSettled != ''"/>
+        <!-- submitStatus 只有两个有效取值（片段无 otherwise），必须判具体值，否则会留下孤立 and -->
+        <bind name="v_submitStatus" value="f.submitStatus == 'submitted'.toString() or f.submitStatus == 'unsubmitted'.toString()"/>
+        <bind name="v_keyword" value="f.keyword != null and f.keyword != ''"/>
+
+        <!-- ① AND 段：未标记「或」的条件 -->
+            <if test="!o_projectCode and v_projectCode">and <include refid="rwc_projectCode"/></if>
+            <if test="!o_projectName and v_projectName">and <include refid="rwc_projectName"/></if>
+            <if test="!o_clientUnit and v_clientUnit">and <include refid="rwc_clientUnit"/></if>
+            <if test="!o_engineeringProject and v_engineeringProject">and <include refid="rwc_engineeringProject"/></if>
+            <if test="!o_projectLocation and v_projectLocation">and <include refid="rwc_projectLocation"/></if>
+            <if test="!o_contactName and v_contactName">and <include refid="rwc_contactName"/></if>
+            <if test="!o_contactPhone and v_contactPhone">and <include refid="rwc_contactPhone"/></if>
+            <if test="!o_categoryId and v_categoryId">and <include refid="rwc_categoryId"/></if>
+            <if test="!o_contractId and v_contractId">and <include refid="rwc_contractId"/></if>
+            <if test="!o_projectStatus and v_projectStatus">and <include refid="rwc_projectStatus"/></if>
+            <if test="!o_assignDate and v_assignDate">and <include refid="rwc_assignDate"/></if>
+            <if test="!o_createTime and v_createTime">and <include refid="rwc_createTime"/></if>
+            <if test="!o_closeTime and v_closeTime">and <include refid="rwc_closeTime"/></if>
+            <if test="!o_planReportTime and v_planReportTime">and <include refid="rwc_planReportTime"/></if>
+            <if test="!o_relatedProjectCreate and v_relatedProjectCreate">and <include refid="rwc_relatedProjectCreate"/></if>
+            <if test="!o_signDate and v_signDate">and <include refid="rwc_signDate"/></if>
+            <if test="!o_entrustDate and v_entrustDate">and <include refid="rwc_entrustDate"/></if>
+            <if test="!o_lastPayTime and v_lastPayTime">and <include refid="rwc_lastPayTime"/></if>
+            <if test="!o_contractAmount and v_contractAmount">and <include refid="rwc_contractAmount"/></if>
+            <if test="!o_receivedAmount and v_receivedAmount">and <include refid="rwc_receivedAmount"/></if>
+            <if test="!o_refundAmount and v_refundAmount">and <include refid="rwc_refundAmount"/></if>
+            <if test="!o_pendingAmount and v_pendingAmount">and <include refid="rwc_pendingAmount"/></if>
+            <if test="!o_projectSettleAmount and v_projectSettleAmount">and <include refid="rwc_projectSettleAmount"/></if>
+            <if test="!o_projectPendingAmount and v_projectPendingAmount">and <include refid="rwc_projectPendingAmount"/></if>
+            <if test="!o_projectArrearsAmount and v_projectArrearsAmount">and <include refid="rwc_projectArrearsAmount"/></if>
+            <if test="!o_projectOverpaidAmount and v_projectOverpaidAmount">and <include refid="rwc_projectOverpaidAmount"/></if>
+            <if test="!o_projectSettleStatus and v_projectSettleStatus">and <include refid="rwc_projectSettleStatus"/></if>
+            <if test="!o_totalInvoiceAmount and v_totalInvoiceAmount">and <include refid="rwc_totalInvoiceAmount"/></if>
+            <if test="!o_archiveDate and v_archiveDate">and <include refid="rwc_archiveDate"/></if>
+            <if test="!o_invoiceFlag and v_invoiceFlag">and <include refid="rwc_invoiceFlag"/></if>
+            <if test="!o_settlementStatus and v_settlementStatus">and <include refid="rwc_settlementStatus"/></if>
+            <if test="!o_debtMonths and v_debtMonths">and <include refid="rwc_debtMonths"/></if>
+            <if test="!o_contractNo and v_contractNo">and <include refid="rwc_contractNo"/></if>
+            <if test="!o_contractName and v_contractName">and <include refid="rwc_contractName"/></if>
+            <if test="!o_contractPeriod and v_contractPeriod">and <include refid="rwc_contractPeriod"/></if>
+            <if test="!o_paymentTerms and v_paymentTerms">and <include refid="rwc_paymentTerms"/></if>
+            <if test="!o_leaderName and v_leaderName">and <include refid="rwc_leaderName"/></if>
+            <if test="!o_isSettled and v_isSettled">and <include refid="rwc_isSettled"/></if>
+            <if test="!o_submitStatus and v_submitStatus">and <include refid="rwc_submitStatus"/></if>
+            <if test="!o_keyword and v_keyword">and <include refid="rwc_keyword"/></if>
+
+        <!-- ② OR 段：标记了「或」的条件整体包成 and ( ... or ... )；组内全无值时整段不输出 -->
+        <trim prefix="and (" prefixOverrides="or" suffix=")">
+            <if test="o_projectCode and v_projectCode">or <include refid="rwc_projectCode"/></if>
+            <if test="o_projectName and v_projectName">or <include refid="rwc_projectName"/></if>
+            <if test="o_clientUnit and v_clientUnit">or <include refid="rwc_clientUnit"/></if>
+            <if test="o_engineeringProject and v_engineeringProject">or <include refid="rwc_engineeringProject"/></if>
+            <if test="o_projectLocation and v_projectLocation">or <include refid="rwc_projectLocation"/></if>
+            <if test="o_contactName and v_contactName">or <include refid="rwc_contactName"/></if>
+            <if test="o_contactPhone and v_contactPhone">or <include refid="rwc_contactPhone"/></if>
+            <if test="o_categoryId and v_categoryId">or <include refid="rwc_categoryId"/></if>
+            <if test="o_contractId and v_contractId">or <include refid="rwc_contractId"/></if>
+            <if test="o_projectStatus and v_projectStatus">or <include refid="rwc_projectStatus"/></if>
+            <if test="o_assignDate and v_assignDate">or <include refid="rwc_assignDate"/></if>
+            <if test="o_createTime and v_createTime">or <include refid="rwc_createTime"/></if>
+            <if test="o_closeTime and v_closeTime">or <include refid="rwc_closeTime"/></if>
+            <if test="o_planReportTime and v_planReportTime">or <include refid="rwc_planReportTime"/></if>
+            <if test="o_relatedProjectCreate and v_relatedProjectCreate">or <include refid="rwc_relatedProjectCreate"/></if>
+            <if test="o_signDate and v_signDate">or <include refid="rwc_signDate"/></if>
+            <if test="o_entrustDate and v_entrustDate">or <include refid="rwc_entrustDate"/></if>
+            <if test="o_lastPayTime and v_lastPayTime">or <include refid="rwc_lastPayTime"/></if>
+            <if test="o_contractAmount and v_contractAmount">or <include refid="rwc_contractAmount"/></if>
+            <if test="o_receivedAmount and v_receivedAmount">or <include refid="rwc_receivedAmount"/></if>
+            <if test="o_refundAmount and v_refundAmount">or <include refid="rwc_refundAmount"/></if>
+            <if test="o_pendingAmount and v_pendingAmount">or <include refid="rwc_pendingAmount"/></if>
+            <if test="o_projectSettleAmount and v_projectSettleAmount">or <include refid="rwc_projectSettleAmount"/></if>
+            <if test="o_projectPendingAmount and v_projectPendingAmount">or <include refid="rwc_projectPendingAmount"/></if>
+            <if test="o_projectArrearsAmount and v_projectArrearsAmount">or <include refid="rwc_projectArrearsAmount"/></if>
+            <if test="o_projectOverpaidAmount and v_projectOverpaidAmount">or <include refid="rwc_projectOverpaidAmount"/></if>
+            <if test="o_projectSettleStatus and v_projectSettleStatus">or <include refid="rwc_projectSettleStatus"/></if>
+            <if test="o_totalInvoiceAmount and v_totalInvoiceAmount">or <include refid="rwc_totalInvoiceAmount"/></if>
+            <if test="o_archiveDate and v_archiveDate">or <include refid="rwc_archiveDate"/></if>
+            <if test="o_invoiceFlag and v_invoiceFlag">or <include refid="rwc_invoiceFlag"/></if>
+            <if test="o_settlementStatus and v_settlementStatus">or <include refid="rwc_settlementStatus"/></if>
+            <if test="o_debtMonths and v_debtMonths">or <include refid="rwc_debtMonths"/></if>
+            <if test="o_contractNo and v_contractNo">or <include refid="rwc_contractNo"/></if>
+            <if test="o_contractName and v_contractName">or <include refid="rwc_contractName"/></if>
+            <if test="o_contractPeriod and v_contractPeriod">or <include refid="rwc_contractPeriod"/></if>
+            <if test="o_paymentTerms and v_paymentTerms">or <include refid="rwc_paymentTerms"/></if>
+            <if test="o_leaderName and v_leaderName">or <include refid="rwc_leaderName"/></if>
+            <if test="o_isSettled and v_isSettled">or <include refid="rwc_isSettled"/></if>
+            <if test="o_submitStatus and v_submitStatus">or <include refid="rwc_submitStatus"/></if>
+            <if test="o_keyword and v_keyword">or <include refid="rwc_keyword"/></if>
+        </trim>
     </sql>
 
     <!--
@@ -386,6 +747,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             p.total_duration||'工作日' as "totalDuration",
             p.create_time as "createTime",
             p.close_time as "closeTime",
+            p.plan_report_time as "planReportTime",
             p.remark as "remark",
             p.related_project_id as "relatedProjectId",
             <!-- 关联定线编号：系统内关联项目优先；系统无此项目时回退到手工输入的编号文本（模板6「管线定线/系统编号」列） -->

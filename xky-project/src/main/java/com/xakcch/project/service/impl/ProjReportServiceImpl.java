@@ -880,8 +880,48 @@ public class ProjReportServiceImpl implements IProjReportService
                     f.put(e.getKey(), e.getValue().toString().trim());
                 }
             }
+            /*
+              「或」条件组（orFields）：上面统一转字符串会把数组压成 "[a, b]"，
+              Mapper 侧的 contains(...) 会退化成子串匹配（误判风险）⇒ 这里还原成 List<String>。
+              取 filter 里的原始对象（不是已被转成字符串的 f 里的值）。
+            */
+            List<String> orKeys = parseOrFields(filter.get("orFields"));
+            if (!orKeys.isEmpty())
+            {
+                f.put("orFields", orKeys);
+            }
         }
         return f;
+    }
+
+    /**
+     * 解析「或」条件组：前端传数组；导出历史回跑时（JSON 反序列化）可能是 JSONArray 或逗号串。
+     * 返回后端筛选键列表（如 [planReportTimeBegin, planReportTimeEnd, closeTimeBegin, closeTimeEnd]）。
+     */
+    private List<String> parseOrFields(Object raw)
+    {
+        List<String> keys = new ArrayList<>();
+        if (raw instanceof java.util.Collection<?>)
+        {
+            for (Object o : (java.util.Collection<?>) raw)
+            {
+                if (o != null && !o.toString().trim().isEmpty())
+                {
+                    keys.add(o.toString().trim());
+                }
+            }
+        }
+        else if (raw != null && !raw.toString().trim().isEmpty())
+        {
+            for (String s : raw.toString().split("[,;\\s\\[\\]\"]+"))
+            {
+                if (!s.trim().isEmpty())
+                {
+                    keys.add(s.trim());
+                }
+            }
+        }
+        return keys;
     }
 
     // ==================== 单位合并模板（内置 zdyw_report） ====================
