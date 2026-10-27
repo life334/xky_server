@@ -210,6 +210,15 @@ public interface ProjProjectMapper
      */
     public int updateCloseTimeManually(@Param("id") Long id, @Param("closeTime") Date closeTime);
 
+    /**
+     * 单独改写安排日期（办结时间前移时用于保住总时长快照）
+     *
+     * @param id         项目ID
+     * @param assignDate 新的安排日期
+     * @return 更新行数
+     */
+    public int updateAssignDateManually(@Param("id") Long id, @Param("assignDate") Date assignDate);
+
     // ==================== 指令性任务（项目性质） ====================
 
     /**

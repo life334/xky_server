@@ -333,7 +333,15 @@ public class ProjProjectController extends BaseController
         {
             return error("办结时间格式非法，应为 yyyy-MM-dd HH:mm:ss");
         }
-        return toAjax(projectService.updateProjectCloseTime(id, closeTime));
+        Map<String, Object> r = projectService.updateProjectCloseTime(id, closeTime);
+        int rows = r.get("rows") instanceof Number n ? n.intValue() : 0;
+        if (rows > 0 && Boolean.TRUE.equals(r.get("assignDateShifted")))
+        {
+            // 办结早于安排日期：总时长快照没动，动的是安排日期，必须明确告诉用户改到哪天了
+            return success("办结时间已更新；办结时间早于原安排日期，安排日期已同步前移至 "
+                    + r.get("newAssignDate") + "（总时长保持 " + r.get("totalDuration") + " 天）");
+        }
+        return toAjax(rows);
     }
 
     /**

@@ -480,10 +480,17 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </update>
 
     <!-- 人工修正办结时间：覆盖写入（与上面导入回填的「只补空 + 取较大值」语义相反）。
-         前置校验（项目存在 / 已办结或已归档 / 不晚于今天 / 不早于安排日期与创建时间）在 Service 层。 -->
+         前置校验（项目存在 / 已办结或已归档 / 不晚于当前时刻）在 Service 层。 -->
     <update id="updateCloseTimeManually">
         update proj_project
         set close_time = #{closeTime}, update_time = now()
+        where id = #{id} and del_flag = '0'
+    </update>
+
+    <!-- 办结时间早于原安排日期时，把安排日期前移以保住总时长快照（Service 层反推好日期后单独写入） -->
+    <update id="updateAssignDateManually">
+        update proj_project
+        set assign_date = #{assignDate}, update_time = now()
         where id = #{id} and del_flag = '0'
     </update>
 

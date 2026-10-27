@@ -727,13 +727,22 @@ public class ProjProjectServiceImpl implements IProjProjectService
     /**
      * 人工修正项目办结时间（受限操作）
      *
-     * <p>办结时间决定产值归属月份、回款应收账期、欠款逾期天数，改之前必须：
-     * ① 项目处于 closed / archived；② 不晚于当前时刻（精确到秒）；③ 不早于安排日期与创建时间。
-     * 改完后重算总时长快照（安排日期 → 新办结日期的工作日数），否则「超期」口径会与表里对不上。
+     * <p>办结时间决定产值归属月份、回款应收账期、欠款逾期天数，改之前要求项目处于 closed / archived
+     * （进行中项目没有办结时间语义），且不晚于当前时刻；下界不设限（可早于安排日期 / 创建时间）。
+     *
+     * <p>改完后总时长快照的处理分两种：
+     * <ul>
+     *   <li>办结 ≥ 安排日期：按「安排日期 → 新办结日期」重算工作日数（正常路径）</li>
+     *   <li>办结 &lt; 安排日期：区间反向，转而<b>把安排日期前移</b>到「往前数第 N 个工作日」，
+     *       让总时长快照保持原值不变（N = 原总时长）。原总时长为空时无从反推，安排日期与总时长都不动</li>
+     * </ul>
+     *
+     * @return {@code rows} 更新行数；{@code assignDateShifted} 是否前移了安排日期；
+     *         {@code newAssignDate} 前移后的安排日期（yyyy-MM-dd）；{@code totalDuration} 保持的总时长
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int updateProjectCloseTime(Long id, java.util.Date closeTime)
+    public Map<String, Object> updateProjectCloseTime(Long id, java.util.Date closeTime)
     {
         if (id == null)
         {
@@ -754,34 +763,42 @@ public class ProjProjectServiceImpl implements IProjProjectService
             throw new ServiceException("仅「已办结 / 已归档」的项目可以修改办结时间");
         }
 
-        // 精确到秒：close_time 是 TIMESTAMP，办结时刻本身带时分秒（历史值的精度不能丢）
-        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
+        // 上界仍卡当前时刻（办结不可能发生在未来）；下界不设限，允许早于安排日期 / 创建时间
         if (closeTime.after(new java.util.Date()))
         {
             throw new ServiceException("办结时间不能晚于当前时间");
         }
-        String target = sdf.format(closeTime);
-        if (project.getAssignDate() != null)
+
+        Map<String, Object> result = new HashMap<>();
+        int rows = projectMapper.updateCloseTimeManually(id, closeTime);
+        result.put("rows", rows);
+
+        LocalDate closeDay = WorkdayUtils.toLocalDate(closeTime);
+        LocalDate assign = project.getAssignDate() == null ? null : WorkdayUtils.toLocalDate(project.getAssignDate());
+        if (assign != null && closeDay != null && closeDay.isBefore(assign))
         {
-            String assign = sdf.format(project.getAssignDate());
-            if (target.compareTo(assign) < 0)
+            // 办结早于安排日期：区间反向。总时长是考核用的冻结快照，不能改，所以反向挪安排日期
+            Integer keep = project.getTotalDuration();
+            if (keep != null && keep > 0)
             {
-                throw new ServiceException("办结时间不能早于安排日期（" + assign + "）");
+                // 日历往前多取一段：反推要跨过 keep 个工作日（含法定假日调休，按 3 倍冗余取）
+                Map<LocalDate, String> cal = workdayCalendarService.getCalendarMap(
+                        closeDay.minusDays(keep * 3L + 60), closeDay);
+                LocalDate newAssign = WorkdayUtils.backwardWorkdays(closeDay, keep, cal);
+                projectMapper.updateAssignDateManually(id, java.sql.Date.valueOf(newAssign));
+                result.put("assignDateShifted", Boolean.TRUE);
+                result.put("newAssignDate", newAssign.toString());
+                result.put("totalDuration", keep);
+                return result;
             }
-        }
-        if (project.getCreateTime() != null)
-        {
-            String create = sdf.format(project.getCreateTime());
-            if (target.compareTo(create) < 0)
-            {
-                throw new ServiceException("办结时间不能早于项目创建时间（" + create + "）");
-            }
+            result.put("assignDateShifted", Boolean.FALSE);
+            result.put("reason", "原总时长为空，未调整安排日期");
+            return result;
         }
 
-        int rows = projectMapper.updateCloseTimeManually(id, closeTime);
-        // 总时长快照跟随新办结时间重算（安排日期 → 办结日期，仅工作日，含头含尾）
-        resnapshotTotalDuration(project, WorkdayUtils.toLocalDate(closeTime));
-        return rows;
+        // 正常路径：总时长快照跟随新办结时间重算（安排日期 → 办结日期，仅工作日，含头含尾）
+        resnapshotTotalDuration(project, closeDay);
+        return result;
     }
 
     /** 按给定的办结日期重算总时长快照；无安排日期则不动（保持现状语义） */
@@ -794,7 +811,7 @@ public class ProjProjectServiceImpl implements IProjProjectService
         LocalDate assign = WorkdayUtils.toLocalDate(project.getAssignDate());
         if (closeDay.isBefore(assign))
         {
-            return; // 防御：正常路径已在上面拦截
+            return; // 防御：办结早于安排日期的情况已在上层分流去挪安排日期，正常路径不该走到这里
         }
         Map<LocalDate, String> calendarMap = workdayCalendarService.getCalendarMap(assign, closeDay);
         projectMapper.updateProjectTotalDuration(project.getId(),

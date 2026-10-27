@@ -145,6 +145,39 @@ public class WorkdayUtils
     }
 
     /**
+     * 从 end 往前数第 n 个工作日，返回恰好使 {@code countWorkdays(result, end) == n} 的起始日（含头含尾语义）
+     *
+     * <p>与 {@link #addWorkdays} 互为逆运算（addWorkdays 从 start 往后数，本方法从 end 往前数）。
+     * 用于「办结时间早于安排日期、总时长保持不变」时反推新的安排日期。
+     *
+     * @param end         区间结束日（含）
+     * @param n           需要的工作日天数；&lt;= 0 时原样返回 end
+     * @param calendarMap 工作日历表，可为 null（无数据时按周末规则降级）
+     * @return 区间起始日；end 为 null 返回 null
+     */
+    public static LocalDate backwardWorkdays(LocalDate end, int n, Map<LocalDate, String> calendarMap)
+    {
+        if (end == null || n <= 0)
+        {
+            return end;
+        }
+        int counted = 0;
+        LocalDate cur = end;
+        while (counted < n)
+        {
+            if (isWorkday(cur, calendarMap))
+            {
+                counted++;
+            }
+            if (counted < n)
+            {
+                cur = cur.minusDays(1);
+            }
+        }
+        return cur;
+    }
+
+    /**
      * java.util.Date → LocalDate（按系统默认时区）
      *
      * <p>⚠️ java.sql.Date 覆盖了 toInstant() 并直接抛 UnsupportedOperationException
