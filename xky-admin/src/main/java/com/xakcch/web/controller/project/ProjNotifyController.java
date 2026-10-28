@@ -151,13 +151,46 @@ public class ProjNotifyController extends BaseController
     }
 
     /**
-     * 忽略待办（必须带原因）
+     * 忽略待办/预警（<b>不要求填写原因</b>，点击即生效）。
+     *
+     * @param body 可选的忽略原因（兼容旧前端；新前端不再传）
      */
     @PutMapping("/ignore/{id}")
     public AjaxResult ignore(@PathVariable Long id, @RequestBody(required = false) IgnoreBody body)
     {
         String reason = body == null ? null : body.getReason();
         return toAjax(notifyService.ignoreTodo(id, SecurityUtils.getUserId(), reason));
+    }
+
+    /**
+     * 批量忽略：勾选若干条（ids）、整类忽略某条预警规则（bizType）、或忽略当前页签全部（all）。
+     *
+     * <p>背景：预警一次扫描能给一个人堆出上百条，逐条忽略不现实。
+     * ids / bizType / all 至少给一个，Service 层对"全空"直接拒绝（否则等于清空全部未完成项）；
+     * all=true 时必须带 notifyType，不允许跨待办/预警一把清。</p>
+     */
+    @PutMapping("/ignoreBatch")
+    public AjaxResult ignoreBatch(@RequestBody(required = false) IgnoreBatchBody body)
+    {
+        if (body == null)
+        {
+            return AjaxResult.error("参数不能为空");
+        }
+        int rows = notifyService.ignoreBatch(body.getIds(), body.getNotifyType(), body.getBizType(),
+                Boolean.TRUE.equals(body.getAll()), SecurityUtils.getUserId(), body.getReason());
+        // 0 行是正常结果（如刚好被别人处理/已被忽略），不能走 toAjax(0) 报"操作失败"
+        AjaxResult r = AjaxResult.success(rows > 0 ? ("已忽略 " + rows + " 条") : "没有可忽略的内容");
+        r.put("rows", rows);
+        return r;
+    }
+
+    /**
+     * 未处理预警按规则分组计数（前端「按规则一键忽略」入口的数据源）
+     */
+    @GetMapping("/alertGroups")
+    public AjaxResult alertGroups()
+    {
+        return success(notifyService.selectOpenAlertGroups(SecurityUtils.getUserId()));
     }
 
     /**
@@ -173,6 +206,30 @@ public class ProjNotifyController extends BaseController
     {
         private String reason;
 
+        public String getReason() { return reason; }
+        public void setReason(String reason) { this.reason = reason; }
+    }
+
+    public static class IgnoreBatchBody
+    {
+        /** 待忽略的通知 id 集合（三选一） */
+        private List<Long> ids;
+        /** 限定类型：todo | alert（忽略全部时必填） */
+        private String notifyType;
+        /** 限定规则：如 alert_overdue（整类忽略，三选一） */
+        private String bizType;
+        /** 是否忽略该类型下全部未完成项（三选一） */
+        private Boolean all;
+        private String reason;
+
+        public List<Long> getIds() { return ids; }
+        public void setIds(List<Long> ids) { this.ids = ids; }
+        public String getNotifyType() { return notifyType; }
+        public void setNotifyType(String notifyType) { this.notifyType = notifyType; }
+        public String getBizType() { return bizType; }
+        public void setBizType(String bizType) { this.bizType = bizType; }
+        public Boolean getAll() { return all; }
+        public void setAll(Boolean all) { this.all = all; }
         public String getReason() { return reason; }
         public void setReason(String reason) { this.reason = reason; }
     }

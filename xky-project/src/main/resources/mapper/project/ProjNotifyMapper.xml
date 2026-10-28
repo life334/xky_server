@@ -151,12 +151,43 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
     </update>
 
-    <!-- 忽略：待办与预警共用（notify_type in todo/alert）；消息不参与"忽略"语义 -->
+    <!-- 忽略：待办与预警共用（notify_type in todo/alert）；消息不参与"忽略"语义。
+         reason 可空：一键忽略是高频操作，不再强制填原因（ignore_reason 允许为 null）。 -->
     <update id="ignoreTodo">
         update proj_notify set status = 'ignored', ignore_reason = #{reason}, update_time = now()
         where id = #{id} and receiver_id = #{receiverId} and notify_type in ('todo', 'alert')
           and status in ('unread','read') and del_flag = '0'
     </update>
+
+    <!-- 批量忽略：ids 优先（勾选若干条），否则按 bizType 整类忽略（按规则一键忽略）。
+         ⚠️ Service 层已保证 ids 与 bizType 不同时为空，否则 where 会退化成"该用户全部未完成项"。 -->
+    <update id="ignoreTodoBatch">
+        update proj_notify set status = 'ignored', ignore_reason = #{reason}, update_time = now()
+        where receiver_id = #{receiverId} and notify_type in ('todo', 'alert')
+          and status in ('unread','read') and del_flag = '0'
+        <if test="ids != null and ids.size() > 0">
+            and id in
+            <foreach collection="ids" item="i" open="(" separator="," close=")">
+                #{i}
+            </foreach>
+        </if>
+        <if test="notifyType != null and notifyType != ''">
+            and notify_type = #{notifyType}
+        </if>
+        <if test="bizType != null and bizType != ''">
+            and biz_type = #{bizType}
+        </if>
+    </update>
+
+    <!-- 未处理预警规则分布：前端据此提供「忽略此规则全部」入口（上百条逐条点不现实） -->
+    <select id="selectOpenAlertGroups" resultType="map">
+        select biz_type as "bizType", count(*) as "count"
+        from proj_notify
+        where del_flag = '0' and receiver_id = #{receiverId}
+          and notify_type = 'alert' and status in ('unread','read')
+        group by biz_type
+        order by count(*) desc
+    </select>
 
     <!-- 撤销忽略：回到 read（不是 unread，避免角标数字无意义地反弹） -->
     <update id="unignoreTodo">

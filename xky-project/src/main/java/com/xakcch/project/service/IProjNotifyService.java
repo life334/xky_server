@@ -73,9 +73,27 @@ public interface IProjNotifyService
     public int markAllRead(Long userId, String notifyType);
 
     /**
-     * 忽略待办（带原因）
+     * 忽略待办/预警（原因可空：一键忽略不再强制填写）
      */
     public int ignoreTodo(Long id, Long userId, String reason);
+
+    /**
+     * 批量忽略：按 id 集合忽略、按 bizType 整类忽略（预警「忽略此规则」），
+     * 或忽略某类型下全部未完成项（「忽略全部」）。
+     *
+     * @param ids        通知 id 集合（可空）
+     * @param notifyType 限定类型 todo | alert（忽略全部时必填）
+     * @param bizType    限定业务类型，如 alert_overdue（可空）
+     * @param all        是否忽略该类型下全部未完成项
+     * @param reason     忽略原因（可空）
+     * @return 实际忽略行数
+     */
+    public int ignoreBatch(List<Long> ids, String notifyType, String bizType, boolean all, Long userId, String reason);
+
+    /**
+     * 当前用户未处理预警按规则分组计数（"工期超期 12 条 / 欠款逾期 300 条"）
+     */
+    public List<java.util.Map<String, Object>> selectOpenAlertGroups(Long userId);
 
     /**
      * 撤销忽略（status 回退为 read）。解决"忽略后不可恢复"的问题。

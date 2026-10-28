@@ -320,14 +320,59 @@ public class ProjNotifyServiceImpl implements IProjNotifyService
         return notifyMapper.markAllRead(userId, notifyType);
     }
 
+    /**
+     * 单条忽略：<b>不要求填写原因</b>。
+     *
+     * <p>历史实现强制 reason 非空 ⇒ 用户每忽略一条都要打一遍字，而预警动辄上百条，
+     * 实际结果是"没人忽略、铃铛永远挂着数字"。忽略本身只是"我看到了、先不管"的轻量动作，
+     * 不该有输入门槛；原因仍可作为可选字段透传（运维/审计需要时前端可再补）。</p>
+     */
     @Override
     public int ignoreTodo(Long id, Long userId, String reason)
     {
-        if (StringUtils.isEmpty(reason))
+        return notifyMapper.ignoreTodo(id, userId, normalizeReason(reason));
+    }
+
+    /**
+     * 批量忽略：勾选若干条（ids）、按规则整类（bizType）、或整页签全部（all）。
+     *
+     * <p>⚠️ 参数保护：ids / bizType / all 全为假时无条件拒绝 ——
+     * 否则 where 条件退化为「该接收人全部未完成项」，一次误调用会清空整个通知中心。
+     * 「忽略全部」也<b>必须</b>带 notifyType（todo 或 alert），不允许跨类型一把清。</p>
+     */
+    @Override
+    public int ignoreBatch(List<Long> ids, String notifyType, String bizType, boolean all, Long userId, String reason)
+    {
+        boolean hasIds = ids != null && !ids.isEmpty();
+        boolean hasBizType = StringUtils.isNotEmpty(bizType);
+        // 类型白名单：避免前端传 notify_type='message' 把消息也批量置为 ignored
+        String type = StringUtils.isEmpty(notifyType) ? null : notifyType.trim();
+        if (type != null && !"todo".equals(type) && !"alert".equals(type))
         {
-            throw new ServiceException("忽略待办必须填写原因");
+            type = null;
         }
-        return notifyMapper.ignoreTodo(id, userId, reason);
+        if (!hasIds && !hasBizType && !(all && type != null))
+        {
+            throw new ServiceException("请选择要忽略的记录，或指定预警规则");
+        }
+        int rows = notifyMapper.ignoreTodoBatch(hasIds ? ids : null, userId, type,
+                hasBizType ? bizType.trim() : null, normalizeReason(reason));
+        log.info("[notify] 批量忽略 {} 条：userId={} type={} bizType={} all={} ids={}",
+                rows, userId, type, bizType, all, hasIds ? ids.size() : 0);
+        return rows;
+    }
+
+    @Override
+    public List<Map<String, Object>> selectOpenAlertGroups(Long userId)
+    {
+        List<Map<String, Object>> groups = notifyMapper.selectOpenAlertGroups(userId);
+        return groups == null ? new ArrayList<>() : groups;
+    }
+
+    /** 忽略原因归一化：空串一律转 null，避免 ignore_reason 存空串（前端判空会踩空串坑） */
+    private String normalizeReason(String reason)
+    {
+        return StringUtils.isEmpty(reason) ? null : reason.trim();
     }
 
     @Override

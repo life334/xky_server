@@ -65,10 +65,36 @@ public interface ProjNotifyMapper
                            @Param("notifyType") String notifyType);
 
     /**
-     * 忽略待办（带原因）
+     * 忽略待办/预警（原因可空：一键忽略不再强制填写）
      */
     public int ignoreTodo(@Param("id") Long id, @Param("receiverId") Long receiverId,
                           @Param("reason") String reason);
+
+    /**
+     * 批量忽略：按 id 集合忽略、按 bizType 整类忽略（预警「忽略此规则」），
+     * 或忽略某类型下全部未完成项（「忽略全部」，由 Service 侧以 notifyType 限定）。
+     *
+     * <p>⚠️ 调用方<b>必须</b>保证 ids / bizType / notifyType 至少有一个非空：
+     * 全空会命中该接收人全部未完成项，属于危险的全量操作。</p>
+     *
+     * @param ids        待忽略的通知 id 集合（可空）
+     * @param receiverId 接收人（防越权，必填）
+     * @param notifyType 限定通知类型 todo | alert（可空）
+     * @param bizType    限定业务类型，如 alert_overdue（可空）
+     * @param reason     忽略原因（可空）
+     */
+    public int ignoreTodoBatch(@Param("ids") List<Long> ids,
+                               @Param("receiverId") Long receiverId,
+                               @Param("notifyType") String notifyType,
+                               @Param("bizType") String bizType,
+                               @Param("reason") String reason);
+
+    /**
+     * 当前用户未处理预警按规则分组计数（供前端「按规则一键忽略」）
+     *
+     * @return 每项含 "bizType" / "count"
+     */
+    public List<Map<String, Object>> selectOpenAlertGroups(@Param("receiverId") Long receiverId);
 
     /**
      * 撤销忽略：status 回退为 read，清空 ignore_reason

@@ -114,6 +114,12 @@ public class ProjMaterial extends BaseEntity
     /** 办结日期范围-结束（筛选） */
     private transient String closeDateEnd;
 
+    /**
+     * 项目类别多选（筛选，2026-10-27 新增）：JOIN proj_project.project_category_id in (...)。
+     * 与 ProjProject.projectCategoryIds 同口径（数组，MyBatis 用 .length 判空）。
+     */
+    private transient Long[] projectCategoryIds;
+
     /** 领取备注（本次领取专用：只写入流转记录，不覆盖资料登记备注 remark） */
     private transient String borrowRemark;
 
@@ -358,6 +364,8 @@ public class ProjMaterial extends BaseEntity
     public void setCloseDateBegin(String closeDateBegin) { this.closeDateBegin = closeDateBegin; }
     public String getCloseDateEnd() { return closeDateEnd; }
     public void setCloseDateEnd(String closeDateEnd) { this.closeDateEnd = closeDateEnd; }
+    public Long[] getProjectCategoryIds() { return projectCategoryIds; }
+    public void setProjectCategoryIds(Long[] projectCategoryIds) { this.projectCategoryIds = projectCategoryIds; }
     public String getBorrowRemark() { return borrowRemark; }
     public void setBorrowRemark(String borrowRemark) { this.borrowRemark = borrowRemark; }
     public String getPickupType() { return pickupType; }

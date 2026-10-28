@@ -143,11 +143,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             (p.client_unit like concat('%', #{f.clientUnit}, '%'))
         </if>
     </sql>
-    <sql id="rwc_engineeringProject">
-        <if test="f.engineeringProject != null and f.engineeringProject != ''">
-            (p.engineering_project = #{f.engineeringProject})
-        </if>
-    </sql>
+    <!-- ⚠️ 2026-10-27 移除 rwc_engineeringProject（按类别文本精确匹配 p.engineering_project = 值）。
+         它与 project_category_id 同语义且显示名相同；筛选统一走 rwc_categoryId（按类别 id 匹配），
+         文本列 engineering_project 仅保留作报表列（模板3/4/7 取数用），不再作为筛选字段。 -->
     <sql id="rwc_projectLocation">
         <if test="f.projectLocation != null and f.projectLocation != ''">
             (p.project_location like concat('%', #{f.projectLocation}, '%'))
@@ -554,7 +552,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <bind name="o_projectCode" value="f.orFields != null and f.orFields.contains('projectCode')"/>
         <bind name="o_projectName" value="f.orFields != null and f.orFields.contains('projectName')"/>
         <bind name="o_clientUnit" value="f.orFields != null and f.orFields.contains('clientUnit')"/>
-        <bind name="o_engineeringProject" value="f.orFields != null and f.orFields.contains('engineeringProject')"/>
         <bind name="o_projectLocation" value="f.orFields != null and f.orFields.contains('projectLocation')"/>
         <bind name="o_contactName" value="f.orFields != null and f.orFields.contains('contactName')"/>
         <bind name="o_contactPhone" value="f.orFields != null and f.orFields.contains('contactPhone')"/>
@@ -595,7 +592,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <bind name="v_projectCode" value="f.projectCode != null and f.projectCode != ''"/>
         <bind name="v_projectName" value="f.projectName != null and f.projectName != ''"/>
         <bind name="v_clientUnit" value="f.clientUnit != null and f.clientUnit != ''"/>
-        <bind name="v_engineeringProject" value="f.engineeringProject != null and f.engineeringProject != ''"/>
         <bind name="v_projectLocation" value="f.projectLocation != null and f.projectLocation != ''"/>
         <bind name="v_contactName" value="f.contactName != null and f.contactName != ''"/>
         <bind name="v_contactPhone" value="f.contactPhone != null and f.contactPhone != ''"/>
@@ -638,7 +634,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="!o_projectCode and v_projectCode">and <include refid="rwc_projectCode"/></if>
             <if test="!o_projectName and v_projectName">and <include refid="rwc_projectName"/></if>
             <if test="!o_clientUnit and v_clientUnit">and <include refid="rwc_clientUnit"/></if>
-            <if test="!o_engineeringProject and v_engineeringProject">and <include refid="rwc_engineeringProject"/></if>
             <if test="!o_projectLocation and v_projectLocation">and <include refid="rwc_projectLocation"/></if>
             <if test="!o_contactName and v_contactName">and <include refid="rwc_contactName"/></if>
             <if test="!o_contactPhone and v_contactPhone">and <include refid="rwc_contactPhone"/></if>
@@ -681,7 +676,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="o_projectCode and v_projectCode">or <include refid="rwc_projectCode"/></if>
             <if test="o_projectName and v_projectName">or <include refid="rwc_projectName"/></if>
             <if test="o_clientUnit and v_clientUnit">or <include refid="rwc_clientUnit"/></if>
-            <if test="o_engineeringProject and v_engineeringProject">or <include refid="rwc_engineeringProject"/></if>
             <if test="o_projectLocation and v_projectLocation">or <include refid="rwc_projectLocation"/></if>
             <if test="o_contactName and v_contactName">or <include refid="rwc_contactName"/></if>
             <if test="o_contactPhone and v_contactPhone">or <include refid="rwc_contactPhone"/></if>

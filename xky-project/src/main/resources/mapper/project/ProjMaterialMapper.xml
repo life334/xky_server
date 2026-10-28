@@ -113,11 +113,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="submitStatus != null and submitStatus != ''">
             AND m.submit_status = #{submitStatus}
         </if>
+        <!-- 关键词搜索（2026-10-28 调整口径）：只保留项目维度主字段 —— 工程编号 / 项目名称 / 委托单位 / 工程地点。
+             移除原 contact_name(领取联系人) / archive_dir(存档目录)：这两个是资料登记字段，历史数据大量为空串，
+             检索区分度为零，且不是资料检索的主维度。 -->
         <if test="keyword != null and keyword != ''">
-            AND (m.contact_name like concat('%', #{keyword}, '%')
-                 or m.archive_dir like concat('%', #{keyword}, '%')
-                 or p.project_code like concat('%', #{keyword}, '%')
-                 or p.project_name like concat('%', #{keyword}, '%'))
+            AND (p.project_code like concat('%', #{keyword}, '%')
+                 or p.project_name like concat('%', #{keyword}, '%')
+                 or p.client_unit like concat('%', #{keyword}, '%')
+                 or p.project_location like concat('%', #{keyword}, '%'))
         </if>
         <if test="submitTimeBegin != null">
             AND m.submit_time &gt;= #{submitTimeBegin}
@@ -152,6 +155,17 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
         <if test="closeDateEnd != null and closeDateEnd != ''">
             AND p.close_time &lt; to_date(#{closeDateEnd}, 'YYYY-MM-DD') + interval '1 day'
+        </if>
+        <!-- 委托单位筛选（2026-10-27 新增）：JOIN proj_project.client_unit，模糊匹配，与项目列表页同口径 -->
+        <if test="clientUnit != null and clientUnit != ''">
+            AND p.client_unit like concat('%', #{clientUnit}, '%')
+        </if>
+        <!-- 项目类别多选筛选（2026-10-27 新增）：JOIN proj_project.project_category_id in (...) -->
+        <if test="projectCategoryIds != null and projectCategoryIds.length &gt; 0">
+            AND p.project_category_id in
+            <foreach item="cid" collection="projectCategoryIds" open="(" separator="," close=")">
+                #{cid}
+            </foreach>
         </if>
         order by m.id desc
     </select>

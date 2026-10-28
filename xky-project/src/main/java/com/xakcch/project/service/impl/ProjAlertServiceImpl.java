@@ -36,6 +36,15 @@ public class ProjAlertServiceImpl implements IProjAlertService
 
     // ---------------- sys_config key ----------------
     private static final String C_ENABLED = "notify.alert.enabled";
+    /**
+     * 规则级开关。默认值来自客户明确要求（2026-10-27）：<b>只保留「工期超期」</b>，
+     * 欠款逾期与未关联合同不再扫描 —— 这两类规则在 dev 库一次能命中上千个项目，
+     * 给每个接收人堆出 300+ 条雷同预警，铃铛常年挂红、实际无人处理，反而把真正的超期项淹没了。
+     * 开关留在 sys_config 里而不是删代码：以后口径想恢复，改配置即可，不用重新发版。
+     */
+    private static final String C_DEBT_ENABLED = "notify.alert.debt.enabled";
+    private static final String C_OVERDUE_ENABLED = "notify.alert.overdue.enabled";
+    private static final String C_CM_ENABLED = "notify.alert.contract_missing.enabled";
     private static final String C_DEBT_ROLES = "notify.alert.debt.roles";
     private static final String C_DEBT_USERS = "notify.alert.debt.users";
     private static final String C_DEBT_MIN_AMOUNT = "notify.alert.debt.min_amount";
@@ -70,6 +79,8 @@ public class ProjAlertServiceImpl implements IProjAlertService
         }
         LocalDate today = LocalDate.now();
         int total = 0;
+        // 规则级开关：停用的规则**既不写新预警、也不消解历史行**（历史垃圾数据由 35 号脚本一次性清理），
+        // 避免「关了开关却把库里旧行改成 done，将来重新打开时状态对不上」。
         total += scanDebt(today);
         total += scanOverdue(today);
         total += scanContractMissing(today);
@@ -77,9 +88,25 @@ public class ProjAlertServiceImpl implements IProjAlertService
         return total;
     }
 
+    /** 规则开关：配置缺失时用默认值（仅工期超期默认开启） */
+    private boolean ruleEnabled(String key, boolean dft)
+    {
+        String v = cfg(key);
+        if (StringUtils.isEmpty(v))
+        {
+            return dft;
+        }
+        return "true".equalsIgnoreCase(v.trim());
+    }
+
     // ==================== 规则一：欠款逾期 ====================
     private int scanDebt(LocalDate today)
     {
+        if (!ruleEnabled(C_DEBT_ENABLED, false))
+        {
+            log.info("[alert] 欠款逾期规则已停用（{} = false），跳过", C_DEBT_ENABLED);
+            return 0;
+        }
         BigDecimal minAmount = new BigDecimal(StringUtils.defaultString(cfg(C_DEBT_MIN_AMOUNT), "10000").trim());
         int minDays = intCfg(C_DEBT_MIN_DAYS, 90);
         List<Map<String, Object>> rows = alertMapper.selectDebtCandidates(minAmount, minDays);
@@ -115,6 +142,11 @@ public class ProjAlertServiceImpl implements IProjAlertService
     // ==================== 规则二：工期超期 ====================
     private int scanOverdue(LocalDate today)
     {
+        if (!ruleEnabled(C_OVERDUE_ENABLED, true))
+        {
+            log.info("[alert] 工期超期规则已停用（{} = false），跳过", C_OVERDUE_ENABLED);
+            return 0;
+        }
         List<Map<String, Object>> rows = alertMapper.selectOverdueCandidates();
         if (rows == null || rows.isEmpty())
         {
@@ -169,6 +201,11 @@ public class ProjAlertServiceImpl implements IProjAlertService
     // ==================== 规则三：未关联合同 ====================
     private int scanContractMissing(LocalDate today)
     {
+        if (!ruleEnabled(C_CM_ENABLED, false))
+        {
+            log.info("[alert] 未关联合同规则已停用（{} = false），跳过", C_CM_ENABLED);
+            return 0;
+        }
         int threshold = intCfg(C_CM_WORKDAYS, 3);
         List<Map<String, Object>> rows = alertMapper.selectContractMissingCandidates();
         if (rows == null || rows.isEmpty())
