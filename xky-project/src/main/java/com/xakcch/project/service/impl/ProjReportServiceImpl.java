@@ -142,6 +142,15 @@ public class ProjReportServiceImpl implements IProjReportService
                 {
                     f.setWidth(14);
                 }
+                // 输出列名归一化：设计器中为区分来源用了「项目备注」「到账备注」，
+                // 但预览表头与导出 Excel 的列名统一显示为「备注」。
+                // 仅当标签仍是字段池默认标签时才覆盖，模板2「未回款原因及应对措施」等自定义列名不受影响。
+                String poolLabel = ReportFieldPool.poolLabel(f.getFieldKey());
+                String override = ReportFieldPool.outputLabelOverride(f.getFieldKey());
+                if (override != null && (poolLabel == null || poolLabel.equals(f.getFieldLabel())))
+                {
+                    f.setFieldLabel(override);
+                }
             }
             fieldMapper.batchInsertFields(id, fields);
         }

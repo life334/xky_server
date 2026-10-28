@@ -70,7 +70,9 @@ public class ReportFieldPool
         // 报表筛选/输出与回款管理「到账统计」口径共用。未填的项目在筛选时不命中（与其它日期筛选一致）。
         // 取值走 resolveValue 末尾的「直接取行值」分支，ReportDataMapper 已 select p.plan_report_time as "planReportTime"。
         addField("planReportTime", "拟上报时间", "subject", "项目信息", "date", true, null);
-        addField("remark", "备注", "subject", "项目信息", "string", true, null);
+        // 项目备注（proj_project.remark）：与「到账备注」是两个不同来源，标签加「项目」前缀以便区分
+        // （已保存模板存的是当时的名称快照，改名不会影响已有模板的列名显示）
+        addField("remark", "项目备注", "subject", "项目信息", "string", true, null);
         addField("deptName", "所属部门", "agg", "项目信息", "string", false, null);
 
         addField("contractNo", "合同编号", "join", "合同信息", "string", true, null);
@@ -85,6 +87,11 @@ public class ReportFieldPool
                 toOptions(new String[][]{{"0", "未结算"}, {"1", "已结算"}}));
 
         addField("receivedAmount", "已收金额", "agg", "收款信息", "number", true, null);
+        // 到账备注（proj_payment.remark）：业务上一个项目通常只维护一条，多笔到账时备注内容
+        //   多为复制粘贴的同一句 ⇒ SQL 用 string_agg(DISTINCT ...) 去重后用「；」拼接，不会重复显示。
+        //   不可筛选（filterable=false）：未进入前端「筛选设置」面板，如需筛选要另加 exists 子查询。
+        //   取值走 resolveValue 末尾的「直接取行值」分支，ReportDataMapper 已 select 别名 "paymentRemark"。
+        addField("paymentRemark", "到账备注", "agg", "收款信息", "string", false, null);
         addField("refundAmount", "退款金额", "agg", "收款信息", "number", true, null);
         addField("lastPayTime", "最近到账时间", "agg", "收款信息", "date", true, null);
         addField("pendingAmount", "合同未收金额", "agg", "收款信息", "number", true, null);
@@ -169,6 +176,45 @@ public class ReportFieldPool
             m.put(e[0], e[1]);
         }
         return m;
+    }
+
+    /**
+     * 输出列名覆盖表：设计器里为区分来源用了带前缀的字段名（如「项目备注」「到账备注」），
+     * 但预览表头与导出 Excel 的列名一律只显示「备注」（客户要求，不带前缀）。
+     */
+    private static final Map<String, String> OUTPUT_LABEL_OVERRIDES = new LinkedHashMap<>();
+
+    static
+    {
+        OUTPUT_LABEL_OVERRIDES.put("remark", "备注");
+        OUTPUT_LABEL_OVERRIDES.put("paymentRemark", "备注");
+    }
+
+    /** 字段池标签（设计器显示名）；未注册返回 null */
+    public static String poolLabel(String key)
+    {
+        if (key == null)
+        {
+            return null;
+        }
+        for (Map<String, Object> f : FIXED_FIELDS)
+        {
+            if (key.equals(f.get("key")))
+            {
+                return (String) f.get("label");
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 输出列名覆盖值（预览表头 / 导出 Excel 列名）；无覆盖返回 null。
+     * 仅在模板字段的标签仍等于字段池标签（即用户未自定义列名）时使用，避免覆盖模板2
+     * 「未回款原因及应对措施」这类历史自定义列名。
+     */
+    public static String outputLabelOverride(String key)
+    {
+        return key == null ? null : OUTPUT_LABEL_OVERRIDES.get(key);
     }
 
     /**

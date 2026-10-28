@@ -67,7 +67,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                    max(case when payment_type = 'advance' then pay_time end) as advance_pay_time,
                    <!-- 预付款/尾款到账金额明细（模板4/7「到账金额」按类型拆行用；同一类型多笔合计） -->
                    sum(case when payment_type = 'advance' then coalesce(amount, 0) else 0 end) as advance_amount,
-                   sum(case when payment_type = 'final' then coalesce(amount, 0) else 0 end) as final_amount
+                   sum(case when payment_type = 'final' then coalesce(amount, 0) else 0 end) as final_amount,
+                   <!-- 到账备注（报表列「到账备注」）：业务上一个项目通常只维护一条，多笔到账备注多为同一句
+                        ⇒ 先去重再拼接，避免出现「微信支付；微信支付」这类重复；
+                        nullif 把空串转 NULL，string_agg 自动忽略 NULL -->
+                   string_agg(distinct nullif(btrim(coalesce(remark, '')), ''), '；') as pay_remark
             from proj_payment
             where del_flag = '0'
             group by project_id
@@ -765,6 +769,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             coalesce(pay_sum.total_received, 0) as "receivedAmount",
             coalesce(pay_sum.refund_amount, 0) as "refundAmount",
             pay_sum.max_pay_time as "lastPayTime",
+            <!-- 到账备注（多笔去重拼接后的结果，无备注则为 NULL ⇒ 单元格留空） -->
+            pay_sum.pay_remark as "paymentRemark",
             <!-- 到账拆行依据（模板4/7）：尾款 / 预付款各自到账时间（不再用于「上报时间」派生） -->
             pay_sum.final_pay_time as "finalPayTime",
             pay_sum.advance_pay_time as "advancePayTime",
