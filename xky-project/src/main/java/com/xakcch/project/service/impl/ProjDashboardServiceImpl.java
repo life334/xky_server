@@ -71,6 +71,10 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
     @Autowired
     private ISysWorkdayCalendarService workdayCalendarService;
 
+    /** 管线长度统计的类别范围配置（缺省值见 DEF_CATEGORY_KEYS / DEF_CATEGORY_EXCLUDES） */
+    @Autowired(required = false)
+    private com.xakcch.system.service.ISysConfigService configService;
+
     /** 需求7「录入 N 个工作日后未关联合同」阈值（契约 §8 定稿 3，留配置开关） */
     @Value("${dashboard.contractMissingWorkdays:3}")
     private int contractMissingWorkdays;
@@ -849,6 +853,90 @@ public class ProjDashboardServiceImpl implements IProjDashboardService
             bucketIds.get(bucket).add(Long.valueOf(String.valueOf(id)));
         }
         return bucketIds;
+    }
+
+    // ============================================================
+    // ===== 管线长度统计（2026-10-28 需求） =====
+    // 范围：项目类别名命中 categoryKeys 任一关键字，且不落在 categoryExcludes 名单内；
+    // 长度：proj_workload 中 price_unit='千米' 且 billing_type='internal' 的 workload 求和；
+    // 时间：按所属项目 close_time（办结日期）归集到统计周期。三者均可由 sys_config 调整。
+    // ============================================================
+
+    /** 纳入口径：类别名关键字（逗号分隔，命中任一即纳入），缺省「管线」 */
+    private static final String KEY_CATEGORY_KEYS = "proj.pipelineLength.categoryKeys";
+    private static final String DEF_CATEGORY_KEYS = "管线";
+
+    /** 排除口径：类别名全称（逗号分隔，精确命中即排除），缺省「管线定线」 */
+    private static final String KEY_CATEGORY_EXCLUDES = "proj.pipelineLength.categoryExcludes";
+    private static final String DEF_CATEGORY_EXCLUDES = "管线定线";
+
+    @Override
+    public Map<String, Object> getPipelineLength(ProjDashboardQuery query)
+    {
+        normalizeQuery(query);
+        String keys = configOrDefault(KEY_CATEGORY_KEYS, DEF_CATEGORY_KEYS);
+        String excludes = configOrDefault(KEY_CATEGORY_EXCLUDES, DEF_CATEGORY_EXCLUDES);
+        List<String> categoryLike = splitLikePatterns(keys);
+        List<String> categoryExclude = splitNames(excludes);
+        // 配置被填成全空时回落默认值，避免 <foreach> 拼出非法的 AND ()
+        if (categoryLike.isEmpty())
+        {
+            categoryLike = splitLikePatterns(DEF_CATEGORY_KEYS);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        Map<String, Object> total = dashboardMapper.pipelineLengthTotal(query, categoryLike, categoryExclude);
+        data.put("totalKm", toBig(total == null ? null : total.get("totalKm")));
+        data.put("projectCount", toInt(total == null ? null : total.get("projectCount")));
+        data.put("workloadRows", toInt(total == null ? null : total.get("workloadRows")));
+        data.put("categories", dashboardMapper.pipelineLengthByCategory(query, categoryLike, categoryExclude));
+        data.put("monthly", dashboardMapper.pipelineLengthTrend(query, categoryLike, categoryExclude));
+        // 回传生效配置与周期，便于核对「某个类别为什么没算进来」
+        data.put("categoryKeys", keys);
+        data.put("categoryExcludes", excludes);
+        data.put("beginDate", query.getBeginDate());
+        data.put("endDate", query.getEndDate());
+        return data;
+    }
+
+    /** 读 sys_config；缺失或异常一律回落默认值，不让配置问题拖垮驾驶舱 */
+    private String configOrDefault(String key, String def)
+    {
+        try
+        {
+            String v = configService == null ? null : configService.selectConfigByKey(key);
+            return notBlank(v) ? v.trim() : def;
+        }
+        catch (Exception e)
+        {
+            return def;
+        }
+    }
+
+    /** "管线,排水" → ["%管线%", "%排水%"] */
+    private List<String> splitLikePatterns(String csv)
+    {
+        List<String> out = new ArrayList<>();
+        if (csv == null) return out;
+        for (String s : csv.split("[,，]"))
+        {
+            if (s.trim().isEmpty()) continue;
+            out.add("%" + s.trim() + "%");
+        }
+        return out;
+    }
+
+    /** "管线定线" → ["管线定线"]（精确名，不外扩通配） */
+    private List<String> splitNames(String csv)
+    {
+        List<String> out = new ArrayList<>();
+        if (csv == null) return out;
+        for (String s : csv.split("[,，]"))
+        {
+            if (s.trim().isEmpty()) continue;
+            out.add(s.trim());
+        }
+        return out;
     }
 
     private String bucketOf(Map<String, String> idToBucket, Object categoryId)

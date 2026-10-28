@@ -674,6 +674,88 @@
         <include refid="v2Filter"/>
     </select>
 
+    <!-- ==================== 管线长度统计 ==================== -->
+    <!--
+      口径（2026-10-28 新增）：
+        1. 长度取 proj_workload.workload，限定 price_unit = '千米' 且 billing_type = 'internal'
+           —— 库里长度/工作量单位有 千米/格/点/个/幅，只有「千米」才是管线里程；
+              internal（内部产值）与 external（外部产值）是同一批活的两个计价口径，
+              同一子项下二者都有时不可相加，统一取 internal（需求确认口径）。
+        2. 归属时间 = 所属项目的 close_time（办结日期），与第 1 条「产值归属时间」铁律一致。
+        3. 统计范围：项目所属类别名 LIKE 任一 categoryLike（如 '%管线%'），
+           且类别名不在 categoryExclude 名单内（如 '管线定线'）。
+           两个名单来自 sys_config（proj.pipelineLength.categoryKeys / categoryExcludes），
+           由 Service 层解析成 List 传入，Mapper 不感知配置。
+        4. ⚠️ pipelineCategoryScope 片段依赖别名 pc（proj_category），include 处必须先 JOIN pc。
+    -->
+
+    <sql id="pipelineCategoryScope">
+        <foreach collection="categoryLike" item="k" open="AND (" close=")" separator=" OR ">pc.name LIKE #{k}</foreach>
+        <if test="categoryExclude != null and categoryExclude.size() &gt; 0">
+            AND pc.name NOT IN
+            <foreach collection="categoryExclude" item="e" open="(" close=")" separator=",">#{e}</foreach>
+        </if>
+    </sql>
+
+    <select id="pipelineLengthTotal" resultType="map">
+        SELECT ROUND(COALESCE(SUM(w.workload), 0)::numeric, 2) AS "totalKm",
+               COUNT(DISTINCT p.id) AS "projectCount",
+               COUNT(w.id) AS "workloadRows"
+        FROM proj_workload w
+        JOIN proj_project p   ON p.id  = w.project_id          AND p.del_flag  = '0'
+        JOIN proj_category pc ON pc.id = p.project_category_id AND pc.del_flag = '0'
+        WHERE w.del_flag = '0'
+          AND w.price_unit = '千米'
+          AND w.billing_type = 'internal'
+          AND p.close_time IS NOT NULL
+          AND p.close_time &gt;= #{q.beginDate}::date
+          AND p.close_time &lt;  #{q.endDate}::date + interval '1 day'
+        <include refid="pipelineCategoryScope"/>
+    </select>
+
+    <select id="pipelineLengthByCategory" resultType="map">
+        SELECT pc.id AS "categoryId",
+               pc.name AS "categoryName",
+               ROUND(COALESCE(SUM(w.workload), 0)::numeric, 2) AS "km",
+               COUNT(DISTINCT p.id) AS "projectCount"
+        FROM proj_workload w
+        JOIN proj_project p   ON p.id  = w.project_id          AND p.del_flag  = '0'
+        JOIN proj_category pc ON pc.id = p.project_category_id AND pc.del_flag = '0'
+        WHERE w.del_flag = '0'
+          AND w.price_unit = '千米'
+          AND w.billing_type = 'internal'
+          AND p.close_time IS NOT NULL
+          AND p.close_time &gt;= #{q.beginDate}::date
+          AND p.close_time &lt;  #{q.endDate}::date + interval '1 day'
+        <include refid="pipelineCategoryScope"/>
+        GROUP BY pc.id, pc.name
+        ORDER BY SUM(w.workload) DESC
+    </select>
+
+    <select id="pipelineLengthTrend" resultType="map">
+        SELECT to_char(m, 'YYYY-MM') AS "label",
+               ROUND(COALESCE(SUM(t.km), 0)::numeric, 2) AS "km"
+        FROM generate_series(
+                 date_trunc('month', #{q.beginDate}::date),
+                 date_trunc('month', #{q.endDate}::date),
+                 '1 month'::interval
+             ) m
+        LEFT JOIN (
+            SELECT date_trunc('month', p.close_time) AS mo, SUM(w.workload) AS km
+            FROM proj_workload w
+            JOIN proj_project p   ON p.id  = w.project_id          AND p.del_flag  = '0'
+            JOIN proj_category pc ON pc.id = p.project_category_id AND pc.del_flag = '0'
+            WHERE w.del_flag = '0'
+              AND w.price_unit = '千米'
+              AND w.billing_type = 'internal'
+              AND p.close_time IS NOT NULL
+            <include refid="pipelineCategoryScope"/>
+            GROUP BY date_trunc('month', p.close_time)
+        ) t ON t.mo = m
+        GROUP BY m
+        ORDER BY m
+    </select>
+
     <!-- 指令性任务卡：期间内办结的指令性项目的外部产值（不计入外部产值 / 应收） -->
     <select id="mandateOutputStats" resultType="map">
         SELECT COALESCE(SUM(ws.ext_out), 0) AS "mandateExternalOutput",

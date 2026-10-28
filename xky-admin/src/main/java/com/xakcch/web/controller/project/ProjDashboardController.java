@@ -92,6 +92,17 @@ public class ProjDashboardController extends BaseController
     }
 
     /**
+     * 管线长度统计：按类别范围取 price_unit='千米' 的内部工作量求和，归属时间=项目办结日期。
+     * 统计范围由 sys_config 控制（proj.pipelineLength.categoryKeys / categoryExcludes）。
+     */
+    @PreAuthorize("@ss.hasPermi('project:dashboard:view')")
+    @GetMapping("/pipelineLength")
+    public AjaxResult getPipelineLength(com.xakcch.project.domain.ProjDashboardQuery query)
+    {
+        return AjaxResult.success(dashboardService.getPipelineLength(query));
+    }
+
+    /**
      * 段5 风险与执行：欠款按年（办结年口径）、风险行动清单（欠款/工期超期/未关联合同 三源合并 top15）、计数。
      */
     @PreAuthorize("@ss.hasPermi('project:dashboard:view')")

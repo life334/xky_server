@@ -52,6 +52,16 @@ public interface IProjDashboardService
     public Map<String, Object> getRisk(ProjDashboardQuery query);
 
     /**
+     * 管线长度统计：类别名命中「管线」且排除「管线定线」的项目，其内部产值中单位为「千米」的工作量合计。
+     * 归属时间同其它指标——按所属项目 close_time（办结日期）归集到统计周期。
+     * 统计范围可由 sys_config 调整（proj.pipelineLength.categoryKeys / categoryExcludes）。
+     *
+     * @param query 公共查询参数（仅用 beginDate/endDate）
+     * @return totalKm / projectCount / categories(categoryId,categoryName,km,projectCount) / monthly(label,km)
+     */
+    public Map<String, Object> getPipelineLength(ProjDashboardQuery query);
+
+    /**
      * 在办超期项目 id 集合（工作日口径，仅手动录入 data_source='manual'，与契约 §6 三口径一致）。
      * 供项目列表页 overdue 筛选下钻复用——工作日算术只允许存在于驾驶舱实现这一处。
      *

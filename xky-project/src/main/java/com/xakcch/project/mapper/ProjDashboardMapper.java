@@ -134,4 +134,30 @@ public interface ProjDashboardMapper
      * （该部分外部产值不计入外部产值 / 应收，单列以便对账）
      */
     public Map<String, Object> mandateOutputStats(@Param("q") com.xakcch.project.domain.ProjDashboardQuery q);
+
+    // ==================== 管线长度统计 ====================
+    // 口径（2026-10-28）：
+    //   1. 长度来源 = proj_workload.workload，限 price_unit = '千米' 且 billing_type = 'internal'
+    //   2. 归属时间 = 所属项目的 close_time（办结日期），与本项目产值口径一致
+    //   3. 统计范围 = 项目所属类别名匹配任一 categoryLike（含糊匹配，如「%管线%」）
+    //      且不在 categoryExclude 名单内（精确匹配，如「管线定线」），两者均由 sys_config 配置
+    //   4. categoryId/categoryLike 等参数由 Service 层从配置解析后传入，Mapper 不读配置
+
+    /** 管线长度合计：totalKm / projectCount / workloadRows（周期=项目办结日期） */
+    public Map<String, Object> pipelineLengthTotal(
+            @Param("q") com.xakcch.project.domain.ProjDashboardQuery q,
+            @Param("categoryLike") java.util.List<String> categoryLike,
+            @Param("categoryExclude") java.util.List<String> categoryExclude);
+
+    /** 管线长度按项目类别拆分：categoryId / categoryName / km / projectCount（按长度倒序） */
+    public List<Map<String, Object>> pipelineLengthByCategory(
+            @Param("q") com.xakcch.project.domain.ProjDashboardQuery q,
+            @Param("categoryLike") java.util.List<String> categoryLike,
+            @Param("categoryExclude") java.util.List<String> categoryExclude);
+
+    /** 管线长度按月趋势：label(YYYY-MM) / km（ generate_series 补零，月份不会断档） */
+    public List<Map<String, Object>> pipelineLengthTrend(
+            @Param("q") com.xakcch.project.domain.ProjDashboardQuery q,
+            @Param("categoryLike") java.util.List<String> categoryLike,
+            @Param("categoryExclude") java.util.List<String> categoryExclude);
 }
