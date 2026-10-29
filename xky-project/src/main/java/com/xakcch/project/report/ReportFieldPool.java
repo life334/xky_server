@@ -66,10 +66,12 @@ public class ReportFieldPool
         addField("createTime", "创建时间", "subject", "项目信息", "date", true, null);
         // 办结时间：状态流转 closed 时写入；支持筛选（指定时间段内办结的项目）
         addField("closeTime", "办结时间", "subject", "项目信息", "date", true, null);
-        // 拟上报时间（项目级 proj_project.plan_report_time）：由用户在费用结算「到账信息」编辑弹窗里选择，
-        // 报表筛选/输出与回款管理「到账统计」口径共用。未填的项目在筛选时不命中（与其它日期筛选一致）。
-        // 取值走 resolveValue 末尾的「直接取行值」分支，ReportDataMapper 已 select p.plan_report_time as "planReportTime"。
-        addField("planReportTime", "拟上报时间", "subject", "项目信息", "date", true, null);
+        // 拟上报时间（2026-10-29 起为「付款笔级」proj_payment.plan_report_month，YYYY-MM）：
+        //   一个项目可能有多笔付款 ⇒ 单元格显示各笔月份去重升序拼接（如「2025-11、2026-03」），因此类型为 string 而非 date。
+        //   筛选控件的键是 planReportTime（daterange → planReportTimeBegin/End）。
+        //   筛选走 ReportDataMapper#rwc_planReportTime（exists 子查询，存在某笔月份落在区间内即命中）；
+        //   金额列另由 pay_sum 的 payPlanMonthCond 按同一区间过滤；未填该筛选时两者都不生效（不过滤、金额全算）。
+        addField("planReportTime", "拟上报时间", "subject", "项目信息", "string", true, null);
         // 项目备注（proj_project.remark）：与「到账备注」是两个不同来源，标签加「项目」前缀以便区分
         // （已保存模板存的是当时的名称快照，改名不会影响已有模板的列名显示）
         addField("remark", "项目备注", "subject", "项目信息", "string", true, null);

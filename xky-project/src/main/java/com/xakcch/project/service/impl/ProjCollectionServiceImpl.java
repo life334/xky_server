@@ -101,7 +101,8 @@ public class ProjCollectionServiceImpl implements IProjCollectionService
     {
         Map<String, Object> result = new LinkedHashMap<>();
 
-        // 口径归一：payTime=按到账时间 / closeTime=按办结时间 / planReportTime=按拟上报时间（项目级）
+        // 口径归一：payTime=按到账时间 / closeTime=按办结时间 /
+        //          planReportTime=按拟上报时间（付款笔级 plan_report_month，每笔归到自己的那个月）
         String rawDimension = str(params.get("dimension"));
         String dimension = "closeTime".equals(rawDimension) ? "closeTime"
             : ("planReportTime".equals(rawDimension) ? "planReportTime" : "payTime");

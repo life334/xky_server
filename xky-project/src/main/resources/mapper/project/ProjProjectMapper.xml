@@ -133,12 +133,29 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="closeDateEnd != null and closeDateEnd != ''">
             AND p.close_time &lt; to_date(#{closeDateEnd}, 'YYYY-MM-DD') + interval '1 day'
         </if>
-        <!-- 拟上报时间范围（费用结算高级筛选）：项目级字段，未填的项目天然被排除 -->
-        <if test="planReportTimeBegin != null and planReportTimeBegin != ''">
-            AND p.plan_report_time &gt;= to_date(#{planReportTimeBegin}, 'YYYY-MM-DD')
-        </if>
-        <if test="planReportTimeEnd != null and planReportTimeEnd != ''">
-            AND p.plan_report_time &lt; to_date(#{planReportTimeEnd}, 'YYYY-MM-DD') + interval '1 day'
+        <!--
+          拟上报时间范围（费用结算高级筛选）：
+          ⚠️ 2026-10-29 起拟上报时间下沉为「付款笔级」proj_payment.plan_report_month（只到年月，见 sql/38），
+             项目表 plan_report_time 已不再维护。命中规则改为
+             「存在某一笔付款的拟上报月份落在所选区间内」（去重后的月份集合，任一命中即命中）。
+             前端传的是日期起止，这里取到「年月」粒度比较；某笔未填月份时兜底为该笔到账时间的年月。
+        -->
+        <!-- 必须写成「一个 exists 内含两个条件」，不能拆成两个 exists：
+             两笔付款分别只满足上界/下界时（如 2026-01 与 2026-12 筛 2026-06~08），
+             两个独立 exists 都会成立导致误命中 -->
+        <if test="(planReportTimeBegin != null and planReportTimeBegin != '') or (planReportTimeEnd != null and planReportTimeEnd != '')">
+            AND exists (
+                select 1 from proj_payment xy
+                 where xy.project_id = p.id and xy.del_flag = '0'
+                <if test="planReportTimeBegin != null and planReportTimeBegin != ''">
+                   and coalesce(nullif(btrim(xy.plan_report_month), ''), to_char(xy.pay_time, 'YYYY-MM'))
+                       &gt;= left(cast(#{planReportTimeBegin} as text), 7)
+                </if>
+                <if test="planReportTimeEnd != null and planReportTimeEnd != ''">
+                   and coalesce(nullif(btrim(xy.plan_report_month), ''), to_char(xy.pay_time, 'YYYY-MM'))
+                       &lt;= left(cast(#{planReportTimeEnd} as text), 7)
+                </if>
+            )
         </if>
         <!-- 录入日期（新增口）范围（首页驾驶舱「本期新增」下钻 + 列表筛选），口径与看板完全一致 -->
         <if test="newDateBegin != null and newDateBegin != ''">

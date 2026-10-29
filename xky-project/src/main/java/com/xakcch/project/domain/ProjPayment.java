@@ -64,6 +64,15 @@ public class ProjPayment extends BaseEntity
     @JsonIgnore
     private String receivedStatus;
 
+    /**
+     * 拟上报月份（YYYY-MM）
+     *
+     * <p>每一笔付款各自一个值（需求 2026-10-29：拟上报时间从「项目级」下沉到「付款笔级」）。
+     * 报表导出 / 到账统计按它筛到账金额：只有拟上报月份落在所选月份区间内的笔才计入金额。
+     * <b>为空时的业务口径 = 该笔到账时间 {@code pay_time} 的年月</b>（保存时兜底回填 + SQL 侧 coalesce 双重保证）。
+     */
+    private String planReportMonth;
+
     /** 动态字段数据（JSONB） */
     private String extraData;
 
@@ -165,6 +174,9 @@ public class ProjPayment extends BaseEntity
     public String getReceivedStatus() { return receivedStatus; }
     public void setReceivedStatus(String receivedStatus) { this.receivedStatus = receivedStatus; }
 
+    public String getPlanReportMonth() { return planReportMonth; }
+    public void setPlanReportMonth(String planReportMonth) { this.planReportMonth = planReportMonth; }
+
     public String getExtraData()
     {
         return extraData;
@@ -210,6 +222,7 @@ public class ProjPayment extends BaseEntity
             .append("invoiceDate", getInvoiceDate())
             .append("invoiceAmount", getInvoiceAmount())
             .append("invoiceStatus", getInvoiceStatus())
+            .append("planReportMonth", getPlanReportMonth())
             .append("extraData", getExtraData())
             .append("delFlag", getDelFlag())
             .append("createBy", getCreateBy())

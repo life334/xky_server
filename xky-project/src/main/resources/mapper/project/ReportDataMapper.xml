@@ -43,6 +43,48 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </sql>
 
     <!--
+      ============ 拟上报月份过滤（2026-10-29 起：项目级 → 付款笔级） ============
+      拟上报时间已由「项目级 proj_project.plan_report_time」下沉为「付款笔级 proj_payment.plan_report_month
+      （YYYY-MM，只到年月）」。口径（用户 2026-10-29 最终确认）：
+        · 筛选里【没填】拟上报时间 ⇒ 不过滤，到账金额按全部到账笔合计（不再默认当月）；
+        · 筛选里【填了】拟上报时间 ⇒ 项目只要有任意一笔的拟上报月份落在区间内就出报表（行筛选见 rwc_planReportTime），
+          但到账金额只算落在区间内的那些付款笔。
+      某笔未填月份时，按口径兜底为该笔到账时间 pay_time 的年月（与 sql/38 的回填规则一致）。
+      ⚠️ payPlanMonthCond 使用裸列名，只可在「内层表就是 proj_payment」的上下文里引用（pay_sum 子查询 / exists）。
+    -->
+    <!-- 单侧只填开始/结束时按开区间处理（另一端给极值），与 rwc_planReportTime 的单侧语义保持一致。
+         入参兼容「YYYY-MM」与「YYYY-MM-DD」两种写法（报表筛选控件是年月区间，历史筛选方案里可能存的是日）：
+         统一用 left(…,7) 取前 7 位当月份，避免 to_date(…,'YYYY-MM-DD') 解析 'YYYY-MM' 报错。 -->
+    <sql id="payPlanMonthBegin">
+        <choose>
+            <when test="f.planReportTimeBegin != null and f.planReportTimeBegin != ''">
+                left(cast(#{f.planReportTimeBegin} as text), 7)
+            </when>
+            <otherwise>'0000-01'</otherwise>
+        </choose>
+    </sql>
+
+    <sql id="payPlanMonthEnd">
+        <choose>
+            <when test="f.planReportTimeEnd != null and f.planReportTimeEnd != ''">
+                left(cast(#{f.planReportTimeEnd} as text), 7)
+            </when>
+            <otherwise>'9999-12'</otherwise>
+        </choose>
+    </sql>
+
+    <sql id="payPlanMonthCond">
+        <choose>
+            <when test="(f.planReportTimeBegin != null and f.planReportTimeBegin != '') or (f.planReportTimeEnd != null and f.planReportTimeEnd != '')">
+                coalesce(nullif(btrim(plan_report_month), ''), to_char(pay_time, 'YYYY-MM'))
+                    between <include refid="payPlanMonthBegin"/> and <include refid="payPlanMonthEnd"/>
+            </when>
+            <!-- 未填筛选 ⇒ 全部付款笔都算（filter(where true) 等价于不写 filter） -->
+            <otherwise>true</otherwise>
+        </choose>
+    </sql>
+
+    <!--
       项目台账 JOIN 片段（唯一真相源）：
         合同 p.contract_id / 关联定线工程 / 上报记录 / 付款汇总 pay_sum / 负责人 / 外部产值 w_sum /
         外部工作量文字 w_desc / 项目类别 cat
@@ -58,20 +100,37 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         left join proj_report_submit_log sl2 on sl2.project_code = rp.project_code and sl2.del_flag = '0'
         left join (
             select project_id,
-                   sum(case when payment_type = 'refund' then -coalesce(amount, 0) else coalesce(amount, 0) end) as total_received,
-                   sum(case when payment_type = 'refund' then coalesce(amount, 0) else 0 end) as refund_amount,
-                   max(pay_time) as max_pay_time,
+                   <!-- ⚠️ 到账相关聚合一律加 filter(where 拟上报月份落在有效区间)：
+                        报表「到账金额」口径 = 只算拟上报在所选月份的那些付款笔（2026-10-29）；
+                        未填拟上报时间筛选时不加任何限制（filter(where true)），金额按全部到账笔合计。
+                        开票金额 total_invoice 与到账无关，不参与过滤。 -->
+                   sum(case when payment_type = 'refund' then -coalesce(amount, 0) else coalesce(amount, 0) end)
+                       filter (where <include refid="payPlanMonthCond"/>) as total_received,
+                   sum(case when payment_type = 'refund' then coalesce(amount, 0) else 0 end)
+                       filter (where <include refid="payPlanMonthCond"/>) as refund_amount,
+                   max(pay_time) filter (where <include refid="payPlanMonthCond"/>) as max_pay_time,
                    sum(coalesce(invoice_amount, 0)) as total_invoice,
                    <!-- 尾款到账时间 / 预付款到账时间（同一类型多笔取最后一笔），供「上报时间」派生 -->
-                   max(case when payment_type = 'final' then pay_time end) as final_pay_time,
-                   max(case when payment_type = 'advance' then pay_time end) as advance_pay_time,
+                   max(case when payment_type = 'final' then pay_time end)
+                       filter (where <include refid="payPlanMonthCond"/>) as final_pay_time,
+                   max(case when payment_type = 'advance' then pay_time end)
+                       filter (where <include refid="payPlanMonthCond"/>) as advance_pay_time,
                    <!-- 预付款/尾款到账金额明细（模板4/7「到账金额」按类型拆行用；同一类型多笔合计） -->
-                   sum(case when payment_type = 'advance' then coalesce(amount, 0) else 0 end) as advance_amount,
-                   sum(case when payment_type = 'final' then coalesce(amount, 0) else 0 end) as final_amount,
-                   <!-- 到账备注（报表列「到账备注」）：业务上一个项目通常只维护一条，多笔到账备注多为同一句
+                   sum(case when payment_type = 'advance' then coalesce(amount, 0) else 0 end)
+                       filter (where <include refid="payPlanMonthCond"/>) as advance_amount,
+                   sum(case when payment_type = 'final' then coalesce(amount, 0) else 0 end)
+                       filter (where <include refid="payPlanMonthCond"/>) as final_amount,
+                   <!-- 到账备注：业务上一个项目通常只维护一条，多笔到账备注多为同一句
                         ⇒ 先去重再拼接，避免出现「微信支付；微信支付」这类重复；
-                        nullif 把空串转 NULL，string_agg 自动忽略 NULL -->
-                   string_agg(distinct nullif(btrim(coalesce(remark, '')), ''), '；') as pay_remark
+                        nullif 把空串转 NULL，string_agg 自动忽略 NULL。
+                        同样按月过滤，保证与同行的「到账金额」来自同一批付款笔 -->
+                   string_agg(distinct nullif(btrim(coalesce(remark, '')), ''), '；')
+                       filter (where <include refid="payPlanMonthCond"/>) as pay_remark,
+                   <!-- 该项目所有付款笔的拟上报月份（去重升序，用「、」拼接）——报表列「拟上报时间」。
+                        ⚠️ 展示列不按月过滤：要让用户看到这个项目的钱分别拟上报在哪些月。
+                           金额列才按月过滤，两者不要混。 -->
+                   string_agg(distinct coalesce(nullif(btrim(plan_report_month), ''), to_char(pay_time, 'YYYY-MM')),
+                              '、' order by coalesce(nullif(btrim(plan_report_month), ''), to_char(pay_time, 'YYYY-MM'))) as plan_months
             from proj_payment
             where del_flag = '0'
             group by project_id
@@ -226,17 +285,31 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             </trim>)
         </if>
     </sql>
-    <!-- 拟上报时间（项目级 proj_project.plan_report_time，date 类型；未填的项目天然被排除） -->
+    <!-- 拟上报时间（2026-10-29 起为付款笔级 proj_payment.plan_report_month，YYYY-MM）：
+         命中规则 = 该项目存在某一笔付款的拟上报月份落在所选区间内（未填月份兜底为该笔到账时间的年月）。
+         注意：本片段只管「项目出不出报表」；「到账金额算多少」由 pay_sum 的 payPlanMonthCond 统一过滤，
+         两者同时受「筛选里有没有填拟上报时间」控制：没填 ⇒ 两者都不生效（不过滤、金额全算）；
+         填了 ⇒ 行只出「有笔落在该月」的项目，金额只算落在该月的笔。 -->
+    <!-- 拟上报时间（付款笔级 proj_payment.plan_report_month；口径 2026-10-29）：
+         命中规则 = 「存在某一笔付款的拟上报月份落在区间内」。
+         ⚠️ 必须是一个 exists 内含两个条件，不能拆成两个 exists：
+            某项目两笔付款分别是 2026-01 与 2026-12 时，筛 2026-06~08 会被两个独立 exists 误命中。
+         ⚠️ 本文件所有 rwc_* 片段的约定是「片段内不带前置 and/or」——调用处已写
+            `and <include .../>` / `or <include .../>`，片段内再写会拼出 `and and` 语法错误。 -->
     <sql id="rwc_planReportTime">
         <if test="(f.planReportTimeBegin != null and f.planReportTimeBegin != '') or (f.planReportTimeEnd != null and f.planReportTimeEnd != '')">
-            (<trim prefixOverrides="and">
+            exists (
+                select 1 from proj_payment xy_prt
+                 where xy_prt.project_id = p.id and xy_prt.del_flag = '0'
                 <if test="f.planReportTimeBegin != null and f.planReportTimeBegin != ''">
-                    and p.plan_report_time &gt;= cast(#{f.planReportTimeBegin} as date)
+                   and coalesce(nullif(btrim(xy_prt.plan_report_month), ''), to_char(xy_prt.pay_time, 'YYYY-MM'))
+                       &gt;= left(cast(#{f.planReportTimeBegin} as text), 7)
                 </if>
                 <if test="f.planReportTimeEnd != null and f.planReportTimeEnd != ''">
-                    and p.plan_report_time &lt; cast(#{f.planReportTimeEnd} as date) + interval '1 day'
+                   and coalesce(nullif(btrim(xy_prt.plan_report_month), ''), to_char(xy_prt.pay_time, 'YYYY-MM'))
+                       &lt;= left(cast(#{f.planReportTimeEnd} as text), 7)
                 </if>
-            </trim>)
+            )
         </if>
     </sql>
     <!--
@@ -745,7 +818,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             p.total_duration||'工作日' as "totalDuration",
             p.create_time as "createTime",
             p.close_time as "closeTime",
-            p.plan_report_time as "planReportTime",
+            <!-- 拟上报时间（付款笔级：项目各付款笔的拟上报月份去重拼接，如「2025-11、2026-03」） -->
+            pay_sum.plan_months as "planReportTime",
             p.remark as "remark",
             p.related_project_id as "relatedProjectId",
             <!-- 关联定线编号：系统内关联项目优先；系统无此项目时回退到手工输入的编号文本（模板6「管线定线/系统编号」列） -->

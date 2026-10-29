@@ -150,8 +150,9 @@ public class ProjSettlementController extends BaseController
         addColumn(columns, "projectName", "项目名称", "text", false, "projectName");
         addColumn(columns, "clientUnit", "委托单位", "text", true, "clientUnit");
         addColumn(columns, "projectLocation", "工程地点", "text", true, "projectLocation");
-        // 拟上报时间（项目级；费用结算高级筛选、到账统计口径、报表筛选都用它）
-        addColumn(columns, "planReportTime", "拟上报时间", "date", true, "planReportTime");
+        // 拟上报时间（付款笔级 monthlyplan-report：每笔付款一个月份，单元格显示去重后的多值文本，
+        // 例如「2025-11、2026-03」；筛选命中规则 = 存在某笔付款的拟上报月份落在区间内）
+        addColumn(columns, "planReportTime", "拟上报时间", "text", true, "planReportTime");
         // 「负责人」= 工作量登记人（导出按它拆行，页面展开行里的「负责人」也是它）。
         // 项目级 leaderNames 已从清单中移除：与它同名易混淆，且拆行后每行都一样、没有信息量。
         addColumn(columns, "userName", "负责人", "text", false, "userName");
@@ -836,10 +837,12 @@ public class ProjSettlementController extends BaseController
     private Map<String, Object> buildSettlementNode(ProjProject p,
         Map<Long, List<ProjWorkload>> workloadMap, Map<Long, List<ProjPayment>> paymentMap)
     {
-        Map<String, Object> projectNode = buildProjectNode(p);
+        Map<String, Object> projectNode = new LinkedHashMap<>();
         // 从批量查询结果中取该项目的工作量与付款
         List<ProjWorkload> workloads = workloadMap.getOrDefault(p.getId(), Collections.emptyList());
         List<ProjPayment> payments = paymentMap.getOrDefault(p.getId(), Collections.emptyList());
+
+        fillProjectBase(projectNode, p, payments);
 
         // 填充付款信息到项目节点
         fillPaymentInfo(projectNode, payments, p.getId());
@@ -1168,21 +1171,105 @@ public class ProjSettlementController extends BaseController
         String username = getUsername();
         String remark = (String) params.getOrDefault("remark", "");
 
-        // Save payments（预付款 + 尾款）
-        savePaymentIfPresent((Map<String, Object>) params.get("prepay"), projectId, "advance", username, remark);
-        savePaymentIfPresent((Map<String, Object>) params.get("tail"), projectId, "final", username, remark);
+        // Save payments：新版前端传 payments 数组（预付款 / 尾款 / 手动新增的付款，逐笔含拟上报月份）；
+        // 旧调用方仍走 prepay / tail 单笔 upsert。
+        if (params.containsKey("payments"))
+        {
+            savePaymentRows(params.get("payments"), projectId, username, remark);
+        }
+        else
+        {
+            savePaymentIfPresent((Map<String, Object>) params.get("prepay"), projectId, "advance", username, remark);
+            savePaymentIfPresent((Map<String, Object>) params.get("tail"), projectId, "final", username, remark);
+        }
 
         // Save refunds（退款多笔，整组替换）
         saveRefunds(params.get("refunds"), projectId, username);
 
-        // 拟上报时间（项目级，挂在 proj_project 上；传 null/空 = 清空）。
-        // 只要请求里带了 planReportTime 这个 key 就写（允许清空），不带则不动，避免误伤其它调用方。
-        if (params.containsKey("planReportTime"))
+        return success();
+    }
+
+    /**
+     * 付款行整组保存（需求 2026-10-29：预付款 / 尾款 + 手动新增的付款，支持多行、每行各自一个拟上报月份）。
+     *
+     * <ul>
+     *   <li>带已有 {@code id} → 按 id 更新（保留行身份与 create_by/create_time）；</li>
+     *   <li>无 id → 新增，付款类型缺省 {@code other}（唯一索引已放宽：只对 advance/final 约束，见 sql/38）；</li>
+     *   <li>本次未提交的存量行 → 逻辑删除（用户在弹窗里点「删除」的那一行）。</li>
+     * </ul>
+     * 每行的拟上报月份为空时，按口径兜底为该笔到账时间（pay_time）的年月。
+     * ⚠️ 只处理付款（非退款），退款由 {@link #saveRefunds} 单独整组替换。
+     */
+    private void savePaymentRows(Object paymentsObj, Long projectId, String username, String remark)
+    {
+        List<ProjPayment> exist = paymentMapper.selectPaymentsByProjectId(projectId).stream()
+            .filter(pm -> !"refund".equals(pm.getPaymentType()))
+            .collect(Collectors.toList());
+        Set<Long> existIds = exist.stream().map(ProjPayment::getId).collect(Collectors.toSet());
+        Set<Long> keepIds = new HashSet<>();
+
+        if (paymentsObj instanceof List<?> list)
         {
-            projectMapper.updatePlanReportTime(projectId, toDate(params.get("planReportTime")), username);
+            for (Object item : list)
+            {
+                if (!(item instanceof Map)) continue;
+                @SuppressWarnings("unchecked")
+                Map<String, Object> row = (Map<String, Object>) item;
+                BigDecimal amount = toBigDecimal(row.get("amount"));
+                Date payTime = toDate(row.get("payTime"));
+                String invoiceStatus = (String) row.get("invoiceStatus");
+                boolean voided = isVoidedStatus(invoiceStatus);
+                String invoiceUnit = (String) row.get("invoiceUnit");
+                BigDecimal invoiceAmount = toBigDecimal(row.get("invoiceAmount"));
+                boolean hasInvoice = StringUtils.isNotBlank(invoiceUnit) || row.get("invoiceDate") != null
+                    || (invoiceAmount != null && invoiceAmount.compareTo(BigDecimal.ZERO) > 0);
+                // 空行防御：金额、到账时间、发票信息全空且未作废 → 不落库
+                if (amount == null && payTime == null && !hasInvoice && !voided) continue;
+
+                String month = (String) row.get("planReportMonth");
+                if (StringUtils.isBlank(month) && payTime != null)
+                {
+                    month = DateUtils.parseDateToStr("yyyy-MM", payTime);
+                }
+                month = StringUtils.isBlank(month) ? null : month.trim();
+
+                Long id = toLong(row.get("id"));
+                String type = (String) row.get("paymentType");
+                ProjPayment pm = new ProjPayment();
+                pm.setId(id != null && existIds.contains(id) ? id : null);
+                pm.setProjectId(projectId);
+                pm.setPaymentType(StringUtils.isBlank(type) ? "other" : type);
+                pm.setAmount(amount);
+                pm.setPayTime(payTime);
+                pm.setPayUnit((String) row.get("payUnit"));
+                pm.setPayMethod((String) row.get("payMethod"));
+                pm.setInvoiceUnit(invoiceUnit);
+                pm.setInvoiceDate(toDate(row.get("invoiceDate")));
+                pm.setInvoiceAmount(invoiceAmount);
+                pm.setInvoiceStatus(voided ? "voided" : (hasInvoice ? "invoiced" : "pending"));
+                pm.setPlanReportMonth(month);
+                pm.setRemark(remark);
+                pm.setCreateBy(username);
+                pm.setUpdateBy(username);
+
+                if (pm.getId() != null)
+                {
+                    paymentMapper.updatePayment(pm);
+                    keepIds.add(pm.getId());
+                }
+                else
+                {
+                    paymentMapper.insertPayment(pm);
+                }
+            }
         }
 
-        return success();
+        Long[] removeIds = exist.stream().map(ProjPayment::getId)
+            .filter(i -> !keepIds.contains(i)).toArray(Long[]::new);
+        if (removeIds.length > 0)
+        {
+            paymentMapper.deletePaymentByIds(removeIds);
+        }
     }
 
     // ===== Private helpers =====
@@ -1280,10 +1367,9 @@ public class ProjSettlementController extends BaseController
         return list;
     }
 
-    /** 构建项目级树节点 */
-    private Map<String, Object> buildProjectNode(ProjProject p)
+    /** 构建项目级树节点（payments 用于派生「拟上报时间」多值：每笔付款各自一个拟上报月份） */
+    private Map<String, Object> fillProjectBase(Map<String, Object> node, ProjProject p, List<ProjPayment> payments)
     {
-        Map<String, Object> node = new LinkedHashMap<>();
         node.put("id", "p" + p.getId());
         node.put("projectId", p.getId());
         node.put("projectCode", p.getProjectCode());
@@ -1296,9 +1382,34 @@ public class ProjSettlementController extends BaseController
         // 项目类别名称：列表「项目类别」列（列元数据 key/prop = categoryName）数据源
         node.put("categoryName", p.getCategoryName());
         node.put("leaderNames", p.getLeaderNames());
-        // 拟上报时间（项目级，由「到账信息」编辑弹窗填写；列表列/导出/筛选共用）
-        node.put("planReportTime", p.getPlanReportTime() != null ? DATE_FMT.format(p.getPlanReportTime()) : "");
+        // 拟上报时间（付款笔级：每一笔付款各自一个拟上报月份，见 sql/38）。
+        // 列表列/导出显示该项目所有笔的月份，去重升序后用「、」拼接，例如「2025-11、2026-03」。
+        // 某笔未填时按口径兜底为「该笔到账时间的年月」。
+        node.put("planReportTime", payPlanReportMonths(payments));
         return node;
+    }
+
+    /**
+     * 该项目所有付款笔的「拟上报月份」去重升序拼接（列表「拟上报时间」列 / 导出共用）。
+     *
+     * <p>拟上报时间已由项目级下沉为「付款笔级」（需求 2026-10-29），一个项目可能有多个月份，
+     * 因此单元格显示去重后的多值（{@code 2025-11、2026-03}）。某笔未填按口径兜底为其到账时间的年月。
+     */
+    private String payPlanReportMonths(List<ProjPayment> payments)
+    {
+        if (payments == null || payments.isEmpty())
+        {
+            return "";
+        }
+        return payments.stream()
+            // 退款笔（负数冲减）没有拟上报月份，不参与拼接
+            .filter(pm -> !"refund".equals(pm.getPaymentType()))
+            .map(pm -> StringUtils.isNotBlank(pm.getPlanReportMonth()) ? pm.getPlanReportMonth().trim()
+                : (pm.getPayTime() != null ? DateUtils.parseDateToStr("yyyy-MM", pm.getPayTime()) : ""))
+            .filter(StringUtils::isNotBlank)
+            .distinct()
+            .sorted()
+            .collect(Collectors.joining("、"));
     }
 
     /** 填充付款信息 */

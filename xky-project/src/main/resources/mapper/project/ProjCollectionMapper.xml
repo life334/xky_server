@@ -31,7 +31,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 ELSE 'calling'
             END AS "collectStatus",
             COALESCE(p.project_nature, 'normal') AS "projectNature",
-            p.client_unit_nature AS "clientUnitNature"
+            p.client_unit_nature AS "clientUnitNature",
+            p.project_category_id AS "projectCategoryId"
         FROM proj_project p
         LEFT JOIN (
             SELECT project_id,
@@ -101,6 +102,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <!-- 委托单位性质（字典 proj_client_unit_nature，取项目表字段） -->
         <if test="clientUnitNature != null and clientUnitNature != ''">
             AND t."clientUnitNature" = #{clientUnitNature}
+        </if>
+        <!-- 项目类别多选：前端传逗号串（避免参数拼成索引形式），转数组后用 = any 匹配 -->
+        <if test="projectCategoryIds != null and projectCategoryIds != ''">
+            AND t."projectCategoryId" = any(string_to_array(#{projectCategoryIds}, ',')::bigint[])
         </if>
         <!-- 全局搜索：工程编号 / 项目名称 / 客户全称 -->
         <if test="keyword != null and keyword != ''">
@@ -301,14 +306,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
       口径（用户已定）：只要有到账流水（pm.del_flag='0'）即计入，退款按负值冲减；
       不看 received_status（该列已废弃——没有任何界面能写/改它，且会被默认值污染）。
       dimension = payTime（按到账时间，默认）| closeTime（按办结时间；取这批办结项目的累计到账，
-                  不再限制到账时间；无办结时间的项目不参与）| planReportTime（按拟上报时间，项目级字段
-                  proj_project.plan_report_time；未填拟上报时间的项目/到账不参与，口径由用户确认为「排除」）
+                  不再限制到账时间；无办结时间的项目不参与）| planReportTime（按拟上报时间
+                  —— ⚠️ 2026-10-29 起为「付款笔级」proj_payment.plan_report_month（YYYY-MM），
+                  每笔付款归到自己的拟上报月份；未填时兜底为该笔到账时间 pay_time 的年月）
       groupBy   = none | month | quarter | year | clientUnit | leader | paymentType | category
       ⚠️ groupBy='leader' 时按 proj_leader 展开：一个项目多位负责人时，同一笔到账会在每位负责人下各计一次。
     -->
     <sql id="summaryTimeExpr"><choose>
         <when test="dimension == 'closeTime'">p.close_time</when>
-        <when test="dimension == 'planReportTime'">p.plan_report_time</when>
+        <when test="dimension == 'planReportTime'">to_date(coalesce(nullif(btrim(pm.plan_report_month), ''), to_char(pm.pay_time, 'YYYY-MM')) || '-01', 'YYYY-MM-DD')</when>
         <otherwise>pm.pay_time</otherwise>
     </choose></sql>
 
@@ -332,13 +338,16 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                     AND p.close_time &lt; to_date(#{end}, 'YYYY-MM-DD') + interval '1 day'
                 </if>
             </when>
+            <!-- 按「拟上报月份」（付款笔级 YYYY-MM）：字符串比较，同一笔只落在自己的那一个月 -->
             <when test="dimension == 'planReportTime'">
-                AND p.plan_report_time IS NOT NULL
+                AND coalesce(nullif(btrim(pm.plan_report_month), ''), to_char(pm.pay_time, 'YYYY-MM')) IS NOT NULL
                 <if test="begin != null and begin != ''">
-                    AND p.plan_report_time &gt;= to_date(#{begin}, 'YYYY-MM-DD')
+                    AND coalesce(nullif(btrim(pm.plan_report_month), ''), to_char(pm.pay_time, 'YYYY-MM'))
+                        &gt;= to_char(to_date(#{begin}, 'YYYY-MM-DD'), 'YYYY-MM')
                 </if>
                 <if test="end != null and end != ''">
-                    AND p.plan_report_time &lt; to_date(#{end}, 'YYYY-MM-DD') + interval '1 day'
+                    AND coalesce(nullif(btrim(pm.plan_report_month), ''), to_char(pm.pay_time, 'YYYY-MM'))
+                        &lt;= to_char(to_date(#{end}, 'YYYY-MM-DD'), 'YYYY-MM')
                 </if>
             </when>
             <otherwise>
