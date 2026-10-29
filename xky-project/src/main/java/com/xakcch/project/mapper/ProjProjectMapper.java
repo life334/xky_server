@@ -131,6 +131,17 @@ public interface ProjProjectMapper
     public int updateProjectStatus(@Param("id") Long id, @Param("status") String status);
 
     /**
+     * 更新项目级「到账备注」（sql/39）
+     *
+     * @param id 项目ID
+     * @param payRemark 备注内容；null 或空白 ⇒ 清空
+     * @param updateBy 更新人
+     * @return 结果
+     */
+    public int updatePayRemark(@Param("id") Long id, @Param("payRemark") String payRemark,
+        @Param("updateBy") String updateBy);
+
+    /**
      * 办结快照：仅更新项目总时长（冻结值，之后不再参与自动重算）
      *
      * @param id 项目ID

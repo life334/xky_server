@@ -844,8 +844,8 @@ public class ProjSettlementController extends BaseController
 
         fillProjectBase(projectNode, p, payments);
 
-        // 填充付款信息到项目节点
-        fillPaymentInfo(projectNode, payments, p.getId());
+        // 填充付款信息到项目节点（到账备注：项目级 pay_remark 优先，为空回退付款行聚合）
+        fillPaymentInfo(projectNode, payments, p.getId(), p.getPayRemark());
 
         // 汇总项目级工作量（内部工作量 / 外部工作量分别独立汇总，不相加：
         // 内外工作量单位不同（公里/宗/平方公里），相加无业务含义，仅作参考值保留统一字段 workload）
@@ -1186,6 +1186,15 @@ public class ProjSettlementController extends BaseController
         // Save refunds（退款多笔，整组替换）
         saveRefunds(params.get("refunds"), projectId, username);
 
+        // 到账备注同时写项目级（sql/39）：弹窗里只有一个「备注」框，语义上是「这个项目的到账备注」。
+        // 之前只写到每一笔付款行（proj_payment.remark），项目没有任何付款行时（用户只填备注、金额/时间都不填）
+        // 保存会被「空行防御」整行跳过 ⇒ 备注直接丢失（用户 2026-10-29 反馈）。
+        // 只在调用方确实带了 remark 键时才写，避免其它调用入口把已有备注误清空。
+        if (params.containsKey("remark"))
+        {
+            projectMapper.updatePayRemark(projectId, remark, username);
+        }
+
         return success();
     }
 
@@ -1412,8 +1421,35 @@ public class ProjSettlementController extends BaseController
             .collect(Collectors.joining("、"));
     }
 
+    /**
+     * 到账备注（列表「备注」列）：非退款付款笔的 remark 去首尾空格、去空、去重后按「；」拼接。
+     * 退款笔的 remark 是「退款原因」，不属于到账备注，不参与拼接。
+     */
+    private String payRemarks(List<ProjPayment> payments)
+    {
+        if (payments == null || payments.isEmpty())
+        {
+            return "";
+        }
+        Set<String> remarks = new LinkedHashSet<>();
+        for (ProjPayment pm : payments)
+        {
+            if ("refund".equals(pm.getPaymentType()))
+            {
+                continue;
+            }
+            String r = pm.getRemark();
+            if (StringUtils.isNotBlank(r))
+            {
+                remarks.add(r.trim());
+            }
+        }
+        return String.join("；", remarks);
+    }
+
     /** 填充付款信息 */
-    private void fillPaymentInfo(Map<String, Object> node, List<ProjPayment> payments, Long projectId)
+    private void fillPaymentInfo(Map<String, Object> node, List<ProjPayment> payments, Long projectId,
+        String projectPayRemark)
     {
         ProjPayment prepay = null;
         ProjPayment tail = null;
@@ -1438,8 +1474,15 @@ public class ProjSettlementController extends BaseController
             node.put("prepayDate", prepay.getPayTime() != null ? DATE_FMT.format(prepay.getPayTime()) : "");
             node.put("payUnit", prepay.getPayUnit());
             node.put("payMethod", prepay.getPayMethod());
-            node.put("payRemark", prepay.getRemark());
         }
+        // 「备注」列（到账备注）：**项目级字段优先**（proj_project.pay_remark，sql/39），为空时回退到
+        //   所有非退款付款笔的 remark 去重后按「；」拼接。
+        //   ① 项目级：用户在弹窗里只填备注、没有任何付款行时也能保存下来（原实现会丢）；
+        //   ② 回退聚合：历史数据（项目字段为空）继续按付款行显示，无需数据迁移。
+        //   历史上 prepay.getRemark()（只取预付款那一笔）导致 1039 个有备注的项目里 942 个列恒空，已修。
+        String payRemarkText = StringUtils.isNotBlank(projectPayRemark)
+            ? projectPayRemark.trim() : payRemarks(payments);
+        node.put("payRemark", payRemarkText);
         if (tail != null)
         {
             node.put("tailAmount", tail.getAmount());

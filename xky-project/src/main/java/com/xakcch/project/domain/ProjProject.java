@@ -111,6 +111,15 @@ public class ProjProject extends BaseEntity
     @Excel(name = "拟上报时间", width = 30, dateFormat = "yyyy-MM-dd")
     private java.util.Date planReportTime;
 
+    /**
+     * 到账备注（项目级，sql/39）。
+     * 来源：费用结算「到账信息」弹窗里唯一的「备注」输入框。
+     * 为什么提到项目级：备注原来只存在 proj_payment.remark（挂在付款行上），项目没有任何付款行时
+     * （用户只填备注、金额/时间都不填）保存会被「空行防御」整行跳过，备注直接丢失。
+     * 读取口径：项目级有值优先；为空回退到付款行备注聚合（ProjSettlementController#payRemarks）。
+     */
+    private String payRemark;
+
     // ===== 以下为非持久化字段，列表/详情展示用 =====
 
     /** 项目类别名称（JOIN proj_category，仅列表展示用，不再参与Excel导入导出） */
@@ -533,6 +542,16 @@ public class ProjProject extends BaseEntity
         this.planReportTime = planReportTime;
     }
 
+    public String getPayRemark()
+    {
+        return payRemark;
+    }
+
+    public void setPayRemark(String payRemark)
+    {
+        this.payRemark = payRemark;
+    }
+
     public String getImportRemark()
     {
         return importRemark;
@@ -833,6 +852,7 @@ public class ProjProject extends BaseEntity
             .append("totalDuration", getTotalDuration())
             .append("closeTime", getCloseTime())
             .append("planReportTime", getPlanReportTime())
+            .append("payRemark", getPayRemark())
             .append("importTaskAssignDate", getImportTaskAssignDate())
             .append("importTaskFinishDate", getImportTaskFinishDate())
             .append("importTaskDuration", getImportTaskDuration())

@@ -28,6 +28,8 @@ public class ReportFieldPool
     private static final Map<String, String> PROJECT_STATUS = new LinkedHashMap<>();
     /** 结算状态字典 */
     private static final Map<String, String> SETTLE_STATUS = new LinkedHashMap<>();
+    /** 项目性质字典（proj_project.project_nature）：normal=市场性任务（外部产值计入应收）；mandate=指令性任务 */
+    private static final Map<String, String> PROJECT_NATURE = new LinkedHashMap<>();
 
     static
     {
@@ -38,6 +40,9 @@ public class ReportFieldPool
         SETTLE_STATUS.put("settled", "已结清");
         SETTLE_STATUS.put("pending", "未结清");
         SETTLE_STATUS.put("overdue", "超额");
+
+        PROJECT_NATURE.put("normal", "市场性任务");
+        PROJECT_NATURE.put("mandate", "指令性任务");
     }
 
     /** 固定字段池（主体=项目） */
@@ -59,6 +64,11 @@ public class ReportFieldPool
         addField("projectCategoryId", "项目类别", "subject", "项目信息", "select", true, null);
         addField("categoryName", "项目类别名称", "join", "项目信息", "string", false, null);
         addField("projectStatus", "项目状态", "subject", "项目信息", "select", true, PROJECT_STATUS);
+        // 项目性质（proj_project.project_nature，非空默认 'normal'）：
+        //   与「委托单位性质」(client_unit_nature，字典 proj_client_unit_nature) 是两个独立字段，不要混。
+        //   filterable=true ⇒ 报表页「筛选设置 → 项目信息」可勾选，预览/导出同一套 SQL（ReportDataMapper#rwc_projectNature）。
+        //   作为列输出时 resolveValue 会把 normal/mandate 转成中文（否则会直接显示英文码值）。
+        addField("projectNature", "项目性质", "subject", "项目信息", "select", true, PROJECT_NATURE);
         addField("leaderName", "负责人", "join", "项目信息", "string", true, null);
         addField("assignDate", "安排日期", "subject", "项目信息", "date", true, null);
         addField("durationRequire", "工期要求(天)", "subject", "项目信息", "number", false, null);
@@ -563,6 +573,17 @@ public class ReportFieldPool
         {
             String v = str(row.get(key));
             return v == null ? null : PROJECT_STATUS.getOrDefault(v, v);
+        }
+
+        // 项目性质（normal / mandate）：作为列输出时同样要转中文，否则 Excel 里会显示英文码值
+        if ("projectNature".equals(key))
+        {
+            String v = str(row.get(key));
+            if (v == null || v.isEmpty())
+            {
+                return "市场性任务";   // 与表默认值 'normal' 对齐（project_nature 为非空列，空值只可能是历史脏数据）
+            }
+            return PROJECT_NATURE.getOrDefault(v, v);
         }
 
         // 是否结算（字符标志位 0/1，非字典字段）：必须转中文，否则导出/预览会直接显示 0 或 1

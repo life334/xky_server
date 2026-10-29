@@ -248,6 +248,19 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             )
         </if>
     </sql>
+    <!-- 项目性质（proj_project.project_nature）：normal=市场性任务 / mandate=指令性任务。
+         单值下拉即可满足需求，但这里按逗号拆分写成 in (...)，与 rwc_projectStatus 保持一致，
+         将来若要改成多选（任务性质两个都看）前端换 multiSelect 即可，不用再动 SQL。
+         ⚠️ 片段内不写 and/or（调用处已写），只输出布尔表达式。 -->
+    <sql id="rwc_projectNature">
+        <if test="f.projectNature != null and f.projectNature != ''">
+            (coalesce(p.project_nature, 'normal') in
+            <foreach item="s" collection="f.projectNature.split(',')" open="(" separator="," close=")">
+                #{s}
+            </foreach>
+            )
+        </if>
+    </sql>
     <sql id="rwc_assignDate">
         <if test="(f.assignDateBegin != null and f.assignDateBegin != '') or (f.assignDateEnd != null and f.assignDateEnd != '')">
             (<trim prefixOverrides="and">
@@ -635,6 +648,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <bind name="o_categoryId" value="f.orFields != null and f.orFields.contains('categoryId')"/>
         <bind name="o_contractId" value="f.orFields != null and f.orFields.contains('contractId')"/>
         <bind name="o_projectStatus" value="f.orFields != null and f.orFields.contains('projectStatus')"/>
+        <bind name="o_projectNature" value="f.orFields != null and f.orFields.contains('projectNature')"/>
         <bind name="o_assignDate" value="f.orFields != null and (f.orFields.contains('assignDateBegin') or f.orFields.contains('assignDateEnd'))"/>
         <bind name="o_createTime" value="f.orFields != null and (f.orFields.contains('createTimeBegin') or f.orFields.contains('createTimeEnd'))"/>
         <bind name="o_closeTime" value="f.orFields != null and (f.orFields.contains('closeTimeBegin') or f.orFields.contains('closeTimeEnd'))"/>
@@ -675,6 +689,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <bind name="v_categoryId" value="f.categoryId != null and f.categoryId != ''"/>
         <bind name="v_contractId" value="f.contractId != null and f.contractId != ''"/>
         <bind name="v_projectStatus" value="f.projectStatus != null and f.projectStatus != ''"/>
+        <bind name="v_projectNature" value="f.projectNature != null and f.projectNature != ''"/>
         <bind name="v_assignDate" value="(f.assignDateBegin != null and f.assignDateBegin != '') or (f.assignDateEnd != null and f.assignDateEnd != '')"/>
         <bind name="v_createTime" value="(f.createTimeBegin != null and f.createTimeBegin != '') or (f.createTimeEnd != null and f.createTimeEnd != '')"/>
         <bind name="v_closeTime" value="(f.closeTimeBegin != null and f.closeTimeBegin != '') or (f.closeTimeEnd != null and f.closeTimeEnd != '')"/>
@@ -717,6 +732,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="!o_categoryId and v_categoryId">and <include refid="rwc_categoryId"/></if>
             <if test="!o_contractId and v_contractId">and <include refid="rwc_contractId"/></if>
             <if test="!o_projectStatus and v_projectStatus">and <include refid="rwc_projectStatus"/></if>
+            <if test="!o_projectNature and v_projectNature">and <include refid="rwc_projectNature"/></if>
             <if test="!o_assignDate and v_assignDate">and <include refid="rwc_assignDate"/></if>
             <if test="!o_createTime and v_createTime">and <include refid="rwc_createTime"/></if>
             <if test="!o_closeTime and v_closeTime">and <include refid="rwc_closeTime"/></if>
@@ -759,6 +775,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="o_categoryId and v_categoryId">or <include refid="rwc_categoryId"/></if>
             <if test="o_contractId and v_contractId">or <include refid="rwc_contractId"/></if>
             <if test="o_projectStatus and v_projectStatus">or <include refid="rwc_projectStatus"/></if>
+            <if test="o_projectNature and v_projectNature">or <include refid="rwc_projectNature"/></if>
             <if test="o_assignDate and v_assignDate">or <include refid="rwc_assignDate"/></if>
             <if test="o_createTime and v_createTime">or <include refid="rwc_createTime"/></if>
             <if test="o_closeTime and v_closeTime">or <include refid="rwc_closeTime"/></if>
@@ -843,8 +860,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             coalesce(pay_sum.total_received, 0) as "receivedAmount",
             coalesce(pay_sum.refund_amount, 0) as "refundAmount",
             pay_sum.max_pay_time as "lastPayTime",
-            <!-- 到账备注（多笔去重拼接后的结果，无备注则为 NULL ⇒ 单元格留空） -->
-            pay_sum.pay_remark as "paymentRemark",
+            <!-- 到账备注：**项目级字段优先**（proj_project.pay_remark，sql/39），为空时回退到
+                 付款行备注去重拼接（pay_sum.pay_remark）。项目级备注不随「拟上报时间」筛选变化，
+                 因为它是整单的一句话；付款行聚合那一路仍按月过滤，与到账金额同源。
+                 都为空时结果为 NULL ⇒ 单元格留空。 -->
+            coalesce(nullif(btrim(p.pay_remark), ''), pay_sum.pay_remark) as "paymentRemark",
             <!-- 到账拆行依据（模板4/7）：尾款 / 预付款各自到账时间（不再用于「上报时间」派生） -->
             pay_sum.final_pay_time as "finalPayTime",
             pay_sum.advance_pay_time as "advancePayTime",
