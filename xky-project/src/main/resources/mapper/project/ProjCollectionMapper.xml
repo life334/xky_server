@@ -32,7 +32,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             END AS "collectStatus",
             COALESCE(p.project_nature, 'normal') AS "projectNature",
             p.client_unit_nature AS "clientUnitNature",
-            p.project_category_id AS "projectCategoryId"
+            p.project_category_id AS "projectCategoryId",
+            -- 导出用补充列（列表页不用）：工程地点 / 项目联系人 / 关联合同 id
+            -- ⚠️ 项目联系人与「合同联系人」分开取，导出时按「项目优先、为空回退合同」合成（避免张冠李戴）
+            p.project_location AS "projectLocation",
+            p.contact_name AS "projectContactName",
+            p.contact_phone AS "projectContactPhone",
+            p.contract_id AS "contractId"
         FROM proj_project p
         LEFT JOIN (
             SELECT project_id,
@@ -49,7 +55,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             GROUP BY project_id
         ) w ON w.project_id = p.id
         LEFT JOIN LATERAL (
-            SELECT id, collect_time, next_collect_time
+            SELECT id, collect_time, next_collect_time,
+                   contact_name AS "lastContactName",
+                   collect_method AS "lastCollectMethod",
+                   collect_result AS "lastCollectResult"
             FROM proj_collection_log
             WHERE project_id = p.id AND del_flag = '0'
             ORDER BY collect_time DESC, id DESC
@@ -163,6 +172,43 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         WHERE 1=1
         <include refid="collectionFilter"/>
         ORDER BY t."debtMonths" DESC, t."clientUnit", t."projectCode"
+    </select>
+
+    <!--
+      催款清单导出（可选字段）：在 collectionBase（应收 / 未收 / 账龄口径）+ collectionFilter（公共筛选）之上，
+      只补「展示用的关联列」（合同 / 项目类别 / 负责人），一行一项目。
+      ⚠️ 列表页仍走 selectCollectionList：这里多出的 JOIN 与排序不进页面查询路径。
+      ⚠️ 排序按「客户分组 + 组内账龄降序」：催款时同一单位的欠款项目挨在一起。
+    -->
+    <select id="selectCollectionExportList" parameterType="map" resultType="java.util.LinkedHashMap">
+        SELECT t.*,
+               ct.contract_no AS "contractNo",
+               ct.contract_name AS "contractName",
+               ct.contract_type AS "contractType",
+               ct.contract_amount AS "contractAmount",
+               ct.sign_date AS "signDate",
+               ct.contact_name AS "contractContactName",
+               ct.contact_phone AS "contractContactPhone",
+               cat.name AS "categoryName",
+               COALESCE(ld."leaderNames", '') AS "leaderNames"
+        FROM (
+            SELECT * FROM (
+                <include refid="collectionBase"/>
+            ) t
+            WHERE 1=1
+            <include refid="collectionFilter"/>
+        ) t
+        LEFT JOIN proj_contract ct ON ct.id = t."contractId" AND ct.del_flag = '0'
+        LEFT JOIN proj_category cat ON cat.id = t."projectCategoryId" AND cat.del_flag = '0'
+        LEFT JOIN (
+            SELECT l.project_id,
+                   string_agg(u.nick_name, ',' ORDER BY u.nick_name) AS "leaderNames"
+            FROM proj_leader l
+            LEFT JOIN sys_user u ON u.user_id = l.user_id
+            WHERE l.del_flag = '0'
+            GROUP BY l.project_id
+        ) ld ON ld.project_id = t."projectId"
+        ORDER BY t."clientUnit", t."debtMonths" DESC, t."projectCode"
     </select>
 
     <!-- 客户聚合视图：同一客户多个欠款项目聚合一行，欠款总额降序 -->

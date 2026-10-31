@@ -3,7 +3,6 @@ package com.xakcch.project.service;
 import java.util.List;
 import java.util.Map;
 import com.xakcch.project.domain.ProjCollectionLog;
-import com.xakcch.project.domain.vo.CollectionExportVo;
 import com.xakcch.project.domain.vo.PaymentDetailExportVo;
 
 /**
@@ -54,9 +53,20 @@ public interface IProjCollectionService
     public List<PaymentDetailExportVo> selectPaymentExportList(Map<String, Object> params);
 
     /**
-     * 导出催款清单（按客户分组）
+     * 催款清单导出字段池（导出弹窗「可选字段」的唯一出处）
+     *
+     * @return 每项含 key / label / type / defaultVisible / width
      */
-    public List<CollectionExportVo> selectExportList(Map<String, Object> params);
+    public List<Map<String, Object>> getExportColumns();
+
+    /**
+     * 导出催款清单（可选字段）：与列表页同筛选条件，按 fields 顺序输出表头 + 行数据
+     *
+     * @param params 列表筛选条件（同一套参数，忽略分页）
+     * @param fields 导出字段 key 列表；为空 / 全部未知时回退为默认可见列
+     * @return {@code headers}（DynamicColumnExcelExporter.Column 列表）与 {@code rows}
+     */
+    public Map<String, Object> exportCollection(Map<String, Object> params, List<String> fields);
 
     /**
      * 按项目查询催收记录

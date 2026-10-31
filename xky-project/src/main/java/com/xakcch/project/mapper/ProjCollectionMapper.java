@@ -18,6 +18,12 @@ public interface ProjCollectionMapper
     public List<Map<String, Object>> selectCollectionList(Map<String, Object> params);
 
     /**
+     * 催款清单导出（可选字段）：与 selectCollectionList 同口径（collectionBase + collectionFilter），
+     * 另带出合同 / 项目类别 / 负责人等展示列；一行一项目，按「客户分组 + 组内账龄降序」排序。
+     */
+    public List<Map<String, Object>> selectCollectionExportList(Map<String, Object> params);
+
+    /**
      * 客户聚合视图（同一客户多个欠款项目聚合一行）
      */
     public List<Map<String, Object>> selectClientCollectionList(Map<String, Object> params);

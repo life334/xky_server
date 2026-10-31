@@ -1,5 +1,7 @@
 package com.xakcch.web.controller.project;
 
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import jakarta.servlet.http.HttpServletResponse;
@@ -21,8 +23,10 @@ import com.xakcch.common.core.page.TableDataInfo;
 import com.xakcch.common.enums.BusinessType;
 import com.xakcch.common.utils.poi.ExcelUtil;
 import com.xakcch.project.domain.ProjCollectionLog;
-import com.xakcch.project.domain.vo.CollectionExportVo;
 import com.xakcch.project.domain.vo.PaymentDetailExportVo;
+import com.xakcch.common.utils.DateUtils;
+import com.xakcch.common.utils.file.FileUtils;
+import com.xakcch.project.report.DynamicColumnExcelExporter;
 import com.xakcch.project.service.IProjCollectionService;
 
 /**
@@ -117,16 +121,72 @@ public class ProjCollectionController extends BaseController
     }
 
     /**
-     * 导出催款清单（按客户分组的欠款明细）
+     * 催款清单导出字段池（导出弹窗「可选字段」的唯一出处）
+     *
+     * <p>每项含 {@code key / label / type / defaultVisible / width}；
+     * 后端以此为准做表头与取值，未知 key 一律忽略。</p>
+     */
+    @PreAuthorize("@ss.hasPermi('project:collection:export')")
+    @GetMapping("/exportColumns")
+    public AjaxResult exportColumns()
+    {
+        return success(collectionService.getExportColumns());
+    }
+
+    /**
+     * 导出催款清单（可选字段）
+     *
+     * <p>form 参数：
+     * <ul>
+     *   <li>筛选条件：与列表页 {@code /list} 完全同一套（keyword / clientUnit / collectStatus /
+     *       账龄 / 办结时间 / 到账时间 / 项目类别 / 负责人…），不含分页</li>
+     *   <li>{@code fields} 列 key 逗号串，按导出顺序；为空时回退为「默认可见列」（改造前的 11 列）</li>
+     * </ul>
+     *
+     * <p>排序：按客户全称分组、组内账龄降序（催款时同单位的欠款项目挨在一起）。
+     * ⚠️ 字段清单以 {@code getExportColumns()} 为唯一出处，未知 key 一律忽略
+     *    （既防越权导出内部字段，也防参数拼错导出空列）。</p>
      */
     @PreAuthorize("@ss.hasPermi('project:collection:export')")
     @Log(title = "回款管理", businessType = BusinessType.EXPORT)
     @PostMapping("/export")
-    public void export(HttpServletResponse response, @RequestParam Map<String, Object> params)
+    public void export(HttpServletResponse response,
+                       @RequestParam Map<String, Object> params,
+                       @RequestParam(required = false) String fields) throws IOException
     {
-        List<CollectionExportVo> list = collectionService.selectExportList(params);
-        ExcelUtil<CollectionExportVo> util = new ExcelUtil<CollectionExportVo>(CollectionExportVo.class);
-        util.exportExcel(response, list, "催款清单");
+        Map<String, Object> data = collectionService.exportCollection(params, splitFields(fields));
+
+        @SuppressWarnings("unchecked")
+        List<DynamicColumnExcelExporter.Column> headers =
+                (List<DynamicColumnExcelExporter.Column>) data.get("headers");
+        @SuppressWarnings("unchecked")
+        List<List<Object>> rows = (List<List<Object>>) data.get("rows");
+
+        String fileName = "催款清单_" + DateUtils.parseDateToStr("yyyyMMddHHmmss", new java.util.Date()) + ".xlsx";
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding("utf-8");
+        FileUtils.setAttachmentResponseHeader(response, fileName);
+        // 不输出标题行：第 1 行即表头，导出的文件可直接用于筛选 / 透视
+        DynamicColumnExcelExporter.export(response.getOutputStream(), headers, rows);
+    }
+
+    /** 逗号串 → 字段 key 列表 */
+    private List<String> splitFields(String fields)
+    {
+        List<String> list = new ArrayList<>();
+        if (fields == null || fields.trim().isEmpty())
+        {
+            return list;
+        }
+        for (String s : fields.split(","))
+        {
+            if (s == null || s.trim().isEmpty())
+            {
+                continue;
+            }
+            list.add(s.trim());
+        }
+        return list;
     }
 
     /**
