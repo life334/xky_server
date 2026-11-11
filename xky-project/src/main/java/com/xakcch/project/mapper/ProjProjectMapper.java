@@ -230,6 +230,38 @@ public interface ProjProjectMapper
      */
     public int updateAssignDateManually(@Param("id") Long id, @Param("assignDate") Date assignDate);
 
+    // ==================== 项目类别（名称 ↔ 外键 回填 / 同步） ====================
+
+    /**
+     * 按类别名称批量回填「外键为空」的项目（新建类别后自动关联；绝不覆盖已有值）
+     *
+     * @param categoryId   类别ID
+     * @param categoryName 类别名称（与 engineering_project 文本按 btrim 比较）
+     * @return 回填行数
+     */
+    public int backfillCategoryIdByName(@Param("categoryId") Long categoryId,
+                                        @Param("categoryName") String categoryName);
+
+    /**
+     * 类别改名后同步项目文本列（只按外键精确匹配，不动其它行）
+     *
+     * @param categoryId   类别ID
+     * @param categoryName 新名称
+     * @return 同步行数
+     */
+    public int syncEngineeringProjectByCategoryId(@Param("categoryId") Long categoryId,
+                                                  @Param("categoryName") String categoryName);
+
+    /**
+     * 单独改写项目类别外键（允许写 null —— updateProject 里的 project_category_id 有 null 判空，写不进 null）
+     *
+     * @param id                项目ID
+     * @param projectCategoryId 类别ID（可为 null）
+     * @return 更新行数
+     */
+    public int updateProjectCategoryId(@Param("id") Long id,
+                                       @Param("projectCategoryId") Long projectCategoryId);
+
     // ==================== 指令性任务（项目性质） ====================
 
     /**

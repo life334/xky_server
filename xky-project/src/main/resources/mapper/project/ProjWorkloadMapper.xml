@@ -442,19 +442,60 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <sql id="outputBaseFrom">
         FROM proj_project p
         LEFT JOIN (<include refid="outputProjectAgg"/>) ws ON ws.project_id = p.id
-        LEFT JOIN proj_category c ON c.id = p.project_category_id AND c.del_flag = '0'
+        LEFT JOIN proj_category c ON c.id = p.project_category_id
         <if test="leaderJoin != null and leaderJoin != ''">
             INNER JOIN proj_leader pl ON pl.project_id = p.id AND pl.del_flag = '0'
             LEFT JOIN sys_user su ON su.user_id = pl.user_id
         </if>
         WHERE p.del_flag = '0'
           AND p.close_time IS NOT NULL
-        <if test="begin != null and begin != ''">
-            AND p.close_time &gt;= to_date(#{begin}, 'YYYY-MM-DD')
-        </if>
-        <if test="end != null and end != ''">
-            AND p.close_time &lt; to_date(#{end}, 'YYYY-MM-DD') + interval '1 day'
-        </if>
+        <!--
+          统计口径（dateField）：close=按办结时间（默认）/ pay=按到账时间 / plan=按拟上报时间
+          ⚠️ 产值是「项目级」金额，到账 / 拟上报是「付款笔级」日期 ⇒ 只能当**归期**用：
+             一律 exists 过滤（一个项目命中即计一次），绝不能 JOIN 付款表后直接 SUM
+             （一个项目 N 笔到账会把产值放大 N 倍）。
+          ⚠️ exists **恒成立**（不随 begin / end 有无而消失）：不传区间时语义 = 「存在符合条件的付款笔即可」，
+             否则选快捷「全部」时过滤整块消失 ⇒ 数字偷偷退回全量，与「未到账项目不计入」矛盾。
+        -->
+        <choose>
+            <when test="dateField != null and dateField == 'pay'">
+                AND EXISTS (
+                    select 1 from proj_payment pt
+                     where pt.project_id = p.id and pt.del_flag = '0'
+                       and pt.payment_type in ('advance', 'final')
+                       and pt.pay_time is not null
+                    <if test="begin != null and begin != ''">
+                       and pt.pay_time &gt;= to_date(#{begin}, 'YYYY-MM-DD')
+                    </if>
+                    <if test="end != null and end != ''">
+                       and pt.pay_time &lt; to_date(#{end}, 'YYYY-MM-DD') + interval '1 day'
+                    </if>
+                )
+            </when>
+            <when test="dateField != null and dateField == 'plan'">
+                AND EXISTS (
+                    select 1 from proj_payment pt
+                     where pt.project_id = p.id and pt.del_flag = '0'
+                       and coalesce(nullif(btrim(pt.plan_report_month), ''), to_char(pt.pay_time, 'YYYY-MM')) is not null
+                    <if test="begin != null and begin != ''">
+                       and coalesce(nullif(btrim(pt.plan_report_month), ''), to_char(pt.pay_time, 'YYYY-MM'))
+                           &gt;= left(cast(#{begin} as text), 7)
+                    </if>
+                    <if test="end != null and end != ''">
+                       and coalesce(nullif(btrim(pt.plan_report_month), ''), to_char(pt.pay_time, 'YYYY-MM'))
+                           &lt;= left(cast(#{end} as text), 7)
+                    </if>
+                )
+            </when>
+            <otherwise>
+                <if test="begin != null and begin != ''">
+                    AND p.close_time &gt;= to_date(#{begin}, 'YYYY-MM-DD')
+                </if>
+                <if test="end != null and end != ''">
+                    AND p.close_time &lt; to_date(#{end}, 'YYYY-MM-DD') + interval '1 day'
+                </if>
+            </otherwise>
+        </choose>
         <if test="keyword != null and keyword != ''">
             AND (p.project_code LIKE concat('%', #{keyword}, '%')
                  OR p.project_name LIKE concat('%', #{keyword}, '%')
@@ -491,14 +532,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectOutputSummaryGroups" parameterType="map" resultType="java.util.LinkedHashMap">
         SELECT
             <choose>
-                <when test="groupBy == 'month'">
+                <when test="groupBy == 'month' and (dateField == null or dateField == 'close')">
                     to_char(date_trunc('month', p.close_time), 'YYYY-MM')
                 </when>
-                <when test="groupBy == 'quarter'">
+                <when test="groupBy == 'quarter' and (dateField == null or dateField == 'close')">
                     to_char(date_trunc('quarter', p.close_time), 'YYYY') || '-Q'
                     || (((EXTRACT(MONTH FROM p.close_time))::int - 1) / 3 + 1)
                 </when>
-                <when test="groupBy == 'year'">
+                <when test="groupBy == 'year' and (dateField == null or dateField == 'close')">
                     to_char(date_trunc('year', p.close_time), 'YYYY')
                 </when>
                 <when test="groupBy == 'clientUnit'">
@@ -529,7 +570,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <include refid="outputBaseFrom"/>
         GROUP BY 1, 2
         <choose>
-            <when test="groupBy == 'month' or groupBy == 'quarter' or groupBy == 'year'">ORDER BY 1</when>
+            <when test="(groupBy == 'month' or groupBy == 'quarter' or groupBy == 'year') and (dateField == null or dateField == 'close')">ORDER BY 1</when>
             <otherwise>ORDER BY 4 DESC</otherwise>
         </choose>
     </select>

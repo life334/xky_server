@@ -13,6 +13,7 @@ import com.xakcch.common.utils.StringUtils;
 import com.xakcch.project.domain.ProjCategory;
 import com.xakcch.project.mapper.ProjCategoryMapper;
 import com.xakcch.project.mapper.ProjCategoryBillingMapper;
+import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.service.IProjCategoryService;
 
 /**
@@ -28,6 +29,9 @@ public class ProjCategoryServiceImpl implements IProjCategoryService
 
     @Autowired
     private ProjCategoryBillingMapper billingMapper;
+
+    @Autowired
+    private ProjProjectMapper projectMapper;
 
     /**
      * 查询项目类别详情
@@ -224,7 +228,37 @@ public class ProjCategoryServiceImpl implements IProjCategoryService
         {
             throw new ServiceException("不能将自己设为父级");
         }
-        return categoryMapper.updateCategory(category);
+        // 改名后同步项目文本列：engineering_project 存的是「名称快照」，
+        // 不同步就会出现「文本旧名 / 外键新名」的错配（导出按文本、筛选按外键 ⇒ 两处对不上）
+        ProjCategory before = categoryMapper.selectCategoryById(category.getId());
+        boolean nameChanged = before != null && category.getName() != null
+                && !category.getName().equals(before.getName());
+        int rows = categoryMapper.updateCategory(category);
+        if (rows > 0 && nameChanged)
+        {
+            projectMapper.syncEngineeringProjectByCategoryId(category.getId(), category.getName());
+        }
+        return rows;
+    }
+
+    /**
+     * 新建子类别后，按名称回填「外键为空」的项目
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int backfillProjectsByCategoryName(Long categoryId, String categoryName)
+    {
+        if (categoryId == null || StringUtils.isEmpty(categoryName))
+        {
+            return 0;
+        }
+        String name = categoryName.trim();
+        // 类别名唯一性只按 parent 判定 ⇒ 全局可能存在多个同名子类别，无法确定该挂哪个，交人工
+        if (categoryMapper.countLeafCategoryByName(name) > 1)
+        {
+            return 0;
+        }
+        return projectMapper.backfillCategoryIdByName(categoryId, name);
     }
 
     /**

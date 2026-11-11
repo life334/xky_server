@@ -53,7 +53,7 @@ public class ProjCollectionServiceImpl implements IProjCollectionService
     private static List<Map<String, Object>> buildExportColumns()
     {
         List<Map<String, Object>> list = new ArrayList<>();
-        // —— 现状 11 列：默认勾选，保证老用户「点开即导出」的内容与改造前完全一致 ——
+        // —— 默认勾选列：点开弹窗即导出（原 11 列；11-11 起联系人/联系电话/工程地点也默认勾选）——
         addExportColumn(list, "clientUnit", "客户全称", "text", true, 26);
         addExportColumn(list, "projectCode", "工程编号", "text", true, 18);
         addExportColumn(list, "projectName", "项目名称", "text", true, 28);
@@ -65,9 +65,9 @@ public class ProjCollectionServiceImpl implements IProjCollectionService
         addExportColumn(list, "debtMonths", "账龄(月)", "number", true, 12);
         addExportColumn(list, "lastCollectTime", "最近催收时间", "date", true, 16);
         addExportColumn(list, "collectStatus", "催收状态", "text", true, 14);
-        // —— 新增：默认不勾，用户自行勾选 ——
-        addExportColumn(list, "contactName", "联系人", "text", false, 14);
-        addExportColumn(list, "contactPhone", "联系电话", "text", false, 18);
+        addExportColumn(list, "contactName", "联系人", "text", true, 14);
+        addExportColumn(list, "contactPhone", "联系电话", "text", true, 18);
+        // —— 其余可选字段：默认不勾，用户自行勾选 ——
         addExportColumn(list, "contractNo", "合同编号", "text", false, 20);
         addExportColumn(list, "contractName", "合同名称", "text", false, 26);
         addExportColumn(list, "contractType", "合同类型", "dict", false, 14);
@@ -81,7 +81,7 @@ public class ProjCollectionServiceImpl implements IProjCollectionService
         addExportColumn(list, "lastCollectResult", "最近催收结果", "text", false, 30);
         addExportColumn(list, "categoryName", "项目类别", "text", false, 18);
         addExportColumn(list, "leaderNames", "负责人", "text", false, 18);
-        addExportColumn(list, "projectLocation", "工程地点", "text", false, 24);
+        addExportColumn(list, "projectLocation", "工程地点", "text", true, 24);
         addExportColumn(list, "clientUnitNature", "委托单位性质", "dict", false, 16);
         addExportColumn(list, "projectNature", "项目性质", "text", false, 14);
         return Collections.unmodifiableList(list);

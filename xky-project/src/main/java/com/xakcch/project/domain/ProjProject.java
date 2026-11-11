@@ -231,6 +231,15 @@ public class ProjProject extends BaseEntity
     /** 拟上报时间范围结束（查询用，非持久化） */
     private String planReportTimeEnd;
 
+    /**
+     * 到账时间范围起始（查询用，非持久化）：付款笔级 proj_payment.pay_time，
+     * 只认预付款 / 尾款（payment_type in ('advance','final')），退款不算到账。
+     */
+    private String payTimeBegin;
+
+    /** 到账时间范围结束（查询用，非持久化） */
+    private String payTimeEnd;
+
     /** 录入日期（新增口）范围起始（查询用，非持久化）——全量按「项目创建日期」create_time */
     private String newDateBegin;
 
@@ -729,6 +738,26 @@ public class ProjProject extends BaseEntity
     public void setPlanReportTimeEnd(String planReportTimeEnd)
     {
         this.planReportTimeEnd = planReportTimeEnd;
+    }
+
+    public String getPayTimeBegin()
+    {
+        return payTimeBegin;
+    }
+
+    public void setPayTimeBegin(String payTimeBegin)
+    {
+        this.payTimeBegin = payTimeBegin;
+    }
+
+    public String getPayTimeEnd()
+    {
+        return payTimeEnd;
+    }
+
+    public void setPayTimeEnd(String payTimeEnd)
+    {
+        this.payTimeEnd = payTimeEnd;
     }
 
     public BigDecimal getContractAmount()

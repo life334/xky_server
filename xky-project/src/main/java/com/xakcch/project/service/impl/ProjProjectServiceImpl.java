@@ -430,6 +430,14 @@ public class ProjProjectServiceImpl implements IProjProjectService
     {
         Function<ProjProject, Object> acc = EXPORT_ACCESSORS.get(key);
         Object raw = (acc == null) ? null : acc.apply(p);
+        // 项目类别列（key=engineeringProject）：优先显示类别表规范名 categoryName，为空回退文本列
+        // ⇒ 与费用结算导出口径一致，避免「同一个项目两处导出一个有值一个空」
+        if ("engineeringProject".equals(key))
+        {
+            String cn = p.getCategoryName();
+            Object v = (cn != null && !cn.trim().isEmpty()) ? cn.trim() : raw;
+            return (v == null) ? "" : v;
+        }
         if (raw == null || "".equals(raw))
         {
             return "";
@@ -608,6 +616,13 @@ public class ProjProjectServiceImpl implements IProjProjectService
         // 总时长自动计算（安排日期 → 今天，仅工作日；已办结/已归档保持冻结值）
         recalcTotalDuration(project);
         int rows = projectMapper.updateProject(project);
+
+        // 类别名查不到时上一步会把外键置 null，而 updateProject 的 project_category_id 带 null 判空、写不进 null
+        // ⇒ 必须单列补写一次，否则「文本改了、外键还挂旧类别」的错配会留在库里
+        if (project.getEngineeringProject() != null && project.getProjectCategoryId() == null)
+        {
+            projectMapper.updateProjectCategoryId(project.getId(), null);
+        }
 
         // 先删后插，更新负责人关联
         leaderMapper.deleteLeadersByProjectId(project.getId());
@@ -1015,7 +1030,15 @@ public class ProjProjectServiceImpl implements IProjProjectService
             if (byName != null)
             {
                 project.setProjectCategoryId(byName.getId());
+                // 文本统一写成类别表里的规范名（去掉首尾空格 / 别名写法），保证两列字面一致
+                project.setEngineeringProject(byName.getName());
                 project.setCategoryName(byName.getName());
+            }
+            else
+            {
+                // 名称在类别表里不存在（类别未建 / 写的是父类别 / 已被删除）
+                // ⇒ 显式清空外键，避免「文本改成新名、外键还挂旧类别」的错配（比空值更危险）
+                project.setProjectCategoryId(null);
             }
         }
         else if (ep == null && project.getProjectCategoryId() != null)
@@ -1028,8 +1051,12 @@ public class ProjProjectServiceImpl implements IProjProjectService
                 project.setCategoryName(byId.getName());
             }
         }
-        // 兼容历史调用方：仅传了 categoryName（无文本、无 ID）→ 反查 ID
+        // 兼容历史调用方：仅传了 categoryName（完全没传文本、也没传 ID）→ 反查 ID
+        // ⚠️ 只要传了 engineeringProject（含空串=主动清空）就以文本为准，不得走这里：
+        //    否则「文本改成不存在的类别 / 清空类别」之后，会被 detail 里回显的 categoryName
+        //    反查又把旧类别挂回来（错配复现）
         if (project.getProjectCategoryId() == null
+            && ep == null
             && project.getCategoryName() != null && !project.getCategoryName().isEmpty())
         {
             ProjCategory byCn = categoryMapper.selectCategoryByName(project.getCategoryName());

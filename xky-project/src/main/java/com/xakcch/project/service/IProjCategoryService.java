@@ -92,6 +92,17 @@ public interface IProjCategoryService
     public int updateCategory(ProjCategory category);
 
     /**
+     * 新建类别后，把「类别文本同名、外键为空」的项目自动关联到该类别。
+     * 典型场景：粘贴导入时类别尚未创建，项目只写入了文本；事后补建类别即可自动补齐外键。
+     * 仅对子类别（level=2）调用；同名子类别不唯一时返回 0（交人工指定，避免挂错）。
+     *
+     * @param categoryId   类别ID
+     * @param categoryName 类别名称
+     * @return 回填行数
+     */
+    public int backfillProjectsByCategoryName(Long categoryId, String categoryName);
+
+    /**
      * 删除项目类别
      *
      * @param id 类别ID

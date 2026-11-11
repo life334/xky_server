@@ -158,6 +158,28 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                 </if>
             )
         </if>
+        <!--
+          到账时间范围（费用结算高级筛选）：
+          ⚠️ 到账是「付款笔级」proj_payment.pay_time（项目表无此概念），命中规则 =
+             「存在某一笔预付款 / 尾款的到账日期落在所选区间内」。
+             · 退款（refund）不算到账 ⇒ 限定 payment_type in ('advance','final')
+             · 与拟上报时间同为笔级 ⇒ 必须写成「一个 exists 内含两个条件」，
+               不能拆成两个 exists（两笔各自只满足上 / 下界时会误命中）
+        -->
+        <if test="(payTimeBegin != null and payTimeBegin != '') or (payTimeEnd != null and payTimeEnd != '')">
+            AND exists (
+                select 1 from proj_payment pt
+                 where pt.project_id = p.id and pt.del_flag = '0'
+                   and pt.payment_type in ('advance', 'final')
+                   and pt.pay_time is not null
+                <if test="payTimeBegin != null and payTimeBegin != ''">
+                   and pt.pay_time &gt;= to_date(#{payTimeBegin}, 'YYYY-MM-DD')
+                </if>
+                <if test="payTimeEnd != null and payTimeEnd != ''">
+                   and pt.pay_time &lt; to_date(#{payTimeEnd}, 'YYYY-MM-DD') + interval '1 day'
+                </if>
+            )
+        </if>
         <!-- 录入日期（新增口）范围（首页驾驶舱「本期新增」下钻 + 列表筛选），口径与看板完全一致 -->
         <if test="newDateBegin != null and newDateBegin != ''">
             AND <include refid="newDateExpr"/> &gt;= to_date(#{newDateBegin}, 'YYYY-MM-DD')
@@ -539,7 +561,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             c.name           as category_name,
             cp.price         as contract_price
         from proj_project p
-        left join proj_category c on c.id = p.project_category_id and c.del_flag = '0'
+        left join proj_category c on c.id = p.project_category_id
         left join proj_contract_price cp on cp.contract_id = p.contract_id
             and cp.category_id = p.project_category_id
             and cp.del_flag = '0'
@@ -740,6 +762,35 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <foreach item="id" collection="ids" open="(" separator="," close=")">
             #{id}
         </foreach>
+    </update>
+
+    <!-- ==================== 项目类别：文本 ↔ 外键 回填/同步 ==================== -->
+
+    <!-- 新建类别后回填：把「文本同名、外键为空」的项目挂到该类别（绝不覆盖已有值） -->
+    <update id="backfillCategoryIdByName">
+        UPDATE proj_project
+        SET project_category_id = #{categoryId},
+            update_time = now()
+        WHERE del_flag = '0'
+          AND project_category_id IS NULL
+          AND btrim(engineering_project) = btrim(#{categoryName})
+    </update>
+
+    <!-- 类别改名后同步项目文本列（只按外键精确匹配） -->
+    <update id="syncEngineeringProjectByCategoryId">
+        UPDATE proj_project
+        SET engineering_project = #{categoryName},
+            update_time = now()
+        WHERE del_flag = '0'
+          AND project_category_id = #{categoryId}
+    </update>
+
+    <!-- 单独改写类别外键（允许写 NULL；jdbcType 必填，否则 PG 推断不出参数类型） -->
+    <update id="updateProjectCategoryId">
+        UPDATE proj_project
+        SET project_category_id = #{projectCategoryId,jdbcType=BIGINT},
+            update_time = now()
+        WHERE id = #{id}
     </update>
 
 </mapper>

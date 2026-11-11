@@ -134,6 +134,15 @@ public class ProjWorkloadServiceImpl implements IProjWorkloadService
         }
         params.put("groupBy", groupBy);
 
+        // 统计口径：close=按办结时间（默认）/ pay=按到账时间 / plan=按拟上报时间
+        // ⚠️ 未知值一律回落 close（mapper 里 pay / plan 才是笔级归期，其余走 otherwise）
+        String dateField = str(params.get("dateField"));
+        if (!"pay".equals(dateField) && !"plan".equals(dateField))
+        {
+            dateField = "close";
+        }
+        params.put("dateField", dateField);
+
         // 合计（先去 leaderJoin，保证合计与分组无关）
         params.remove("leaderJoin");
         Map<String, Object> summary = workloadMapper.selectOutputSummary(params);
@@ -154,7 +163,7 @@ public class ProjWorkloadServiceImpl implements IProjWorkloadService
             result.put("groups", workloadMapper.selectOutputSummaryGroups(params));
         }
 
-        result.put("dimension", "closeTime");
+        result.put("dimension", dateField);
         result.put("groupBy", groupBy);
         return result;
     }

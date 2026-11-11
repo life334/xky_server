@@ -89,4 +89,13 @@ public interface ProjCategoryMapper
      * @return 项目类别
      */
     public ProjCategory selectCategoryByName(String name);
+
+    /**
+     * 统计同名子类别（level=2、未删除）的个数 —— 类别名唯一性只按 parent 判定，
+     * 全局可能同名 ⇒ 回填前用它判断是否多义（>1 时不自动关联，避免挂错）
+     *
+     * @param name 类别名称
+     * @return 个数
+     */
+    public int countLeafCategoryByName(String name);
 }

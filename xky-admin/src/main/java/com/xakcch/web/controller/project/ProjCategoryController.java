@@ -99,6 +99,16 @@ public class ProjCategoryController extends BaseController
         {
             billingService.saveBilling(category.getId(), category.getBillingList(), getUsername());
         }
+        // 子类别新建后，自动把「文本同名、外键为空」的项目关联上（父类别不处理）
+        int linked = 0;
+        if (rows > 0 && category.getLevel() != null && category.getLevel().intValue() == 2)
+        {
+            linked = categoryService.backfillProjectsByCategoryName(category.getId(), category.getName());
+        }
+        if (linked > 0)
+        {
+            return success("新增成功，已自动关联 " + linked + " 个历史项目");
+        }
         return toAjax(rows);
     }
 

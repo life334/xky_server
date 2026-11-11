@@ -94,6 +94,8 @@ public class ProjSettlementController extends BaseController
 
     /** 负责人（工作量登记人）列 key：按登记人拆行后每行的区分依据，由用户勾选决定是否出列 */
     private static final String KEY_USER_NAME = "userName";
+    /** 导出时空值写「-」的列（与列表页占位一致，避免空白单元格被当成丢数据） */
+    private static final Set<String> DASH_WHEN_EMPTY_KEYS = new HashSet<>(Arrays.asList("categoryName"));
 
     /** 工作量明细文本列的列宽（字符数）：要能容下「管线探测（含数据）：12.5千米」 */
     private static final int WORKLOAD_TEXT_WIDTH = 30;
@@ -486,7 +488,14 @@ public class ProjSettlementController extends BaseController
             }
             else
             {
-                row.add(formatCell(node.get(key), type, key));
+                Object cellVal = node.get(key);
+                // 与列表页一致：指定列为空时写「-」
+                if (DASH_WHEN_EMPTY_KEYS.contains(key)
+                        && (cellVal == null || String.valueOf(cellVal).trim().isEmpty()))
+                {
+                    cellVal = "-";
+                }
+                row.add(formatCell(cellVal, type, key));
             }
         }
         return row;

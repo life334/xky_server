@@ -33,6 +33,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             COALESCE(p.project_nature, 'normal') AS "projectNature",
             p.client_unit_nature AS "clientUnitNature",
             p.project_category_id AS "projectCategoryId",
+            pc.name AS "categoryName",
             -- 导出用补充列（列表页不用）：工程地点 / 项目联系人 / 关联合同 id
             -- ⚠️ 项目联系人与「合同联系人」分开取，导出时按「项目优先、为空回退合同」合成（避免张冠李戴）
             p.project_location AS "projectLocation",
@@ -40,6 +41,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             p.contact_phone AS "projectContactPhone",
             p.contract_id AS "contractId"
         FROM proj_project p
+        LEFT JOIN proj_category pc ON pc.id = p.project_category_id
         LEFT JOIN (
             SELECT project_id,
                    SUM(CASE WHEN payment_type = 'refund' THEN -COALESCE(amount, 0) ELSE COALESCE(amount, 0) END) AS received,
@@ -189,7 +191,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                ct.sign_date AS "signDate",
                ct.contact_name AS "contractContactName",
                ct.contact_phone AS "contractContactPhone",
-               cat.name AS "categoryName",
                COALESCE(ld."leaderNames", '') AS "leaderNames"
         FROM (
             SELECT * FROM (
@@ -199,7 +200,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <include refid="collectionFilter"/>
         ) t
         LEFT JOIN proj_contract ct ON ct.id = t."contractId" AND ct.del_flag = '0'
-        LEFT JOIN proj_category cat ON cat.id = t."projectCategoryId" AND cat.del_flag = '0'
         LEFT JOIN (
             SELECT l.project_id,
                    string_agg(u.nick_name, ',' ORDER BY u.nick_name) AS "leaderNames"
