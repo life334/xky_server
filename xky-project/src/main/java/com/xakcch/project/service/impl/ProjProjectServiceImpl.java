@@ -6,10 +6,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -28,6 +28,7 @@ import com.xakcch.project.domain.ProjMaterial;
 import com.xakcch.project.domain.ProjPayment;
 import com.xakcch.project.domain.ProjProject;
 import com.xakcch.project.domain.ProjTask;
+import com.xakcch.project.domain.ProjWorkload;
 import com.xakcch.project.mapper.ProjCategoryMapper;
 import com.xakcch.project.mapper.ProjCollectionMapper;
 import com.xakcch.project.mapper.ProjFieldDefMapper;
@@ -39,6 +40,8 @@ import com.xakcch.project.mapper.ProjProjectMapper;
 import com.xakcch.project.mapper.ProjTaskMapper;
 import com.xakcch.project.mapper.ProjWorkloadMapper;
 import com.xakcch.project.report.DynamicColumnExcelExporter;
+import com.xakcch.project.report.ProjectExportAggregator;
+import com.xakcch.project.report.ProjectExportFieldPool;
 import com.xakcch.project.service.IProjProjectService;
 import com.xakcch.project.service.IProjDashboardService;
 import com.xakcch.project.service.IProjNotifyService;
@@ -59,15 +62,6 @@ public class ProjProjectServiceImpl implements IProjProjectService
     /** 导出单次的条数上限（防止误操作拖垮内存） */
     private static final int EXPORT_MAX_ROWS = 50000;
 
-    /** 导出列 key → 取值器（与 getListColumns() 的 key 一一对应） */
-    private static final Map<String, Function<ProjProject, Object>> EXPORT_ACCESSORS;
-
-    /** 导出列 key → 类型（与 getListColumns() 的 type 一致，决定格式化方式） */
-    private static final Map<String, String> EXPORT_TYPES;
-
-    /** 导出列 key → 字典类型（仅 type='dict' 的列需要；不同列用不同字典，不可统一） */
-    private static final Map<String, String> EXPORT_DICT_TYPES;
-
     /** 状态流转规则：key=当前状态, value=允许流转到的目标状态列表 */
     private static final Map<String, List<String>> STATUS_FLOW = new HashMap<>();
     static
@@ -75,81 +69,14 @@ public class ProjProjectServiceImpl implements IProjProjectService
         STATUS_FLOW.put("ongoing",  Arrays.asList("closed"));
         STATUS_FLOW.put("closed",   Arrays.asList("archived"));
         STATUS_FLOW.put("archived", Arrays.asList());
-
-        Map<String, Function<ProjProject, Object>> a = new HashMap<>();
-        a.put("projectCode", ProjProject::getProjectCode);
-        a.put("projectName", ProjProject::getProjectName);
-        a.put("engineeringProject", ProjProject::getEngineeringProject);
-        a.put("categoryName", ProjProject::getCategoryName);
-        a.put("clientUnit", ProjProject::getClientUnit);
-        a.put("clientUnitNature", ProjProject::getClientUnitNature);
-        a.put("contactName", ProjProject::getContactName);
-        a.put("contactPhone", ProjProject::getContactPhone);
-        a.put("projectLocation", ProjProject::getProjectLocation);
-        a.put("status", ProjProject::getStatus);
-        a.put("closeTime", ProjProject::getCloseTime);
-        a.put("projectNature", ProjProject::getProjectNature);
-        a.put("contractName", ProjProject::getContractName);
-        a.put("contractNo", ProjProject::getContractNo);
-        a.put("contractAmount", ProjProject::getContractAmount);
-        a.put("internalOutput", ProjProject::getInternalOutput);
-        a.put("externalOutput", ProjProject::getExternalOutput);
-        a.put("leaderNames", ProjProject::getLeaderNames);
-        a.put("assignDate", ProjProject::getAssignDate);
-        a.put("durationRequire", ProjProject::getDurationRequire);
-        a.put("totalDuration", ProjProject::getTotalDuration);
-        a.put("relatedProjectCode", ProjProject::getRelatedProjectCode);
-        a.put("dataSource", ProjProject::getDataSource);
-        a.put("remark", ProjProject::getRemark);
-        a.put("id", ProjProject::getId);
-        a.put("createBy", ProjProject::getCreateBy);
-        a.put("createTime", ProjProject::getCreateTime);
-        a.put("updateBy", ProjProject::getUpdateBy);
-        a.put("updateTime", ProjProject::getUpdateTime);
-        EXPORT_ACCESSORS = Collections.unmodifiableMap(a);
-
-        Map<String, String> t = new HashMap<>();
-        t.put("projectCode", "text");
-        t.put("projectName", "text");
-        t.put("engineeringProject", "text");
-        t.put("categoryName", "text");
-        t.put("clientUnit", "text");
-        t.put("clientUnitNature", "dict");
-        t.put("contactName", "text");
-        t.put("contactPhone", "text");
-        t.put("projectLocation", "text");
-        t.put("status", "dict");
-        t.put("closeTime", "date");
-        t.put("projectNature", "dict");
-        t.put("contractName", "text");
-        t.put("contractNo", "text");
-        t.put("contractAmount", "number");
-        t.put("internalOutput", "number");
-        t.put("externalOutput", "number");
-        t.put("leaderNames", "text");
-        t.put("assignDate", "date");
-        t.put("durationRequire", "duration");
-        t.put("totalDuration", "total");
-        t.put("relatedProjectCode", "text");
-        t.put("dataSource", "dict");
-        t.put("remark", "text");
-        t.put("id", "number");
-        t.put("createBy", "text");
-        t.put("createTime", "date");
-        t.put("updateBy", "text");
-        t.put("updateTime", "date");
-        EXPORT_TYPES = Collections.unmodifiableMap(t);
-
-        Map<String, String> d = new HashMap<>();
-        d.put("status", "proj_project_status");
-        d.put("clientUnitNature", "proj_client_unit_nature");
-        d.put("projectNature", "proj_project_nature");
-        d.put("dataSource", "proj_project_source");
-        EXPORT_DICT_TYPES = Collections.unmodifiableMap(d);
     }
 
     @Autowired
     private ProjProjectMapper projectMapper;
+
+    /** 导出数据装配器（与费用结算导出共用同一套取值口径，唯一出处） */
+    @Autowired
+    private ProjectExportAggregator exportAggregator;
 
     @Autowired
     private IProjDashboardService dashboardService;
@@ -300,20 +227,16 @@ public class ProjProjectServiceImpl implements IProjProjectService
 
     /**
      * 按 fields 顺序组装导出数据。
-     * <p>
-     * 列元数据（label / type）全部取自 {@link #getListColumns()}，不在此处另建清单，
-     * 避免与列表显隐列面板分叉；未知 key 一律忽略（防止导出任意内部字段）。
+     *
+     * <p>列元数据与取值口径一律取自两页共用的 {@link ProjectExportFieldPool}（字段池）+
+     * {@link ProjectExportAggregator}（取值），与费用结算导出完全同源；
+     * 未知 key 一律忽略（防越权 / 拼错产生空列）。</p>
+     *
+     * <p>行粒度：<b>一项目一行</b>（人级字段「登记人 / 内部·外部工作量明细 / 产值」合并成
+     * 多值文本或项目合计；内部产值统一含 6000 保底）。费用结算页仍是一负责人一行。</p>
      */
     private Map<String, Object> buildExportData(List<String> fields, List<ProjProject> list)
     {
-        Map<String, Map<String, Object>> metaMap = new HashMap<>();
-        for (Map<String, Object> c : getListColumns())
-        {
-            metaMap.put(String.valueOf(c.get("key")), c);
-        }
-        // 字典列整批预载：每个字典类型只取一次（详见 loadDictMaps 注释）
-        Map<String, Map<String, String>> dictMaps = loadDictMaps(fields);
-
         List<DynamicColumnExcelExporter.Column> headers = new ArrayList<>();
         List<String> validKeys = new ArrayList<>();
         if (fields != null)
@@ -324,52 +247,44 @@ public class ProjProjectServiceImpl implements IProjProjectService
                 {
                     continue;
                 }
-                Map<String, Object> meta = metaMap.get(key.trim());
-                if (meta == null)
+                ProjectExportFieldPool.Field f = ProjectExportFieldPool.get(key.trim());
+                if (f == null)
                 {
                     continue;
                 }
-                String type = String.valueOf(meta.get("type"));
                 // 数值列（合同金额 / 内部产值 / 外部产值）导出右对齐，其余左对齐
-                headers.add(new DynamicColumnExcelExporter.Column(
-                        String.valueOf(meta.get("label")), widthOf(type), "number".equals(type)));
-                validKeys.add(key.trim());
+                headers.add(new DynamicColumnExcelExporter.Column(f.getLabel(), f.getWidth(), f.isNumeric()));
+                validKeys.add(f.getKey());
+            }
+        }
+        // 未指定字段 / 全部未知 ⇒ 回退为该页面的默认勾选列
+        if (validKeys.isEmpty())
+        {
+            for (String key : ProjectExportFieldPool.defaultKeys(ProjectExportFieldPool.PAGE_PROJECT))
+            {
+                ProjectExportFieldPool.Field f = ProjectExportFieldPool.get(key);
+                headers.add(new DynamicColumnExcelExporter.Column(f.getLabel(), f.getWidth(), f.isNumeric()));
+                validKeys.add(key);
             }
         }
 
-        // 进行中项目的「总时长」需实时计算：整批只拉一次日历，再逐行复用（避免 N 行 N 次请求）
-        List<ProjProject> pending = new ArrayList<>();
-        LocalDate earliest = null;
-        for (ProjProject p : list)
-        {
-            if (!isFinished(p) && p.getAssignDate() != null)
-            {
-                LocalDate a = WorkdayUtils.toLocalDate(p.getAssignDate());
-                if (earliest == null || a.isBefore(earliest))
-                {
-                    earliest = a;
-                }
-                pending.add(p);
-            }
-        }
-        LocalDate today = LocalDate.now();
-        Map<LocalDate, String> calendarMap = (earliest == null)
-                ? null : workdayCalendarService.getCalendarMap(earliest, today);
-        Map<Long, Integer> liveDuration = new HashMap<>();
-        for (ProjProject p : pending)
-        {
-            LocalDate a = WorkdayUtils.toLocalDate(p.getAssignDate());
-            liveDuration.put(p.getId(),
-                    WorkdayUtils.countWorkdays(a, today, calendarMap));
-        }
+        // 批量取数（各一次查询，禁逐行 N+1）
+        Map<Long, List<ProjWorkload>> workloadMap = exportAggregator.loadWorkloadMap(list);
+        Map<Long, List<ProjPayment>> paymentMap = exportAggregator.loadPaymentMap(list);
+        Map<String, Integer> catOrder = exportAggregator.loadCategoryOrder();
+        Map<Long, Integer> liveDuration = exportAggregator.loadLiveDuration(list);
+        // 字典列整批预载：循环内纯内存查表（详见 ProjectExportAggregator#loadDictMaps 注释）
+        Map<String, Map<String, String>> dictMaps = exportAggregator.loadDictMaps(validKeys);
 
         List<List<Object>> rows = new ArrayList<>();
         for (ProjProject p : list)
         {
+            List<ProjWorkload> workloads = workloadMap.getOrDefault(p.getId(), Collections.emptyList());
+            Map<String, Object> node = exportAggregator.buildNode(p, workloadMap, paymentMap);
             List<Object> row = new ArrayList<>();
             for (String key : validKeys)
             {
-                row.add(formatValue(p, key, liveDuration, dictMaps));
+                row.add(exportValue(key, p, node, workloads, liveDuration, catOrder, dictMaps));
             }
             rows.add(row);
         }
@@ -382,131 +297,58 @@ public class ProjProjectServiceImpl implements IProjProjectService
     }
 
     /**
-     * 按导出字段涉及到的字典类型，一次性加载 value → label 映射。
-     * <p>
-     * ⚠️ 性能要点：{@link DictUtils#getDictLabel} 每次调用都会「Redis 读 + 全量反序列化
-     * + 重建 HashMap」，实测单个字典单元格 ≈8.4ms（632 行 × 1 字典列 = 5.3s，
-     * 全量 3743 行 × 16 字段 = 67s）。改为预先按字典类型建映射后，1.1 万次 Redis 读压缩到 3 次。
-     * 字典变更（后台维护字典）不影响正确性：未命中映射时会回落到逐次查询。
+     * 单个单元格取值（一项目一行口径）。
+     *
+     * <p>人级字段在这里合并：登记人 = 该项目工作量登记人去重后「、」拼接；
+     * 内部/外部工作量 = 明细文本（逐条换行）；产值 = 项目合计（内部含 6000 保底）。</p>
      */
-    private Map<String, Map<String, String>> loadDictMaps(List<String> fields)
+    private Object exportValue(String key, ProjProject p, Map<String, Object> node,
+                               List<ProjWorkload> workloads, Map<Long, Integer> liveDuration,
+                               Map<String, Integer> catOrder, Map<String, Map<String, String>> dictMaps)
     {
-        Map<String, Map<String, String>> result = new HashMap<>();
-        if (fields == null)
+        if ("internalWorkload".equals(key))
         {
-            return result;
+            return exportAggregator.buildWorkloadText(workloads, "internal", catOrder);
         }
-        for (String key : fields)
+        if ("externalWorkload".equals(key))
         {
-            if (key == null)
-            {
-                continue;
-            }
-            String dictType = EXPORT_DICT_TYPES.get(key.trim());
-            if (dictType == null || result.containsKey(dictType))
-            {
-                continue;
-            }
-            Map<String, String> map = new HashMap<>();
-            List<SysDictData> datas = DictUtils.getDictCache(dictType);
-            if (datas != null)
-            {
-                for (SysDictData d : datas)
-                {
-                    if (d != null && d.getDictValue() != null)
-                    {
-                        map.put(d.getDictValue(), d.getDictLabel());
-                    }
-                }
-            }
-            result.put(dictType, map);
+            return exportAggregator.buildWorkloadText(workloads, "external", catOrder);
         }
-        return result;
+        if ("userName".equals(key))
+        {
+            return exportWorkloadUserNames(workloads);
+        }
+        if ("totalDuration".equals(key))
+        {
+            if (exportAggregator.isFinished(p))
+            {
+                return p.getTotalDuration() == null ? "" : p.getTotalDuration() + "天";
+            }
+            Integer d = liveDuration == null ? null : liveDuration.get(p.getId());
+            return d == null ? "" : d + "天";
+        }
+        ProjectExportFieldPool.Field f = ProjectExportFieldPool.get(key);
+        String type = (f == null) ? "text" : f.getType();
+        return exportAggregator.formatValue(key, type, node.get(key), dictMaps);
     }
 
-    /** 单个单元格取值：字典转中文标签、日期统一 yyyy-MM-dd、总时长在办时取实时值 */
-    private Object formatValue(ProjProject p, String key, Map<Long, Integer> liveDuration,
-                               Map<String, Map<String, String>> dictMaps)
+    /** 一项目一行时「登记人」列：该项目所有工作量登记人去重后「、」拼接（无则空串） */
+    private String exportWorkloadUserNames(List<ProjWorkload> workloads)
     {
-        Function<ProjProject, Object> acc = EXPORT_ACCESSORS.get(key);
-        Object raw = (acc == null) ? null : acc.apply(p);
-        // 项目类别列（key=engineeringProject）：优先显示类别表规范名 categoryName，为空回退文本列
-        // ⇒ 与费用结算导出口径一致，避免「同一个项目两处导出一个有值一个空」
-        if ("engineeringProject".equals(key))
-        {
-            String cn = p.getCategoryName();
-            Object v = (cn != null && !cn.trim().isEmpty()) ? cn.trim() : raw;
-            return (v == null) ? "" : v;
-        }
-        if (raw == null || "".equals(raw))
+        if (workloads == null || workloads.isEmpty())
         {
             return "";
         }
-        String type = EXPORT_TYPES.get(key);
-        if ("dict".equals(type))
+        Set<String> names = new LinkedHashSet<>();
+        for (ProjWorkload w : workloads)
         {
-            String dictType = EXPORT_DICT_TYPES.get(key);
-            if (dictType != null)
+            String nm = w.getUserName();
+            if (nm != null && !nm.trim().isEmpty())
             {
-                String val = String.valueOf(raw);
-                Map<String, String> dm = dictMaps.get(dictType);
-                String label = (dm == null) ? null : dm.get(val);
-                if (label == null)
-                {
-                    // 预载缺失（字典在导出期间被改过）才回落逐次查询，保证不丢标签
-                    label = DictUtils.getDictLabel(dictType, val);
-                }
-                return (label == null || label.isEmpty()) ? val : label;
+                names.add(nm.trim());
             }
-            return String.valueOf(raw);
         }
-        if ("date".equals(type))
-        {
-            // 用全限定名：本文件已有 java.sql.Date 相关用法，避免额外 import 引入同名冲突
-            return (raw instanceof java.util.Date)
-                    ? DateUtils.parseDateToStr(DateUtils.YYYY_MM_DD, (java.util.Date) raw)
-                    : String.valueOf(raw);
-        }
-        if ("duration".equals(type))
-        {
-            return String.valueOf(raw) + "天";
-        }
-        if ("total".equals(type))
-        {
-            if (isFinished(p))
-            {
-                return raw + "天";
-            }
-            Integer d = liveDuration.get(p.getId());
-            return (d == null) ? "" : (d + "天");
-        }
-        // 数值列（合同金额 / 内部产值 / 外部产值）保留数字，导出右对齐
-        if (raw instanceof Number)
-        {
-            return raw;
-        }
-        return String.valueOf(raw);
-    }
-
-    /** 已办结 / 已归档：总时长为冻结值 */
-    private boolean isFinished(ProjProject p)
-    {
-        String st = p.getStatus();
-        return "closed".equals(st) || "archived".equals(st);
-    }
-
-    /** 列宽（字符数）：日期/字典/工期窄列，文本与数值宽列；与前端 colWidth 视觉保持一致 */
-    private int widthOf(String type)
-    {
-        if ("date".equals(type))
-        {
-            return 12;
-        }
-        if ("duration".equals(type) || "total".equals(type) || "dict".equals(type))
-        {
-            return 10;
-        }
-        return 16;
+        return String.join("、", names);
     }
 
     /**
